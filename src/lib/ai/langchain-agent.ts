@@ -228,28 +228,30 @@ export const trackOrderTool = tool(
 // 2. LangChain + OpenAI Conversational AI Agent Core
 
 export class LangChainAgentService {
-  private llm: ChatOpenAI | null = null;
   private tools = [searchCatalogTool, getFaqTool, createOrderTool, trackOrderTool];
 
-  constructor() {
-    if (env.openai.apiKey) {
-      const model = env.openai.model || 'gpt-4o-mini';
-      const isFixedTempModel = 
-        model.startsWith('o1') || 
-        model.startsWith('o3') || 
-        model.startsWith('gpt-5');
-
-      const config: ConstructorParameters<typeof ChatOpenAI>[0] = {
-        openAIApiKey: env.openai.apiKey,
-        modelName: model,
-      };
-
-      if (!isFixedTempModel) {
-        config.temperature = 0.3;
-      }
-
-      this.llm = new ChatOpenAI(config);
+  getLLM(): ChatOpenAI | null {
+    if (!env.openai.apiKey) return null;
+    let model = env.openai.model || 'gpt-4o-mini';
+    // Sanitize any non-existent model names
+    if (!model || model.includes('gpt-5')) {
+      model = 'gpt-4o-mini';
     }
+
+    const isFixedTempModel = 
+      model.startsWith('o1') || 
+      model.startsWith('o3');
+
+    const config: ConstructorParameters<typeof ChatOpenAI>[0] = {
+      openAIApiKey: env.openai.apiKey,
+      modelName: model,
+    };
+
+    if (!isFixedTempModel) {
+      config.temperature = 0.3;
+    }
+
+    return new ChatOpenAI(config);
   }
 
   getSystemPrompt(): string {
@@ -284,10 +286,13 @@ CONVERSATIONAL RULES:
   }): Promise<StructuredAgentResponse> {
     const { phone, messageText, conversationId } = params;
 
+    const llm = this.getLLM();
+
     // 1. If OpenAI API Key is configured, use LangChain Agent
-    if (this.llm && env.openai.apiKey) {
+    if (llm && env.openai.apiKey) {
       try {
-        const modelWithTools = this.llm.bindTools(this.tools);
+        console.log(`[AI Agent] Processing message from ${phone}: "${messageText}" using model ${env.openai.model}`);
+        const modelWithTools = llm.bindTools(this.tools);
 
         // Fetch recent conversation history
         const conversations = await db.getConversations();
@@ -320,7 +325,7 @@ CONVERSATIONAL RULES:
             if (matchedTool) {
               const toolResult = await (matchedTool as unknown as { invoke: (args: Record<string, unknown>) => Promise<string> }).invoke(call.args);
               
-              const followUp = await this.llm.invoke([
+              const followUp = await llm.invoke([
                 ...formattedHistory,
                 ['ai', JSON.stringify(response.tool_calls)],
                 ['human', `Tool ${call.name} returned: ${toolResult}. Please give a friendly WhatsApp response to the customer in Bengali/English.`]

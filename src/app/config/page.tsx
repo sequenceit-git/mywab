@@ -64,6 +64,7 @@ interface SystemStatus {
 }
 
 export default function ConfigPage() {
+  const [mounted, setMounted] = useState(false);
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -73,10 +74,14 @@ export default function ConfigPage() {
   const fetchStatus = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/system/status');
-      const data = await res.json();
-      if (data.success) {
-        setStatus(data);
+      const res = await fetch('/api/system/status', {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) {
+          setStatus(data);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch system status:', err);
@@ -86,10 +91,12 @@ export default function ConfigPage() {
   };
 
   useEffect(() => {
+    setMounted(true);
     fetchStatus();
   }, []);
 
   const handleCopy = (text: string, label: string) => {
+    if (!text) return;
     navigator.clipboard.writeText(text);
     setCopiedKey(label);
     setTimeout(() => setCopiedKey(null), 2500);
@@ -99,17 +106,27 @@ export default function ConfigPage() {
     setTgWebhookLoading(true);
     setTgWebhookMsg(null);
     try {
-      const res = await fetch('/api/system/telegram-webhook', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        setTgWebhookMsg({
-          success: true,
-          message: 'Telegram Webhook registered successfully with Telegram Bot API!'
-        });
+      const res = await fetch('/api/system/telegram-webhook', {
+        method: 'POST',
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      if (res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) {
+          setTgWebhookMsg({
+            success: true,
+            message: 'Telegram Webhook registered successfully with Telegram Bot API!'
+          });
+        } else {
+          setTgWebhookMsg({
+            success: false,
+            message: data.telegramResponse?.description || data.error || 'Failed to register webhook'
+          });
+        }
       } else {
         setTgWebhookMsg({
           success: false,
-          message: data.telegramResponse?.description || data.error || 'Failed to register webhook'
+          message: 'Server returned non-JSON response'
         });
       }
     } catch (e) {
@@ -121,6 +138,54 @@ export default function ConfigPage() {
       setTgWebhookLoading(false);
     }
   };
+
+  const [waTestLoading, setWaTestLoading] = useState(false);
+  const [waTestMsg, setWaTestMsg] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleSendWhatsAppTest = async () => {
+    setWaTestLoading(true);
+    setWaTestMsg(null);
+    try {
+      const res = await fetch('/api/system/whatsapp-test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify({ phone: '8801705785272' })
+      });
+      if (res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) {
+          setWaTestMsg({
+            success: true,
+            message: 'Test message delivered to +8801705785272 and WABA subscription linked!'
+          });
+        } else {
+          setWaTestMsg({
+            success: false,
+            message: data.results?.testMessage?.error || data.error || 'Failed to deliver message'
+          });
+        }
+      } else {
+        setWaTestMsg({
+          success: false,
+          message: 'Non-JSON response from server'
+        });
+      }
+    } catch (e) {
+      setWaTestMsg({
+        success: false,
+        message: 'Network error sending test message'
+      });
+    } finally {
+      setWaTestLoading(false);
+    }
+  };
+
+  // Safe client-side derived values
+  const currentDomain = status?.app.domain || (mounted && typeof window !== 'undefined' ? window.location.host : 'Loading...');
+  const currentWhatsAppWebhook = status?.whatsapp.webhookUrl || (mounted && typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp` : '');
 
   return (
     <div className="flex-1 flex flex-col">
@@ -143,7 +208,7 @@ export default function ConfigPage() {
                 <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">Online</span>
               </div>
               <p className="text-xs text-slate-400 font-mono mt-0.5">
-                Host: <span className="text-slate-200 font-semibold">{status?.app.domain || 'mywab.sequenceit.software'}</span>
+                Host: <span suppressHydrationWarning className="text-slate-200 font-semibold">{currentDomain}</span>
               </p>
             </div>
           </div>
@@ -281,15 +346,15 @@ export default function ConfigPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Callback URL:</span>
                   <button
-                    onClick={() => handleCopy(status?.whatsapp.webhookUrl || '', 'wa_url')}
+                    onClick={() => handleCopy(currentWhatsAppWebhook, 'wa_url')}
                     className="text-[11px] font-mono text-brand-400 hover:text-brand-300 flex items-center gap-1"
                   >
                     <span>{copiedKey === 'wa_url' ? 'Copied!' : 'Copy URL'}</span>
                     <Copy className="w-3 h-3" />
                   </button>
                 </div>
-                <code className="block text-[11px] font-mono text-slate-200 break-all">
-                  {status?.whatsapp.webhookUrl || 'https://mywab.sequenceit.software/api/webhooks/whatsapp'}
+                <code suppressHydrationWarning className="block text-[11px] font-mono text-slate-200 break-all">
+                  {currentWhatsAppWebhook}
                 </code>
               </div>
 
@@ -313,6 +378,45 @@ export default function ConfigPage() {
                 <span>Phone Number ID:</span>
                 <span className="font-mono text-slate-200">{status?.whatsapp.phoneNumberId}</span>
               </div>
+
+              <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/50 space-y-1.5 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Webhook Subscribed Field:</span>
+                  <span className="font-mono text-brand-400 font-semibold">messages</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Token Permissions:</span>
+                  <span className="font-mono text-slate-300">whatsapp_business_messaging, management</span>
+                </div>
+              </div>
+
+              {waTestMsg && (
+                <div
+                  className={`p-3 rounded-xl text-xs flex items-start gap-2 ${
+                    waTestMsg.success
+                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
+                      : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+                  }`}
+                >
+                  {waTestMsg.success ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />}
+                  <span className="break-all">{waTestMsg.message}</span>
+                </div>
+              )}
+
+              <button
+                onClick={handleSendWhatsAppTest}
+                disabled={waTestLoading || !status?.whatsapp.isConfigured}
+                className="w-full py-2.5 px-4 rounded-xl bg-brand-500/15 hover:bg-brand-500/25 border border-brand-500/30 text-brand-400 font-bold text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {waTestLoading ? (
+                  <span>Delivering Test WhatsApp Message...</span>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send Test Message to +8801705785272 & Link WABA</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
 

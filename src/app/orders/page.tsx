@@ -26,12 +26,16 @@ export default function OrdersPage() {
 
   const fetchOrders = async () => {
     try {
-      const res = await fetch('/api/orders');
-      const data = await res.json();
-      if (data.success) {
-        setOrders(data.orders);
-        if (!selectedOrder && data.orders.length > 0) {
-          setSelectedOrder(data.orders[0]);
+      const res = await fetch('/api/orders', {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.orders)) {
+          setOrders(data.orders);
+          if (!selectedOrder && data.orders.length > 0) {
+            setSelectedOrder(data.orders[0]);
+          }
         }
       }
     } catch (e) {
@@ -51,14 +55,19 @@ export default function OrdersPage() {
     try {
       const res = await fetch(`/api/orders/${orderIdCode}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
         body: JSON.stringify({ status: newStatus }),
       });
-      const data = await res.json();
-      if (data.success) {
-        fetchOrders();
-        if (selectedOrder?.order_id === orderIdCode) {
-          setSelectedOrder(prev => prev ? { ...prev, status: newStatus } : null);
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) {
+          fetchOrders();
+          if (selectedOrder?.order_id === orderIdCode) {
+            setSelectedOrder(prev => prev ? { ...prev, status: newStatus } : null);
+          }
         }
       }
     } catch (e) {

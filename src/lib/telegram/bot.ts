@@ -7,7 +7,7 @@ export const telegramBot = {
   /**
    * Send new order card to the Telegram Worker Group with Claim button
    */
-  async dispatchNewOrder(order: Order): Promise<{ success: boolean; messageId?: number; simulated?: boolean }> {
+  async dispatchNewOrder(order: Order): Promise<{ success: boolean; messageId?: number; error?: string }> {
     const itemsText = order.items
       ?.map(item => `  ▪️ <b>${item.product_name}</b> x ${item.quantity} = ৳${item.subtotal}`)
       .join('\n') || '  ▪️ No item details';
@@ -38,36 +38,35 @@ ${itemsText}
       ]
     };
 
-    if (env.telegram.isConfigured) {
-      try {
-        const response = await fetch(`${env.telegram.apiUrl}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: env.telegram.workerGroupId,
-            text: cardHtml,
-            parse_mode: 'HTML',
-            reply_markup: inlineKeyboard
-          })
-        });
-
-        const data = await response.json();
-        if (data.ok && data.result?.message_id) {
-          order.telegram_message_id = data.result.message_id;
-          return { success: true, messageId: data.result.message_id, simulated: false };
-        }
-        console.error('Telegram API Dispatch Error:', data);
-      } catch (err) {
-        console.error('Telegram API Network Error:', err);
-      }
+    if (!env.telegram.isConfigured) {
+      const errorMsg = 'Telegram Worker Bot not configured in environment';
+      console.error(errorMsg);
+      return { success: false, error: errorMsg };
     }
 
-    console.log(`[Telegram Group Simulated -> ${env.telegram.workerGroupId || 'WORKER_GROUP'}]:\n${cardHtml}`);
-    return {
-      success: true,
-      messageId: Math.floor(100000 + Math.random() * 900000),
-      simulated: true
-    };
+    try {
+      const response = await fetch(`${env.telegram.apiUrl}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: env.telegram.workerGroupId,
+          text: cardHtml,
+          parse_mode: 'HTML',
+          reply_markup: inlineKeyboard
+        })
+      });
+
+      const data = await response.json();
+      if (data.ok && data.result?.message_id) {
+        order.telegram_message_id = data.result.message_id;
+        return { success: true, messageId: data.result.message_id };
+      }
+      console.error('Telegram API Dispatch Error:', data);
+      return { success: false, error: data.description || 'Failed to dispatch to Telegram' };
+    } catch (err) {
+      console.error('Telegram API Network Error:', err);
+      return { success: false, error: String(err) };
+    }
   },
 
   /**

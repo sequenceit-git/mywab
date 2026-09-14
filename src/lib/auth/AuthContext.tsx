@@ -28,13 +28,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const res = await fetch('/api/auth/me');
-      const data = await res.json();
-      if (data.authenticated && data.user) {
-        setUser(data.user);
-      } else {
-        setUser(null);
+      const res = await fetch('/api/auth/me', {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          setUser(data.user);
+          return;
+        }
       }
+      setUser(null);
     } catch (err) {
       setUser(null);
     } finally {
@@ -50,16 +54,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
         body: JSON.stringify({ email, password: pass })
       });
 
-      const data = await res.json();
-      if (data.success && data.user) {
-        setUser(data.user);
-        return { success: true };
+      if (res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.success && data.user) {
+          setUser(data.user);
+          return { success: true };
+        }
+        return { success: false, error: data.error || 'Authentication failed' };
       }
-      return { success: false, error: data.error || 'Authentication failed' };
+      return { success: false, error: 'Invalid response from server' };
     } catch (err) {
       return { success: false, error: 'Network connection failed' };
     }

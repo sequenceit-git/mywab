@@ -10,7 +10,6 @@ import {
   MessageSquare,
   Users,
   Package,
-  PlayCircle,
   Database,
   Bot,
   LogOut
@@ -19,7 +18,6 @@ import {
 const navigation = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
   { name: 'Live Orders', href: '/orders', icon: ShoppingBag, badge: 'Live' },
-  { name: 'WhatsApp AI Test Lab', href: '/simulator', icon: PlayCircle, badge: 'Demo' },
   { name: 'Telegram Workers', href: '/workers', icon: Users },
   { name: 'Products & Pricing', href: '/products', icon: Package },
   { name: 'Supabase & Config', href: '/config', icon: Database },

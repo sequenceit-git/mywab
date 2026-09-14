@@ -1,9 +1,32 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { env } from '@/lib/config/env';
 import { supabase, supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase/client';
 
-export async function GET() {
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: NextRequest) {
   try {
+    const hostHeader = request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
+    const protoHeader = request.headers.get('x-forwarded-proto') || (request.url.startsWith('https') || hostHeader.includes('ngrok') ? 'https' : 'http');
+    
+    // Detect active base URL: if accessed via ngrok or custom domain, dynamically prioritize that host
+    let activeUrl = '';
+    if (hostHeader && (hostHeader.includes('ngrok') || !process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_APP_URL.includes('localhost'))) {
+      activeUrl = `${protoHeader}://${hostHeader}`;
+    } else {
+      activeUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || `${protoHeader}://${hostHeader}`;
+    }
+    if (!activeUrl) {
+      activeUrl = env.app.url;
+    }
+
+    let activeDomain = '';
+    if (hostHeader && (hostHeader.includes('ngrok') || !process.env.DOMAIN)) {
+      activeDomain = hostHeader.split(':')[0];
+    } else {
+      activeDomain = process.env.DOMAIN || hostHeader.split(':')[0] || env.app.domain;
+    }
+
     const client = supabaseAdmin || supabase;
     let dbConnected = false;
     let stats = {
@@ -55,8 +78,8 @@ export async function GET() {
       success: true,
       timestamp: new Date().toISOString(),
       app: {
-        domain: env.app.domain,
-        url: env.app.url,
+        domain: activeDomain,
+        url: activeUrl,
         nodeEnv: process.env.NODE_ENV || 'production'
       },
       supabase: {
@@ -77,13 +100,13 @@ export async function GET() {
         phoneNumberId: env.whatsapp.phoneNumberId || 'Not configured',
         verifyToken: env.whatsapp.verifyToken,
         accessTokenMasked: mask(env.whatsapp.accessToken),
-        webhookUrl: `${env.app.url}/api/webhooks/whatsapp`
+        webhookUrl: `${activeUrl}/api/webhooks/whatsapp`
       },
       telegram: {
         isConfigured: env.telegram.isConfigured,
         workerGroupId: env.telegram.workerGroupId || 'Not configured',
         botTokenMasked: mask(env.telegram.botToken),
-        webhookUrl: `${env.app.url}/api/webhooks/telegram`
+        webhookUrl: `${activeUrl}/api/webhooks/telegram`
       },
       admin: {
         email: env.auth.adminEmail

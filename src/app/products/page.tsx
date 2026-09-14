@@ -29,9 +29,15 @@ export default function ProductsPage() {
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch('/api/products');
-      const data = await res.json();
-      if (data.success) setProducts(data.products);
+      const res = await fetch('/api/products', {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.products)) {
+          setProducts(data.products);
+        }
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -48,26 +54,31 @@ export default function ProductsPage() {
     try {
       const res = await fetch('/api/products', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
         body: JSON.stringify(newProduct)
       });
-      const data = await res.json();
-      if (data.success) {
-        setShowAddModal(false);
-        fetchProducts();
-        setNewProduct({
-          sku: '',
-          name_en: '',
-          name_bn: '',
-          description_en: '',
-          description_bn: '',
-          price: 0,
-          stock_qty: 10,
-          category: 'Clothing'
-        });
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) {
+          setShowAddModal(false);
+          fetchProducts();
+          setNewProduct({
+            sku: '',
+            name_en: '',
+            name_bn: '',
+            description_en: '',
+            description_bn: '',
+            price: 0,
+            stock_qty: 10,
+            category: 'Clothing'
+          });
+        }
       }
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error('Failed to create product:', e);
     }
   };
 

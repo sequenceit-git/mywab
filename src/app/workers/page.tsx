@@ -19,9 +19,15 @@ export default function WorkersPage() {
 
   const fetchWorkers = async () => {
     try {
-      const res = await fetch('/api/workers');
-      const data = await res.json();
-      if (data.success) setWorkers(data.workers);
+      const res = await fetch('/api/workers', {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.workers)) {
+          setWorkers(data.workers);
+        }
+      }
     } catch (e) {
       console.error(e);
     } finally {

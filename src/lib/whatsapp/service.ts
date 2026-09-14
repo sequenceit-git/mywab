@@ -4,7 +4,6 @@ import { env } from '@/lib/config/env';
 export interface SendMessageResult {
   success: boolean;
   messageId?: string;
-  simulated?: boolean;
   error?: string;
 }
 
@@ -15,52 +14,47 @@ export interface WhatsAppButton {
 
 export const whatsappService = {
   /**
-   * Send a free-form text message to customer's WhatsApp
+   * Send a free-form text message to customer's WhatsApp via Meta Cloud API
    */
   async sendMessage(toPhone: string, text: string): Promise<SendMessageResult> {
     const cleanPhone = toPhone.replace(/\D/g, '');
 
-    // If WhatsApp Cloud API credentials are configured in .env, send via Meta Graph API
-    if (env.whatsapp.isConfigured) {
-      try {
-        const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${env.whatsapp.accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: cleanPhone,
-            type: 'text',
-            text: { preview_url: false, body: text },
-          }),
-        });
-
-        const data = await response.json();
-        if (response.ok && data.messages?.[0]?.id) {
-          return { success: true, messageId: data.messages[0].id, simulated: false };
-        }
-        console.error('WhatsApp API Error:', data);
-        return { success: false, error: JSON.stringify(data), simulated: false };
-      } catch (err) {
-        console.error('WhatsApp API Network Exception:', err);
-        return { success: false, error: String(err) };
-      }
+    if (!env.whatsapp.isConfigured) {
+      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
+      console.error(errorMsg);
+      return { success: false, error: errorMsg };
     }
 
-    // Otherwise log in simulated mode for instant sandbox testing
-    console.log(`[WhatsApp Simulated -> ${toPhone}]:\n${text}`);
-    return {
-      success: true,
-      messageId: `sim-wa-${Date.now()}`,
-      simulated: true
-    };
+    try {
+      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: cleanPhone,
+          type: 'text',
+          text: { preview_url: false, body: text },
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.messages?.[0]?.id) {
+        return { success: true, messageId: data.messages[0].id };
+      }
+      console.error('WhatsApp API Error:', data);
+      return { success: false, error: JSON.stringify(data) };
+    } catch (err) {
+      console.error('WhatsApp API Network Exception:', err);
+      return { success: false, error: String(err) };
+    }
   },
 
   /**
-   * Send an interactive Quick Reply Buttons message (up to 3 buttons)
+   * Send an interactive Quick Reply Buttons message (up to 3 buttons) via Meta Cloud API
    */
   async sendInteractiveButtons(
     toPhone: string,
@@ -78,50 +72,50 @@ export const whatsappService = {
       }
     }));
 
-    if (env.whatsapp.isConfigured && validButtons.length > 0) {
-      try {
-        const payload: Record<string, any> = {
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: cleanPhone,
-          type: 'interactive',
-          interactive: {
-            type: 'button',
-            body: { text: bodyText },
-            footer: { text: footerText },
-            action: { buttons: validButtons }
-          }
-        };
-
-        if (headerText) {
-          payload.interactive.header = { type: 'text', text: headerText };
-        }
-
-        const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${env.whatsapp.accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
-
-        const data = await response.json();
-        if (response.ok && data.messages?.[0]?.id) {
-          return { success: true, messageId: data.messages[0].id, simulated: false };
-        }
-        console.error('WhatsApp Interactive Button API Error:', data);
-      } catch (err) {
-        console.error('WhatsApp Interactive Button Network Exception:', err);
-      }
+    if (!env.whatsapp.isConfigured) {
+      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
+      console.error(errorMsg);
+      return { success: false, error: errorMsg };
     }
 
-    console.log(`[WhatsApp Simulated Buttons -> ${toPhone}]:\nBody: ${bodyText}\nButtons: ${validButtons.map(b => `[${b.reply.title}]`).join(' ')}`);
-    return {
-      success: true,
-      messageId: `sim-wa-btn-${Date.now()}`,
-      simulated: true
-    };
+    try {
+      const payload: Record<string, any> = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanPhone,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: bodyText },
+          footer: { text: footerText },
+          action: { buttons: validButtons }
+        }
+      };
+
+      if (headerText) {
+        payload.interactive.header = { type: 'text', text: headerText };
+      }
+
+      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.messages?.[0]?.id) {
+        return { success: true, messageId: data.messages[0].id };
+      }
+      console.error('WhatsApp Interactive Button API Error:', JSON.stringify(data));
+      console.log(`[WhatsApp Fallback] Sending plain text message to ${cleanPhone}...`);
+      return await this.sendMessage(toPhone, bodyText);
+    } catch (err) {
+      console.error('WhatsApp Interactive Button Network Exception:', err);
+      return await this.sendMessage(toPhone, bodyText);
+    }
   },
 
   /**
