@@ -128,6 +128,35 @@ export interface Payment {
   created_at: string;
 }
 
+export type ConversationStep =
+  | 'IDLE'
+  | 'COLLECTING_DETAILS'
+  | 'AWAITING_CONFIRMATION'
+  | 'ORDER_PLACED';
+
+export interface DraftOrderItem {
+  skuOrName: string;
+  quantity: number;
+  unitPrice?: number;
+  productName?: string;
+}
+
+export interface ConversationDraftOrder {
+  items: DraftOrderItem[];
+  customerName?: string;
+  deliveryAddress?: string;
+  customerPhone?: string;
+  customerNotes?: string;
+  totalAmount?: number;
+}
+
+export interface ConversationSessionState {
+  step: ConversationStep;
+  draftOrder: ConversationDraftOrder;
+  lastOrderId?: string;
+  lastInteractionTimestamp: number;
+}
+
 export interface Conversation {
   id: string;
   user_id: string;
@@ -137,6 +166,7 @@ export interface Conversation {
   created_at: string;
   user?: UserProfile;
   messages?: Message[];
+  session_state?: ConversationSessionState;
 }
 
 export interface Message {

@@ -7,6 +7,7 @@ import {
   Worker,
   OrderAssignment,
   Conversation,
+  ConversationSessionState,
   Message,
   Payment,
   OrderStatus
@@ -25,6 +26,7 @@ class MockDatabaseStore {
   conversations: Map<string, Conversation> = new Map();
   messages: Map<string, Message> = new Map();
   payments: Map<string, Payment> = new Map();
+  sessionStates: Map<string, ConversationSessionState> = new Map();
 }
 
 // Global Singleton for in-memory store in dev
@@ -657,6 +659,55 @@ export const db = {
   },
 
   // CONVERSATIONS & CHAT
+  getSessionState(conversationId: string): ConversationSessionState {
+    const defaultState: ConversationSessionState = {
+      step: 'IDLE',
+      draftOrder: { items: [] },
+      lastInteractionTimestamp: Date.now()
+    };
+
+    const existing = mockStore.sessionStates.get(conversationId);
+    if (!existing) {
+      mockStore.sessionStates.set(conversationId, defaultState);
+      return defaultState;
+    }
+
+    // TTL check: 30 minutes of inactivity resets draft
+    const thirtyMinutes = 30 * 60 * 1000;
+    if (Date.now() - existing.lastInteractionTimestamp > thirtyMinutes) {
+      mockStore.sessionStates.set(conversationId, defaultState);
+      return defaultState;
+    }
+
+    return existing;
+  },
+
+  setSessionState(conversationId: string, stateUpdate: Partial<ConversationSessionState>): ConversationSessionState {
+    const current = this.getSessionState(conversationId);
+    const updated: ConversationSessionState = {
+      ...current,
+      ...stateUpdate,
+      draftOrder: {
+        ...current.draftOrder,
+        ...(stateUpdate.draftOrder || {})
+      },
+      lastInteractionTimestamp: Date.now()
+    };
+    mockStore.sessionStates.set(conversationId, updated);
+    return updated;
+  },
+
+  clearSessionDraft(conversationId: string, lastOrderId?: string): ConversationSessionState {
+    const updated: ConversationSessionState = {
+      step: lastOrderId ? 'ORDER_PLACED' : 'IDLE',
+      draftOrder: { items: [] },
+      lastOrderId: lastOrderId || undefined,
+      lastInteractionTimestamp: Date.now()
+    };
+    mockStore.sessionStates.set(conversationId, updated);
+    return updated;
+  },
+
   async getConversations(): Promise<Conversation[]> {
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
@@ -664,12 +715,21 @@ export const db = {
         .from('conversations')
         .select('*, user:users(*), messages(*)')
         .order('last_message_at', { ascending: false });
-      if (!error && data) return data;
+      if (!error && data) {
+        return data.map((c: any) => ({
+          ...c,
+          session_state: this.getSessionState(c.id),
+          messages: Array.isArray(c.messages)
+            ? c.messages.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            : []
+        }));
+      }
       if (error) console.error('Supabase getConversations error:', error);
       return [];
     }
     return Array.from(mockStore.conversations.values()).map(c => ({
       ...c,
+      session_state: this.getSessionState(c.id),
       messages: Array.from(mockStore.messages.values())
         .filter(m => m.conversation_id === c.id)
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
@@ -684,7 +744,15 @@ export const db = {
         .select('*, user:users(*), messages(*)')
         .eq('user_id', userId)
         .single();
-      if (data) return data;
+      if (data) {
+        return {
+          ...data,
+          session_state: this.getSessionState(data.id),
+          messages: Array.isArray(data.messages)
+            ? data.messages.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            : []
+        };
+      }
 
       const newConv: Conversation = {
         id: crypto.randomUUID(),
@@ -695,11 +763,20 @@ export const db = {
         created_at: new Date().toISOString()
       };
       await client.from('conversations').insert(newConv);
+      newConv.session_state = this.getSessionState(newConv.id);
       return newConv;
     }
 
     for (const c of mockStore.conversations.values()) {
-      if (c.user_id === userId) return c;
+      if (c.user_id === userId) {
+        return {
+          ...c,
+          session_state: this.getSessionState(c.id),
+          messages: Array.from(mockStore.messages.values())
+            .filter(m => m.conversation_id === c.id)
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        };
+      }
     }
 
     const newConv: Conversation = {
@@ -709,7 +786,8 @@ export const db = {
       is_ai_active: true,
       last_message_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
-      user: mockStore.users.get(userId)
+      user: mockStore.users.get(userId),
+      session_state: this.getSessionState(`conv-${Date.now()}`)
     };
     mockStore.conversations.set(newConv.id, newConv);
     return newConv;

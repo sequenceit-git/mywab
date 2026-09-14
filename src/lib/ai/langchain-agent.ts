@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { telegramBot } from '@/lib/telegram/bot';
 import { whatsappService, WhatsAppButton } from '@/lib/whatsapp/service';
 import { env } from '@/lib/config/env';
+import { ConversationSessionState } from '@/types';
 
 export interface StructuredAgentResponse {
   text: string;
@@ -95,6 +96,79 @@ export const getFaqTool = tool(
   }
 );
 
+export const updateDraftOrderTool = tool(
+  async (params: {
+    conversationId?: string;
+    customerPhone?: string;
+    customerName?: string;
+    deliveryAddress?: string;
+    items?: Array<{ skuOrName: string; quantity: number }>;
+    customerNotes?: string;
+  }) => {
+    const convId = params.conversationId || 'default';
+    const currentState = db.getSessionState(convId);
+
+    const mergedItems = params.items && params.items.length > 0
+      ? params.items
+      : currentState.draftOrder.items;
+
+    const mergedName = params.customerName || currentState.draftOrder.customerName;
+    const mergedAddress = params.deliveryAddress || currentState.draftOrder.deliveryAddress;
+    const mergedPhone = params.customerPhone || currentState.draftOrder.customerPhone;
+    const mergedNotes = params.customerNotes || currentState.draftOrder.customerNotes;
+
+    const hasItems = mergedItems && mergedItems.length > 0;
+    const hasName = Boolean(mergedName && mergedName.trim());
+    const hasAddress = Boolean(mergedAddress && mergedAddress.trim());
+    const hasPhone = Boolean(mergedPhone && mergedPhone.trim());
+
+    let determinedStep: 'IDLE' | 'COLLECTING_DETAILS' | 'AWAITING_CONFIRMATION' = 'COLLECTING_DETAILS';
+    if (hasItems && hasName && hasAddress && hasPhone) {
+      determinedStep = 'AWAITING_CONFIRMATION';
+    } else if (!hasItems && !hasName && !hasAddress && !hasPhone) {
+      determinedStep = 'IDLE';
+    }
+
+    const updatedState = db.setSessionState(convId, {
+      step: determinedStep,
+      draftOrder: {
+        items: mergedItems,
+        customerName: mergedName,
+        deliveryAddress: mergedAddress,
+        customerPhone: mergedPhone,
+        customerNotes: mergedNotes
+      }
+    });
+
+    return JSON.stringify({
+      success: true,
+      step: updatedState.step,
+      draftOrder: updatedState.draftOrder,
+      allDetailsReady: determinedStep === 'AWAITING_CONFIRMATION',
+      message: determinedStep === 'AWAITING_CONFIRMATION'
+        ? 'All order details gathered! Present a final order summary card to the customer and ask for their final confirmation.'
+        : 'Draft details updated in session memory.'
+    });
+  },
+  {
+    name: 'update_draft_order',
+    description: 'Save or update customer order details (products, customer name, delivery address, phone) to session memory as the conversation progresses.',
+    schema: z.object({
+      conversationId: z.string().nullable().optional().describe('The current conversation ID'),
+      customerPhone: z.string().nullable().optional().describe('Customer contact phone number'),
+      customerName: z.string().nullable().optional().describe('Customer full name'),
+      deliveryAddress: z.string().nullable().optional().describe('Customer delivery address (House/Road/Area/District)'),
+      items: z.array(
+        z.object({
+          skuOrName: z.string().describe('Product SKU or name'),
+          quantity: z.number().describe('Quantity of items')
+        })
+      ).nullable().optional().describe('List of ordered items'),
+      customerNotes: z.string().nullable().optional().describe('Customer notes')
+    })
+  }
+);
+
 export const createOrderTool = tool(
   async (params: {
     customerPhone: string;
@@ -102,6 +176,7 @@ export const createOrderTool = tool(
     deliveryAddress: string;
     items: Array<{ skuOrName: string; quantity: number }>;
     customerNotes?: string;
+    conversationId?: string;
   }) => {
     try {
       // 0. ANTI-DUPLICATE GUARD: Check if an order was placed by this customer in the last 5 minutes
@@ -111,6 +186,9 @@ export const createOrderTool = tool(
 
       if (recentOrder) {
         console.log(`[Anti-Duplicate Guard] Blocked duplicate order creation for ${params.customerPhone}. Existing order: ${recentOrder.order_id}`);
+        if (params.conversationId) {
+          db.clearSessionDraft(params.conversationId, recentOrder.order_id);
+        }
         return JSON.stringify({
           success: true,
           already_created: true,
@@ -146,7 +224,6 @@ export const createOrderTool = tool(
             quantity: item.quantity || 1
           });
         } else {
-          // Fallback if generic item name
           resolvedItems.push({
             product_name: item.skuOrName,
             unit_price: 500,
@@ -175,7 +252,10 @@ export const createOrderTool = tool(
       // 4. Automatically Forward to Telegram Worker Group
       await telegramBot.dispatchNewOrder(order);
 
-      // Note: We do NOT send a separate template message here because the agent sends the full confirmation reply directly via WhatsApp
+      // 5. Clear the active draft session state
+      if (params.conversationId) {
+        db.clearSessionDraft(params.conversationId, order.order_id);
+      }
 
       return JSON.stringify({
         success: true,
@@ -202,7 +282,8 @@ export const createOrderTool = tool(
           quantity: z.number().describe('Quantity of items')
         })
       ).describe('List of ordered items'),
-      customerNotes: z.string().nullable().optional().describe('Any special customer instructions (e.g. "Call before delivery")')
+      customerNotes: z.string().nullable().optional().describe('Any special customer instructions (e.g. "Call before delivery")'),
+      conversationId: z.string().nullable().optional().describe('Current conversation ID')
     })
   }
 );
@@ -237,9 +318,9 @@ export const trackOrderTool = tool(
   },
   {
     name: 'track_order',
-    description: 'Track live status and delivery updates of an existing order using the Order ID (e.g. WAP-20260914-1001).',
+    description: 'Track the live status of an order using its order ID code (e.g. WAP-20260914-1234).',
     schema: z.object({
-      orderId: z.string().describe('The Order ID string like WAP-20260914-1001')
+      orderId: z.string().describe('The order ID (e.g. WAP-20260914-1234)')
     })
   }
 );
@@ -248,37 +329,25 @@ export const getCustomerOrdersTool = tool(
   async ({ customerPhone }: { customerPhone: string }) => {
     const orders = await db.getOrdersByPhone(customerPhone);
     if (orders.length === 0) {
-      return JSON.stringify({ found: false, message: `No previous orders found for ${customerPhone}.` });
+      return JSON.stringify({ count: 0, message: 'No orders found for this phone number.' });
     }
 
-    const statusTranslations: Record<string, string> = {
-      PENDING_PAYMENT: 'পেমেন্ট প্রক্রিয়াধীন (Pending Payment)',
-      PENDING_CLAIM: 'কর্মী গ্রহণের অপেক্ষায় (Waiting for Worker Assignment)',
-      CLAIMED: 'কর্মী অর্ডার গ্রহণ করেছেন এবং প্রসেস করছেন (Claimed & Processing)',
-      PROCESSING: 'অর্ডার প্যাকেজিং ও প্রসেসিং চলছে (Packaging)',
-      OUT_FOR_DELIVERY: 'ডেলিভারির জন্য বের হয়েছে (Out for Delivery)',
-      DELIVERED: 'ডেলিভারি সম্পন্ন (Successfully Delivered)',
-      CANCELLED: 'বাতিল করা হয়েছে (Cancelled)'
-    };
-
     return JSON.stringify({
-      found: true,
+      count: orders.length,
       orders: orders.slice(0, 3).map(o => ({
         order_id: o.order_id,
         status: o.status,
-        status_bn: statusTranslations[o.status] || o.status,
-        total_amount: `৳${o.total_amount}`,
-        created_at: o.created_at,
-        address: o.delivery_address?.address,
-        items: o.items?.map(i => `${i.product_name} x ${i.quantity}`).join(', ')
+        total: o.total_amount,
+        items: (o.items || []).map(i => `${i.product_name} x${i.quantity}`).join(', '),
+        date: new Date(o.created_at).toLocaleDateString()
       }))
     });
   },
   {
     name: 'get_customer_orders',
-    description: 'Check active or recent orders placed by this customer using their phone number. Use when customer asks about confirmation, status, or if order went through.',
+    description: 'Look up past and recent orders placed by this customer phone number.',
     schema: z.object({
-      customerPhone: z.string().describe('Customer phone number (e.g. +88017XXXXXXXX)')
+      customerPhone: z.string().describe('Customer phone number')
     })
   }
 );
@@ -286,58 +355,70 @@ export const getCustomerOrdersTool = tool(
 // 2. LangChain + OpenAI Conversational AI Agent Core
 
 export class LangChainAgentService {
-  private tools = [searchCatalogTool, getFaqTool, createOrderTool, trackOrderTool, getCustomerOrdersTool];
+  private tools = [
+    searchCatalogTool,
+    getFaqTool,
+    updateDraftOrderTool,
+    createOrderTool,
+    trackOrderTool,
+    getCustomerOrdersTool
+  ];
 
-  getLLM(): ChatOpenAI | null {
-    if (!env.openai.apiKey) return null;
-    let model = env.openai.model || 'gpt-4o-mini';
-    // Sanitize any non-existent model names
-    if (!model || model.includes('gpt-5')) {
-      model = 'gpt-4o-mini';
+  private getLLM() {
+    if (!env.openai.apiKey) {
+      return null;
     }
-
-    const isFixedTempModel = 
-      model.startsWith('o1') || 
-      model.startsWith('o3');
-
-    const config: ConstructorParameters<typeof ChatOpenAI>[0] = {
+    return new ChatOpenAI({
       openAIApiKey: env.openai.apiKey,
-      modelName: model,
-    };
-
-    if (!isFixedTempModel) {
-      config.temperature = 0.3;
-    }
-
-    return new ChatOpenAI(config);
+      modelName: env.openai.model || 'gpt-4o-mini',
+      temperature: 0.3
+    });
   }
 
-  getSystemPrompt(customerPhone?: string): string {
+  getSystemPrompt(params: { customerPhone: string; sessionState: ConversationSessionState }): string {
+    const { customerPhone, sessionState } = params;
+    const draft = sessionState.draftOrder;
+
+    const draftInfo = `
+ACTIVE SESSION STATE & CART MEMORY:
+- Step: ${sessionState.step}
+- Draft Product(s): ${draft.items && draft.items.length > 0 ? draft.items.map(i => `${i.skuOrName} (Qty: ${i.quantity})`).join(', ') : 'None currently in draft'}
+- Customer Name: ${draft.customerName || 'Not yet provided'}
+- Delivery Address: ${draft.deliveryAddress || 'Not yet provided'}
+- Contact Phone: ${draft.customerPhone || customerPhone || 'Not yet provided'}
+- Last Placed Order ID: ${sessionState.lastOrderId || 'None'}
+`;
+
+    const placedNotice = sessionState.lastOrderId
+      ? `\nIMPORTANT NOTICE ON RECENT ORDER:\nOrder #${sessionState.lastOrderId} was ALREADY PLACED AND CONFIRMED in this session. If customer asks "Confirm hoyese?", "Is it confirmed?", or inquires about status, confirm to them that Order #${sessionState.lastOrderId} is confirmed and currently being processed. DO NOT re-ask for details and DO NOT say it is not confirmed.\n`
+      : '';
+
     return `You are "WapBot", the intelligent, friendly, and helpful WhatsApp AI shopping assistant for WapBusiness.
-Current Customer Phone: ${customerPhone || 'Unknown'}
+Current Customer Phone: ${customerPhone}
 
-YOUR GOALS:
-1. Help customers inquire about products, pricing, stock, colors, sizes, and store policies.
-2. Provide answers in fluent Bengali (বাংলা) by default, or in English if the customer speaks English or Banglish.
-3. Help customers create orders smoothly by collecting:
-   - Specific product(s) and quantities
-   - Customer Full Name
-   - Detailed Delivery Address (House/Road/Area/District)
-   - Phone number
-4. Once all details are gathered and confirmed with the customer, invoke \`create_order\` ONCE.
-5. Answer questions about delivery charges (Inside Dhaka ৳60, Outside Dhaka ৳120), payment methods (Cash on Delivery, bKash, Nagad), and returns using \`get_faq\`.
-6. Look up order statuses using \`track_order\` or \`get_customer_orders\` when given an Order ID or when customer asks if their order is confirmed/placed.
-
-CRITICAL ANTI-DUPLICATE ORDER RULES (STRICT):
-- NEVER call \`create_order\` if the customer asks "Confirm hoyese?", "অর্ডার কি কনফার্ম হয়েছে?", "Is my order confirmed?", "Status ki?", "Track order", or asks about order status.
-- If an order has already been created in this conversation or if the customer is asking whether their order went through, check \`get_customer_orders\` or use the existing Order ID to reassure them that their order is ALREADY confirmed and being prepared by the delivery team. DO NOT call \`create_order\` again!
-- ONLY call \`create_order\` when the customer explicitly asks to place a brand new, separate order for additional items.
+${draftInfo}${placedNotice}
+YOUR ORDERING LIFECYCLE & STATE RULES:
+1. Help customers inquire about products, pricing, stock, colors, sizes, and store policies using \`search_catalog\` and \`get_faq\`.
+2. Provide answers in fluent Bengali (বাংলা) by default, or English/Banglish if the customer prefers.
+3. When customer specifies product(s), name, address, or phone number:
+   - Call \`update_draft_order\` to save these details into active session state.
+4. When all 4 slots (Products, Customer Name, Delivery Address, Phone) are gathered:
+   - Present a clear, friendly Order Verification Summary in Bengali and ask if they would like to place/confirm the order.
+5. CRITICAL MULTI-TURN CONFIRMATION (EXTREMELY IMPORTANT):
+   - When Step is "AWAITING_CONFIRMATION" or all details exist in the Active Session State above, and the customer replies with ANY confirmation (e.g. "Yes", "Yes all okey", "Okay", "Confirm", "Please proceed", "হ্যাঁ", "কনফার্ম করুন", "ঠিক আছে", "অর্ডার দিন", "হ্যাঁ এগিয়ে যান"):
+     -> IMMEDIATELY invoke \`create_order\` using the details from the Active Session State!
+     -> NEVER ask the customer to re-enter their name, address, or phone number if it is already present in the active session state!
+6. ANTI-DUPLICATE RULES:
+   - If an order was already placed (Last Placed Order ID is present or step is ORDER_PLACED) and customer asks "Confirm hoyese?", "Is it confirmed?", "Status ki?", etc., reassure them using their Order ID. DO NOT call \`create_order\` again!
+   - ONLY call \`create_order\` when the customer explicitly specifies they want to buy additional/new items in a separate new order.
+7. Answers & FAQs:
+   - Delivery charges: Inside Dhaka ৳60 (24-48 hrs), Outside Dhaka ৳120 (2-4 days).
+   - Payment methods: Cash on Delivery (COD), bKash, Nagad.
 
 CONVERSATIONAL RULES:
 - Be polite, concise, and natural for WhatsApp messaging.
 - Use emojis tastefully (🛍️, 📦, 🚚, ✨).
-- Always format prices with ৳ symbol (e.g. ৳৪৫০ / ৳450).
-- If customer wants human support, reply that an agent will join shortly.`;
+- Always format prices with ৳ symbol (e.g. ৳৪৫০ / ৳450).`;
   }
 
   /**
@@ -349,16 +430,74 @@ CONVERSATIONAL RULES:
     conversationId: string;
   }): Promise<StructuredAgentResponse> {
     const { phone, messageText, conversationId } = params;
+    const lowerMessage = messageText.toLowerCase().trim();
+
+    // 1. Fetch current session state & conversation history
+    const sessionState = db.getSessionState(conversationId);
+    const draft = sessionState.draftOrder;
+
+    // 2. Check Affirmation Fast-Path
+    // If we are awaiting confirmation or have all 4 slots filled, and customer gives an affirmative reply:
+    const isAffirmative = [
+      'yes', 'yes all okey', 'yes all ok', 'all okey', 'all ok', 'okey', 'ok', 'okay',
+      'confirm', 'confirmed', 'plz confirm', 'please confirm', 'proceed', 'done',
+      'thik ase', 'thik ache', 'thik', 'yes please', 'yes go ahead',
+      'হ্যাঁ', 'হ্যা', 'ঠিক আছে', 'কনফার্ম', 'কনফার্ম করুন', 'অর্ডার করুন', 'অর্ডার দিন', 'এগিয়ে যান', 'অর্ডার কনফার্ম'
+    ].some(phrase => lowerMessage === phrase || lowerMessage.startsWith(phrase));
+
+    const hasAllSlots = Boolean(
+      draft.items && draft.items.length > 0 &&
+      draft.customerName &&
+      draft.deliveryAddress
+    );
+
+    if ((sessionState.step === 'AWAITING_CONFIRMATION' || hasAllSlots) && isAffirmative) {
+      console.log(`[AI Fast-Path] Affirmative response received in state ${sessionState.step}. Placing order directly...`);
+      const targetPhone = draft.customerPhone || phone;
+      const targetName = draft.customerName || 'Customer';
+      const targetAddress = draft.deliveryAddress || 'Address not specified';
+      const targetItems = draft.items && draft.items.length > 0 ? draft.items : [{ skuOrName: 'Classic Polo Shirt', quantity: 1 }];
+
+      const toolResultRaw = await createOrderTool.invoke({
+        customerPhone: targetPhone,
+        customerName: targetName,
+        deliveryAddress: targetAddress,
+        items: targetItems,
+        customerNotes: draft.customerNotes,
+        conversationId
+      });
+
+      const toolResult = JSON.parse(toolResultRaw);
+      if (toolResult.success) {
+        const text = 
+`🎉 *অর্ডার সফলভাবে নিশ্চিত করা হয়েছে!*
+
+📦 *Order ID:* \`${toolResult.order_id}\`
+💰 *মোট মূল্য:* ৳${toolResult.total_amount}
+👤 *নাম:* ${targetName}
+📍 *ডেলিভারি ঠিকানা:* ${toolResult.delivery_address}
+📞 *ফোন নম্বর:* ${toolResult.delivery_phone}
+
+আপনার অর্ডারটি আমাদের ডেলিভারি টিমের কাছে পাঠানো হয়েছে। খুব দ্রুত আপনার সাথে যোগাযোগ করা হবে! 🚚✨`;
+
+        const buttons: WhatsAppButton[] = [
+          { id: `track:${toolResult.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
+          { id: 'btn_catalog', title: '🛍️ আরও পণ্য' },
+          { id: 'btn_support', title: '👤 কাস্টমার কেয়ার' }
+        ];
+
+        return { text, buttons };
+      }
+    }
 
     const llm = this.getLLM();
 
-    // 1. If OpenAI API Key is configured, use LangChain Agent
+    // 3. If OpenAI API Key is configured, use LangChain Agent
     if (llm && env.openai.apiKey) {
       try {
-        console.log(`[AI Agent] Processing message from ${phone}: "${messageText}" using model ${env.openai.model}`);
+        console.log(`[AI Agent] Processing message from ${phone}: "${messageText}" using model ${env.openai.model} (Step: ${sessionState.step})`);
         const modelWithTools = llm.bindTools(this.tools);
 
-        // Fetch recent conversation history
         const conversations = await db.getConversations();
         const conv = conversations.find(c => c.id === conversationId);
         const historyMessages = conv?.messages || [];
@@ -369,10 +508,10 @@ CONVERSATIONAL RULES:
           : historyMessages;
 
         const formattedHistory: Array<['system' | 'human' | 'ai', string]> = [
-          ['system', this.getSystemPrompt(phone)]
+          ['system', this.getSystemPrompt({ customerPhone: phone, sessionState })]
         ];
 
-        pastMessages.slice(-6).forEach(m => {
+        pastMessages.slice(-8).forEach(m => {
           formattedHistory.push([m.sender === 'CUSTOMER' ? 'human' : 'ai', m.content]);
         });
 
@@ -386,6 +525,7 @@ CONVERSATIONAL RULES:
             const toolMap: Record<string, any> = {
               search_catalog: searchCatalogTool,
               get_faq: getFaqTool,
+              update_draft_order: updateDraftOrderTool,
               create_order: createOrderTool,
               track_order: trackOrderTool,
               get_customer_orders: getCustomerOrdersTool
@@ -393,7 +533,11 @@ CONVERSATIONAL RULES:
 
             const matchedTool = toolMap[call.name];
             if (matchedTool) {
-              const toolResult = await matchedTool.invoke(call.args);
+              const toolArgs = {
+                ...call.args,
+                conversationId
+              };
+              const toolResult = await matchedTool.invoke(toolArgs);
               
               const followUp = await llm.invoke([
                 ...formattedHistory,
@@ -402,7 +546,7 @@ CONVERSATIONAL RULES:
               ]);
 
               const text = String(followUp.content);
-              const buttons = this.deriveContextualButtons(messageText, text);
+              const buttons = this.deriveContextualButtons(messageText, text, sessionState);
               return { text, buttons };
             }
           }
@@ -410,7 +554,7 @@ CONVERSATIONAL RULES:
 
         if (response.content) {
           const text = String(response.content);
-          const buttons = this.deriveContextualButtons(messageText, text);
+          const buttons = this.deriveContextualButtons(messageText, text, sessionState);
           return { text, buttons };
         }
       } catch (err) {
@@ -418,8 +562,8 @@ CONVERSATIONAL RULES:
       }
     }
 
-    // 2. High-quality rule-based heuristic fallback engine with rich interactive buttons
-    return this.fallbackEngineStructured(phone, messageText);
+    // 4. High-quality rule-based heuristic fallback engine with rich interactive buttons
+    return this.fallbackEngineStructured(phone, messageText, conversationId);
   }
 
   /**
@@ -435,17 +579,37 @@ CONVERSATIONAL RULES:
   }
 
   /**
-   * Derive smart WhatsApp interactive buttons based on context
+   * Derive smart WhatsApp interactive buttons based on context & active step
    */
-  private deriveContextualButtons(userText: string, aiReply: string): WhatsAppButton[] {
+  private deriveContextualButtons(
+    userText: string,
+    aiReply: string,
+    sessionState?: ConversationSessionState
+  ): WhatsAppButton[] {
     const lowerUser = userText.toLowerCase();
     const lowerReply = aiReply.toLowerCase();
 
-    if (lowerReply.includes('order id') || lowerReply.includes('নিশ্চিত') || lowerReply.includes('confirmed') || lowerReply.includes('wap-')) {
+    // If order was created or confirmed
+    if (lowerReply.includes('order id') || lowerReply.includes('নিশ্চিত করা হয়েছে') || lowerReply.includes('সফলভাবে') || lowerReply.includes('wap-')) {
       return [
         { id: 'btn_track', title: '📦 অর্ডার ট্র্যাক' },
         { id: 'btn_catalog', title: '🛍️ আরও পণ্য' },
         { id: 'btn_support', title: '👤 প্রতিনিধি' }
+      ];
+    }
+
+    // If verification summary card is presented (Awaiting confirmation)
+    if (
+      lowerReply.includes('যাচাই করুন') ||
+      lowerReply.includes('নিশ্চিত করার জন্য') ||
+      lowerReply.includes('এগিয়ে যেতে পারি') ||
+      lowerReply.includes('অর্ডারটি তৈরি করতে') ||
+      sessionState?.step === 'AWAITING_CONFIRMATION'
+    ) {
+      return [
+        { id: 'btn_confirm_order', title: '✅ কনফার্ম করুন' },
+        { id: 'btn_catalog', title: '🛍️ আরও পণ্য' },
+        { id: 'btn_support', title: '👤 সহায়তা' }
       ];
     }
 
@@ -475,8 +639,9 @@ CONVERSATIONAL RULES:
   /**
    * Fast rule-based heuristic fallback engine with rich buttons
    */
-  private async fallbackEngineStructured(phone: string, text: string): Promise<StructuredAgentResponse> {
+  private async fallbackEngineStructured(phone: string, text: string, conversationId: string): Promise<StructuredAgentResponse> {
     const lower = text.toLowerCase().trim();
+    const sessionState = db.getSessionState(conversationId);
 
     // 1. Order Status / Confirmation Check
     if (
@@ -598,6 +763,7 @@ CONVERSATIONAL RULES:
         });
 
         await telegramBot.dispatchNewOrder(order);
+        db.clearSessionDraft(conversationId, order.order_id);
 
         return {
           text: `🎉 *ধন্যবাদ! আপনার অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে।*\n\n📦 *Order ID:* \`${order.order_id}\`\n💰 *মোট মূল্য:* ৳${order.total_amount}\n👤 *নাম:* ${customerName}\n📍 *ঠিকানা:* ${address}\n\nআমাদের ডেলিভারি টিম দ্রুত ডেলিভারি করার জন্য কাজ করছে! 🚀`,
