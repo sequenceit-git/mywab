@@ -30,15 +30,6 @@ export function Header({ title = 'Operations Hub', subtitle }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
-        {/* Simulator Callout */}
-        <Link
-          href="/simulator"
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-xs font-semibold hover:bg-indigo-500/25 transition-all shadow-sm"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-spin" style={{ animationDuration: '6s' }} />
-          <span>Test Live Simulator</span>
-        </Link>
-
         {/* Live sync pulse */}
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50 text-xs text-slate-300">
           <RefreshCw className="w-3 h-3 text-brand-400 animate-spin" style={{ animationDuration: '8s' }} />

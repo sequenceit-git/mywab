@@ -22,7 +22,6 @@ const navigation = [
   { name: 'WhatsApp Inbox', href: '/chat', icon: MessageSquare },
   { name: 'Telegram Workers', href: '/workers', icon: Users },
   { name: 'Products & Pricing', href: '/products', icon: Package },
-  { name: 'Interactive Simulator', href: '/simulator', icon: PlayCircle, highlight: true },
   { name: 'Supabase & Config', href: '/config', icon: Database },
 ];
 
@@ -63,13 +62,11 @@ export function Sidebar() {
               className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                 isActive
                   ? 'bg-brand-500/15 text-brand-400 border border-brand-500/30 shadow-sm'
-                  : item.highlight
-                  ? 'bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 border border-indigo-500/20'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Icon className={`w-4 h-4 ${isActive ? 'text-brand-400' : item.highlight ? 'text-indigo-400' : 'text-slate-400'}`} />
+                <Icon className={`w-4 h-4 ${isActive ? 'text-brand-400' : 'text-slate-400'}`} />
                 <span>{item.name}</span>
               </div>
               {item.badge && (

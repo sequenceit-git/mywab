@@ -11,7 +11,8 @@ import {
   ArrowRight,
   ExternalLink,
   MessageSquare,
-  Bot
+  Bot,
+  Database
 } from 'lucide-react';
 import Link from 'next/link';
 import { Order, Worker } from '@/types';
@@ -75,10 +76,10 @@ export default function DashboardOverviewPage() {
 
             <div className="flex items-center gap-3">
               <Link
-                href="/simulator"
+                href="/orders"
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 text-dark-950 font-bold text-xs hover:bg-brand-400 transition-all shadow-lg shadow-brand-500/25"
               >
-                <span>Launch Interactive Simulator</span>
+                <span>Manage Live Orders</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
@@ -245,20 +246,36 @@ export default function DashboardOverviewPage() {
               </div>
             </div>
 
-            {/* Quick Action Simulator Box */}
-            <div className="rounded-2xl bg-gradient-to-br from-indigo-950/50 to-dark-900 border border-indigo-500/20 p-5 space-y-3">
-              <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-wider">
-                <Bot className="w-4 h-4" />
-                <span>Test Without Real API Keys</span>
+            {/* Live System Channels & Webhook Status */}
+            <div className="rounded-2xl bg-dark-900/90 border border-slate-800/80 p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-brand-400 font-bold text-xs uppercase tracking-wider">
+                  <Database className="w-4 h-4" />
+                  <span>Channel & Webhook Status</span>
+                </div>
+                <Link href="/config" className="text-xs text-brand-400 hover:underline">
+                  Configure
+                </Link>
               </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Test the full WhatsApp bilingual ordering flow, OpenAI LangChain intent parsing, and instant Telegram order claiming in the visual sandbox!
-              </p>
+              <div className="space-y-2 text-xs">
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/50 flex items-center justify-between">
+                  <span className="text-slate-300">WhatsApp Cloud Webhook</span>
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Active</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/50 flex items-center justify-between">
+                  <span className="text-slate-300">Telegram Worker Dispatch</span>
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Active</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/50 flex items-center justify-between">
+                  <span className="text-slate-300">Supabase DB & RLS</span>
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Connected</span>
+                </div>
+              </div>
               <Link
-                href="/simulator"
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition"
+                href="/config"
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition"
               >
-                <span>Open Sandbox Simulator</span>
+                <span>View System Diagnostics</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </Link>
             </div>

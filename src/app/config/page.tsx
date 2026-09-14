@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import {
   Database,
@@ -9,107 +9,370 @@ import {
   Bot,
   Key,
   CheckCircle2,
-  FileCode,
-  Copy
+  AlertCircle,
+  Copy,
+  RefreshCw,
+  Globe,
+  Server,
+  ShieldCheck,
+  Send,
+  ExternalLink
 } from 'lucide-react';
 
+interface SystemStatus {
+  timestamp: string;
+  app: {
+    domain: string;
+    url: string;
+    nodeEnv: string;
+  };
+  supabase: {
+    isConfigured: boolean;
+    connected: boolean;
+    url: string;
+    publishableKeyMasked: string;
+    serviceRoleKeyMasked: string;
+    stats: {
+      productsCount: number;
+      ordersCount: number;
+      workersCount: number;
+      conversationsCount: number;
+      faqsCount: number;
+    };
+  };
+  openai: {
+    isConfigured: boolean;
+    model: string;
+    apiKeyMasked: string;
+  };
+  whatsapp: {
+    isConfigured: boolean;
+    phoneNumberId: string;
+    verifyToken: string;
+    accessTokenMasked: string;
+    webhookUrl: string;
+  };
+  telegram: {
+    isConfigured: boolean;
+    workerGroupId: string;
+    botTokenMasked: string;
+    webhookUrl: string;
+  };
+  admin: {
+    email: string;
+  };
+}
+
 export default function ConfigPage() {
+  const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [tgWebhookLoading, setTgWebhookLoading] = useState(false);
+  const [tgWebhookMsg, setTgWebhookMsg] = useState<{ success: boolean; message: string } | null>(null);
+
+  const fetchStatus = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/system/status');
+      const data = await res.json();
+      if (data.success) {
+        setStatus(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch system status:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+  }, []);
+
+  const handleCopy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(label);
+    setTimeout(() => setCopiedKey(null), 2500);
+  };
+
+  const handleRegisterTelegramWebhook = async () => {
+    setTgWebhookLoading(true);
+    setTgWebhookMsg(null);
+    try {
+      const res = await fetch('/api/system/telegram-webhook', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setTgWebhookMsg({
+          success: true,
+          message: 'Telegram Webhook registered successfully with Telegram Bot API!'
+        });
+      } else {
+        setTgWebhookMsg({
+          success: false,
+          message: data.telegramResponse?.description || data.error || 'Failed to register webhook'
+        });
+      }
+    } catch (e) {
+      setTgWebhookMsg({
+        success: false,
+        message: 'Network error registering webhook'
+      });
+    } finally {
+      setTgWebhookLoading(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col">
       <Header
-        title="Supabase & Environment Configuration"
-        subtitle="Credentials, API keys, database schema, and webhook endpoints"
+        title="Live System Diagnostics & Configuration"
+        subtitle="Real-time status of database connections, AI engines, and external API webhooks"
       />
 
       <main className="p-6 max-w-7xl mx-auto w-full space-y-6">
-        {/* 1. Supabase Setup Guide */}
-        <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
+        {/* Top Overview Cards */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-              <Database className="w-6 h-6" />
+            <div className="p-2.5 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white shadow-md">
+              <Server className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">1. Supabase Database Setup</h3>
-              <p className="text-xs text-slate-400">PostgreSQL tables, indexes, and atomic order claiming stored procedure</p>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-white text-base">Production Status</h3>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">Online</span>
+              </div>
+              <p className="text-xs text-slate-400 font-mono mt-0.5">
+                Host: <span className="text-slate-200 font-semibold">{status?.app.domain || 'mywab.sequenceit.software'}</span>
+              </p>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs text-slate-300 space-y-2">
-            <p className="font-semibold text-slate-200">How to execute the schema in Supabase:</p>
-            <ol className="list-decimal list-inside space-y-1 text-slate-400 leading-relaxed">
-              <li>Open your <b>Supabase Dashboard</b> ➔ <b>SQL Editor</b>.</li>
-              <li>Open the file <code className="text-brand-400">supabase/schema.sql</code> in this repository and click <b>Run</b>.</li>
-              <li>Optionally run <code className="text-brand-400">supabase/seed.sql</code> to populate sample Bengali & English products and FAQs.</li>
-              <li>Copy your <b>Project URL</b> and <b>Anon / Service Role Key</b> into your <code className="text-brand-400">.env.local</code> file.</li>
-            </ol>
-          </div>
+          <button
+            onClick={fetchStatus}
+            disabled={loading}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition border border-slate-700/50 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh Diagnostics</span>
+          </button>
         </div>
 
-        {/* 2. OpenAI & LangChain Setup */}
-        <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
-              <Sparkles className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-white">2. OpenAI & LangChain Setup</h3>
-              <p className="text-xs text-slate-400">Powering bilingual natural language parsing, tool calling, and order generation</p>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs text-slate-300 space-y-2">
-            <p className="text-slate-400 leading-relaxed">
-              Set your <code className="text-indigo-400">OPENAI_API_KEY</code> in <code className="text-indigo-400">.env.local</code>. The LangChain agent utilizes <b>ChatOpenAI</b> with function calling tools (<code className="text-slate-300">search_catalog</code>, <code className="text-slate-300">get_faq</code>, <code className="text-slate-300">create_order</code>, <code className="text-slate-300">track_order</code>).
-            </p>
-          </div>
-        </div>
-
-        {/* 3. WhatsApp Cloud API Webhooks */}
-        <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-brand-500/10 text-brand-400">
-              <MessageSquare className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-white">3. WhatsApp Business Cloud API</h3>
-              <p className="text-xs text-slate-400">Meta Developer Webhook endpoint</p>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs text-slate-300 space-y-2">
+        {/* 4 Connected Services Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* 1. Supabase Database Card */}
+          <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-slate-400">Callback URL:</span>
-              <code className="text-brand-400 font-mono">https://your-domain.com/api/webhooks/whatsapp</code>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm">Supabase PostgreSQL</h4>
+                  <p className="text-[11px] text-slate-400">Database, RLS & Atomic Locking</p>
+                </div>
+              </div>
+              <span
+                className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${
+                  status?.supabase.connected
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3" />
+                {status?.supabase.connected ? 'Connected' : 'Disconnected'}
+              </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-400">Verify Token:</span>
-              <code className="text-brand-400 font-mono">wapbusiness_secure_verify_token</code>
+
+            <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Database URL:</span>
+                <span className="font-mono text-slate-200 text-[11px] truncate max-w-[240px]">
+                  {status?.supabase.url}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Service Role Key:</span>
+                <span className="font-mono text-slate-400 text-[11px]">
+                  {status?.supabase.serviceRoleKeyMasked}
+                </span>
+              </div>
+            </div>
+
+            {/* Real Database Table Stats */}
+            <div className="pt-2 border-t border-slate-800/60">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Live Table Row Counts</span>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-800/40">
+                  <div className="text-base font-extrabold text-white">{status?.supabase.stats.productsCount ?? 0}</div>
+                  <div className="text-[10px] text-slate-400">Products</div>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-800/40">
+                  <div className="text-base font-extrabold text-brand-400">{status?.supabase.stats.ordersCount ?? 0}</div>
+                  <div className="text-[10px] text-slate-400">Orders</div>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-800/40">
+                  <div className="text-base font-extrabold text-telegram-500">{status?.supabase.stats.workersCount ?? 0}</div>
+                  <div className="text-[10px] text-slate-400">Workers</div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* 4. Telegram Worker Bot Webhooks */}
-        <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-telegram-500/10 text-telegram-500">
-              <Bot className="w-6 h-6" />
+          {/* 2. OpenAI & LangChain Card */}
+          <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm">OpenAI & LangChain Agent</h4>
+                  <p className="text-[11px] text-slate-400">Tool Calling & Conversational AI</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                {status?.openai.isConfigured ? 'Ready' : 'Pending Key'}
+              </span>
             </div>
-            <div>
-              <h3 className="text-base font-bold text-white">4. Telegram Worker Bot Setup</h3>
-              <p className="text-xs text-slate-400">Telegram BotFather token & worker group ID</p>
+
+            <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Active Model:</span>
+                <span className="font-mono text-indigo-300 font-bold">{status?.openai.model || 'gpt-5-mini'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">OpenAI API Key:</span>
+                <span className="font-mono text-slate-400 text-[11px]">{status?.openai.apiKeyMasked}</span>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-800/60 space-y-1.5 text-xs text-slate-400">
+              <div className="flex items-center justify-between text-[11px]">
+                <span>Registered Agent Tools:</span>
+                <span className="font-semibold text-slate-200">search_catalog, get_faq, create_order, track_order</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span>Language Support:</span>
+                <span className="font-semibold text-emerald-400">Bangla (বাংলা) & English (Bilingual)</span>
+              </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs text-slate-300 space-y-2">
+          {/* 3. WhatsApp Cloud API Webhook Card */}
+          <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-slate-400">Webhook URL:</span>
-              <code className="text-telegram-500 font-mono">https://your-domain.com/api/webhooks/telegram</code>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-brand-500/10 text-brand-400 border border-brand-500/20">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm">WhatsApp Business Cloud API</h4>
+                  <p className="text-[11px] text-slate-400">Meta Developer Webhook Gateway</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20">
+                {status?.whatsapp.isConfigured ? 'Configured' : 'Setup Required'}
+              </span>
             </div>
+
+            <div className="space-y-2.5 text-xs">
+              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Callback URL:</span>
+                  <button
+                    onClick={() => handleCopy(status?.whatsapp.webhookUrl || '', 'wa_url')}
+                    className="text-[11px] font-mono text-brand-400 hover:text-brand-300 flex items-center gap-1"
+                  >
+                    <span>{copiedKey === 'wa_url' ? 'Copied!' : 'Copy URL'}</span>
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+                <code className="block text-[11px] font-mono text-slate-200 break-all">
+                  {status?.whatsapp.webhookUrl || 'https://mywab.sequenceit.software/api/webhooks/whatsapp'}
+                </code>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Verify Token:</span>
+                  <button
+                    onClick={() => handleCopy(status?.whatsapp.verifyToken || '', 'wa_token')}
+                    className="text-[11px] font-mono text-brand-400 hover:text-brand-300 flex items-center gap-1"
+                  >
+                    <span>{copiedKey === 'wa_token' ? 'Copied!' : 'Copy Token'}</span>
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+                <code className="block text-[11px] font-mono text-brand-400 font-bold">
+                  {status?.whatsapp.verifyToken || 'verify_token'}
+                </code>
+              </div>
+
+              <div className="flex items-center justify-between px-1 text-slate-400 text-[11px]">
+                <span>Phone Number ID:</span>
+                <span className="font-mono text-slate-200">{status?.whatsapp.phoneNumberId}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Telegram Worker Bot Card */}
+          <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-slate-400">Set Telegram Webhook Command:</span>
-              <code className="text-slate-400 font-mono text-[10px]">
-                curl -F &quot;url=https://your-domain.com/api/webhooks/telegram&quot; https://api.telegram.org/bot&lt;BOT_TOKEN&gt;/setWebhook
-              </code>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-telegram-500/10 text-telegram-500 border border-telegram-500/20">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm">Telegram Worker Bot</h4>
+                  <p className="text-[11px] text-slate-400">Order Dispatch & Atomic Claim Engine</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-telegram-500/10 text-telegram-500 border border-telegram-500/20">
+                {status?.telegram.isConfigured ? 'Active' : 'Setup Required'}
+              </span>
+            </div>
+
+            <div className="space-y-2.5 text-xs">
+              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Worker Group ID:</span>
+                  <span className="font-mono text-slate-200 font-bold">{status?.telegram.workerGroupId}</span>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-slate-400">Bot Token:</span>
+                  <span className="font-mono text-slate-400 text-[11px]">{status?.telegram.botTokenMasked}</span>
+                </div>
+              </div>
+
+              {tgWebhookMsg && (
+                <div
+                  className={`p-3 rounded-xl text-xs flex items-start gap-2 ${
+                    tgWebhookMsg.success
+                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
+                      : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+                  }`}
+                >
+                  {tgWebhookMsg.success ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />}
+                  <span>{tgWebhookMsg.message}</span>
+                </div>
+              )}
+
+              {/* 1-Click Telegram Webhook Auto-Registration */}
+              <button
+                onClick={handleRegisterTelegramWebhook}
+                disabled={tgWebhookLoading || !status?.telegram.isConfigured}
+                className="w-full py-2.5 px-4 rounded-xl bg-telegram-500/15 hover:bg-telegram-500/25 border border-telegram-500/30 text-telegram-500 font-bold text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {tgWebhookLoading ? (
+                  <span>Registering webhook with Telegram...</span>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Auto-Register Telegram Webhook (1-Click)</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

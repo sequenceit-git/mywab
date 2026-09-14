@@ -27,7 +27,7 @@ export async function PATCH(
     const body = await request.json();
     const { status, action, telegramUserId, workerName } = body;
 
-    // Handle claim action from web/simulator
+    // Handle claim action from web/API
     if (action === 'claim' && telegramUserId && workerName) {
       const claimResult = await db.claimOrderAtomic({
         orderIdCode: id,
