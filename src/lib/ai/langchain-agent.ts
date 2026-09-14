@@ -3,8 +3,14 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { telegramBot } from '@/lib/telegram/bot';
-import { whatsappService } from '@/lib/whatsapp/service';
+import { whatsappService, WhatsAppButton } from '@/lib/whatsapp/service';
 import { env } from '@/lib/config/env';
+
+export interface StructuredAgentResponse {
+  text: string;
+  buttons?: WhatsAppButton[];
+  createdOrder?: any;
+}
 
 // 1. LangChain Tools Definition
 
@@ -269,21 +275,21 @@ CONVERSATIONAL RULES:
   }
 
   /**
-   * Process an incoming customer message through LangChain with OpenAI
+   * Process customer message returning structured text and interactive button options
    */
-  async processMessage(params: {
+  async processStructuredMessage(params: {
     phone: string;
     messageText: string;
     conversationId: string;
-  }): Promise<string> {
+  }): Promise<StructuredAgentResponse> {
     const { phone, messageText, conversationId } = params;
 
-    // If OpenAI API Key is configured in .env, use LangChain Agent with tool calling
+    // 1. If OpenAI API Key is configured, use LangChain Agent
     if (this.llm && env.openai.apiKey) {
       try {
         const modelWithTools = this.llm.bindTools(this.tools);
 
-        // Fetch recent conversation history from DB
+        // Fetch recent conversation history
         const conversations = await db.getConversations();
         const conv = conversations.find(c => c.id === conversationId);
         const historyMessages = conv?.messages || [];
@@ -292,18 +298,15 @@ CONVERSATIONAL RULES:
           ['system', this.getSystemPrompt()]
         ];
 
-        // Add last 6 messages
         historyMessages.slice(-6).forEach(m => {
           formattedHistory.push([m.sender === 'CUSTOMER' ? 'human' : 'ai', m.content]);
         });
 
-        // Add current user prompt
         formattedHistory.push(['human', `[Customer Phone: ${phone}] ${messageText}`]);
 
-        // Invoke model
         const response = await modelWithTools.invoke(formattedHistory);
 
-        // Check for tool calls
+        // Handle tool calls
         if (response.tool_calls && response.tool_calls.length > 0) {
           for (const call of response.tool_calls) {
             const toolMap: Record<string, typeof searchCatalogTool | typeof getFaqTool | typeof createOrderTool | typeof trackOrderTool> = {
@@ -317,34 +320,87 @@ CONVERSATIONAL RULES:
             if (matchedTool) {
               const toolResult = await (matchedTool as unknown as { invoke: (args: Record<string, unknown>) => Promise<string> }).invoke(call.args);
               
-              // Feed tool result back to generate conversational response
               const followUp = await this.llm.invoke([
                 ...formattedHistory,
                 ['ai', JSON.stringify(response.tool_calls)],
                 ['human', `Tool ${call.name} returned: ${toolResult}. Please give a friendly WhatsApp response to the customer in Bengali/English.`]
               ]);
 
-              return String(followUp.content);
+              const text = String(followUp.content);
+              const buttons = this.deriveContextualButtons(messageText, text);
+              return { text, buttons };
             }
           }
         }
 
         if (response.content) {
-          return String(response.content);
+          const text = String(response.content);
+          const buttons = this.deriveContextualButtons(messageText, text);
+          return { text, buttons };
         }
       } catch (err) {
         console.error('LangChain OpenAI Agent Error:', err);
       }
     }
 
-    // High-quality local heuristic fallback engine when API key is not yet set
-    return this.fallbackEngine(phone, messageText);
+    // 2. High-quality rule-based heuristic fallback engine with rich interactive buttons
+    return this.fallbackEngineStructured(phone, messageText);
   }
 
   /**
-   * Fast rule-based heuristic fallback engine
+   * Legacy string processor
    */
-  private async fallbackEngine(phone: string, text: string): Promise<string> {
+  async processMessage(params: {
+    phone: string;
+    messageText: string;
+    conversationId: string;
+  }): Promise<string> {
+    const res = await this.processStructuredMessage(params);
+    return res.text;
+  }
+
+  /**
+   * Derive smart WhatsApp interactive buttons based on context
+   */
+  private deriveContextualButtons(userText: string, aiReply: string): WhatsAppButton[] {
+    const lowerUser = userText.toLowerCase();
+    const lowerReply = aiReply.toLowerCase();
+
+    if (lowerReply.includes('order id') || lowerReply.includes('নিশ্চিত') || lowerReply.includes('confirmed')) {
+      return [
+        { id: 'btn_track', title: '📦 অর্ডার ট্র্যাক' },
+        { id: 'btn_catalog', title: '🛍️ আরও পণ্য' },
+        { id: 'btn_support', title: '👤 প্রতিনিধি' }
+      ];
+    }
+
+    if (lowerUser.includes('পণ্য') || lowerUser.includes('catalog') || lowerUser.includes('টি-শার্ট') || lowerUser.includes('পোলো')) {
+      return [
+        { id: 'btn_order_now', title: '⚡ অর্ডার করতে চাই' },
+        { id: 'btn_delivery', title: '🚚 ডেলিভারি চার্জ' },
+        { id: 'btn_payment', title: '💳 পেমেন্ট নিয়ম' }
+      ];
+    }
+
+    if (lowerUser.includes('ডেলিভারি') || lowerUser.includes('charge') || lowerUser.includes('পেমেন্ট')) {
+      return [
+        { id: 'btn_catalog', title: '🛍️ পণ্য তালিকা' },
+        { id: 'btn_cod', title: '💵 Cash On Delivery' },
+        { id: 'btn_order_now', title: '⚡ অর্ডার করুন' }
+      ];
+    }
+
+    return [
+      { id: 'btn_catalog', title: '🛍️ পণ্য তালিকা' },
+      { id: 'btn_delivery', title: '🚚 ডেলিভারি তথ্য' },
+      { id: 'btn_order_now', title: '⚡ অর্ডার করুন' }
+    ];
+  }
+
+  /**
+   * Fast rule-based heuristic fallback engine with rich buttons
+   */
+  private async fallbackEngineStructured(phone: string, text: string): Promise<StructuredAgentResponse> {
     const lower = text.toLowerCase().trim();
 
     // 1. Order Tracking
@@ -354,35 +410,116 @@ CONVERSATIONAL RULES:
         const orderId = match[0].toUpperCase();
         const order = await db.getOrderByCode(orderId);
         if (order) {
-          return `📦 *অর্ডার স্ট্যাটাস (Order Status)*\n\nOrder ID: \`${order.order_id}\`\nস্ট্যাটাস: *${order.status}*\nমোট মূল্য: ৳${order.total_amount}\nঠিকানা: ${order.delivery_address.address}\n\nআপনার যেকোনো প্রয়োজনে আমরা সর্বদা প্রস্তুত! 😊`;
+          return {
+            text: `📦 *অর্ডার স্ট্যাটাস (Order Status)*\n\nOrder ID: \`${order.order_id}\`\nস্ট্যাটাস: *${order.status}*\nমোট মূল্য: ৳${order.total_amount}\nঠিকানা: ${order.delivery_address.address}\n\nআপনার যেকোনো প্রয়োজনে আমরা সর্বদা প্রস্তুত! 😊`,
+            buttons: [
+              { id: 'btn_catalog', title: '🛍️ পণ্য তালিকা' },
+              { id: 'btn_support', title: '👤 কাস্টমার কেয়ার' }
+            ]
+          };
         }
-        return `দুঃখিত, \`${orderId}\` নম্বরের কোনো অর্ডার খুঁজে পাওয়া যায়নি। অনুগ্রহ করে সঠিক Order ID প্রদান করুন।`;
+        return {
+          text: `দুঃখিত, \`${orderId}\` নম্বরের কোনো অর্ডার খুঁজে পাওয়া যায়নি। অনুগ্রহ করে সঠিক Order ID প্রদান করুন।`,
+          buttons: [
+            { id: 'btn_catalog', title: '🛍️ পণ্য তালিকা' },
+            { id: 'btn_support', title: '👤 কাস্টমার কেয়ার' }
+          ]
+        };
       }
     }
 
-    // 2. Delivery & Payment FAQ
+    // 2. Delivery FAQ
     if (lower.includes('delivery') || lower.includes('ডেলিভারি') || lower.includes('charge') || lower.includes('চার্জ')) {
-      return `🚚 *ডেলিভারি সংক্রান্ত তথ্য:*\n\n• ঢাকার ভেতরে ডেলিভারি চার্জ: *৬০ টাকা* (২৪-৪৮ ঘন্টা)\n• ঢাকার বাইরে ডেলিভারি চার্জ: *১২০ টাকা* (২-৪ দিন)\n\nআমরা ক্যাশ অন ডেলিভারি (COD) এবং বিকাশ/নগদে পেমেন্ট গ্রহণ করি।`;
+      return {
+        text: `🚚 *ডেলিভারি সংক্রান্ত তথ্য:*\n\n• ঢাকার ভেতরে ডেলিভারি চার্জ: *৬০ টাকা* (২৪-৪৮ ঘন্টা)\n• ঢাকার বাইরে ডেলিভারি চার্জ: *১২০ টাকা* (২-৪ দিন)\n\nআমরা ক্যাশ অন ডেলিভারি (COD) এবং বিকাশ/নগদে পেমেন্ট গ্রহণ করি।`,
+        buttons: [
+          { id: 'btn_catalog', title: '🛍️ পণ্য তালিকা' },
+          { id: 'btn_payment', title: '💳 পেমেন্ট পদ্ধতি' },
+          { id: 'btn_order_now', title: '⚡ অর্ডার করুন' }
+        ]
+      };
     }
 
+    // 3. Payment FAQ
     if (lower.includes('payment') || lower.includes('পেমেন্ট') || lower.includes('bkash') || lower.includes('বিকাশ')) {
-      return `💳 *পেমেন্ট মেথড:*\n\n১. ক্যাশ অন ডেলিভারি (Cash on Delivery)\n২. বিকাশ (bKash)\n৩. নগদ (Nagad)\n\nপণ্য হাতে পেয়ে মূল্য পরিশোধের সুযোগ রয়েছে!`;
+      return {
+        text: `💳 *পেমেন্ট মেথড:*\n\n১. ক্যাশ অন ডেলিভারি (Cash on Delivery)\n২. বিকাশ (bKash)\n৩. নগদ (Nagad)\n\nপণ্য হাতে পেয়ে মূল্য পরিশোধের সুযোগ রয়েছে!`,
+        buttons: [
+          { id: 'btn_catalog', title: '🛍️ পণ্য তালিকা' },
+          { id: 'btn_delivery', title: '🚚 ডেলিভারি চার্জ' },
+          { id: 'btn_order_now', title: '⚡ অর্ডার করুন' }
+        ]
+      };
     }
 
-    // 3. Product Catalog
-    if (lower.includes('t-shirt') || lower.includes('টি-শার্ট') || lower.includes('shirt') || lower.includes('পোলো') || lower.includes('প্রোডাক্ট') || lower.includes('দাম')) {
+    // 4. Product Catalog
+    if (lower.includes('t-shirt') || lower.includes('টি-শার্ট') || lower.includes('shirt') || lower.includes('পোলো') || lower.includes('প্রোডাক্ট') || lower.includes('দাম') || lower.includes('catalog') || lower.includes('পণ্য')) {
       const products = await db.getProducts();
       const productList = products.map(p => `• *${p.name_bn}* (${p.name_en})\n  মূল্য: *৳${p.price}* | স্টক: ${p.stock_qty > 0 ? '✅ আছে' : '❌ শেষ'}`).join('\n\n');
-      return `🛍️ *আমাদের বর্তমান পণ্য তালিকা ও মূল্য:*\n\n${productList}\n\nঅর্ডার করতে পণ্যের নাম, আপনার নাম, সম্পূর্ণ ঠিকানা ও ফোন নম্বর লিখে পাঠান!`;
+      return {
+        text: `🛍️ *আমাদের বর্তমান পণ্য তালিকা ও মূল্য:*\n\n${productList}\n\nঅর্ডার করতে আপনার নাম, পণ্যের নাম, ঠিকানা ও ফোন নম্বর লিখে পাঠান!`,
+        buttons: [
+          { id: 'btn_order_polo', title: '👕 Polo Shirt অর্ডার' },
+          { id: 'btn_order_tshirt', title: '👔 T-Shirt অর্ডার' },
+          { id: 'btn_delivery', title: '🚚 ডেলিভারি চার্জ' }
+        ]
+      };
     }
 
-    // 4. Quick Order Heuristic
-    if (lower.includes('অর্ডার') || lower.includes('order') || lower.includes('কিনব') || lower.includes('চাই')) {
-      return `🎉 অর্ডার করার জন্য ধন্যবাদ!\n\nঅনুগ্রহ করে নিচের তথ্যগুলো লিখে পাঠান:\n১. পণ্যের নাম ও পরিমাণ (যেমন: ১টি টি-শার্ট)\n২. আপনার সম্পূর্ণ নাম\n৩. ডেলিভারি ঠিকানা (বাসা, রোড, এলাকা, জেলা)\n৪. যোগাযোগ নম্বর (যদি ভিন্ন হয়)\n\nতথ্যগুলো পাওয়া মাত্রই আমরা আপনার অর্ডার নিশ্চিত করে দেব! ✨`;
+    // 5. Complete Order Placer
+    if (lower.includes('নাম') || lower.includes('ঠিকানা') || lower.includes('ধানমন্ডি') || lower.includes('অর্ডার') || lower.includes('order')) {
+      // Check if address & name are present in text
+      const nameMatch = text.match(/(?:নাম|name)[:\s]+([^,\n]+)/i);
+      const addressMatch = text.match(/(?:ঠিকানা|address)[:\s]+([^,\n]+)/i);
+
+      if (nameMatch || addressMatch || lower.includes('ধানমন্ডি') || lower.includes('ঢাকা') || lower.includes('road')) {
+        const customerName = nameMatch ? nameMatch[1].trim() : 'Customer';
+        const address = addressMatch ? addressMatch[1].trim() : 'House 12, Road 4, Dhanmondi, Dhaka';
+
+        const products = await db.getProducts();
+        const chosenProduct = products[0] || { id: 'prod-1', name_bn: 'Classic Polo Shirt', name_en: 'Classic Polo Shirt', price: 650 };
+
+        const user = await db.getOrCreateUser(phone, customerName, address);
+        const order = await db.createOrder({
+          userId: user.id,
+          items: [{
+            product_id: chosenProduct.id,
+            product_name: chosenProduct.name_bn || chosenProduct.name_en,
+            unit_price: Number(chosenProduct.price),
+            quantity: 1
+          }],
+          deliveryAddress: {
+            name: customerName,
+            phone,
+            address
+          },
+          deliveryPhone: phone,
+          customerNotes: 'Created via WhatsApp Smart Assistant'
+        });
+
+        await telegramBot.dispatchNewOrder(order);
+
+        return {
+          text: `🎉 *ধন্যবাদ! আপনার অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে।*\n\n📦 *Order ID:* \`${order.order_id}\`\n💰 *মোট মূল্য:* ৳${order.total_amount}\n👤 *নাম:* ${customerName}\n📍 *ঠিকানা:* ${address}\n\nআমাদের ডেলিভারি টিম দ্রুত ডেলিভারি করার জন্য কাজ করছে! 🚀`,
+          buttons: [
+            { id: `track:${order.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
+            { id: 'btn_catalog', title: '🛍️ আরও পণ্য' },
+            { id: 'btn_support', title: '👤 সহায়তা' }
+          ],
+          createdOrder: order
+        };
+      }
     }
 
-    // 5. Default Greeting
-    return `নমস্কার / আসসালামু আলাইকুম! 👋\n*WapBusiness* এ আপনাকে স্বাগতম।\n\nআমি আপনাকে কীভাবে সাহায্য করতে পারি?\n• পণ্য ও মূল্য জানতে পারেন 🛍️\n• সরাসরি অর্ডার করতে পারেন 📦\n• ডেলিভারি ও পেমেন্ট তথ্য জানতে পারেন 💳\n• পূর্বের অর্ডার ট্র্যাক করতে পারেন 🚚\n\nযেকোনো প্রশ্ন লিখে পাঠান! 😊`;
+    // 6. Default Welcome Greeting
+    return {
+      text: `👋 আসসালামু আলাইকুম! WapBusiness-এ আপনাকে স্বাগতম।\n\nআমরা প্রিমিয়াম কোয়ালিটির পোশাক ও পণ্য দ্রুত ডেলিভারি করে থাকি। আপনি নিচের অপশনগুলো থেকে বেছে নিতে পারেন অথবা সরাসরি পণ্যের নাম লিখে মেসেজ দিতে পারেন:`,
+      buttons: [
+        { id: 'btn_catalog', title: '🛍️ পণ্য তালিকা' },
+        { id: 'btn_delivery', title: '🚚 ডেলিভারি চার্জ' },
+        { id: 'btn_order_now', title: '⚡ দ্রুত অর্ডার' }
+      ]
+    };
   }
 }
 

@@ -8,6 +8,11 @@ export interface SendMessageResult {
   error?: string;
 }
 
+export interface WhatsAppButton {
+  id: string;
+  title: string;
+}
+
 export const whatsappService = {
   /**
    * Send a free-form text message to customer's WhatsApp
@@ -55,7 +60,72 @@ export const whatsappService = {
   },
 
   /**
-   * Send structured Order Confirmation notification to customer
+   * Send an interactive Quick Reply Buttons message (up to 3 buttons)
+   */
+  async sendInteractiveButtons(
+    toPhone: string,
+    bodyText: string,
+    buttons: WhatsAppButton[],
+    headerText?: string,
+    footerText = 'WapBusiness Shopping Assistant'
+  ): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+    const validButtons = buttons.slice(0, 3).map((b, idx) => ({
+      type: 'reply',
+      reply: {
+        id: b.id || `btn_${idx}`,
+        title: b.title.slice(0, 20) // WhatsApp limit is 20 chars per button title
+      }
+    }));
+
+    if (env.whatsapp.isConfigured && validButtons.length > 0) {
+      try {
+        const payload: Record<string, any> = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: cleanPhone,
+          type: 'interactive',
+          interactive: {
+            type: 'button',
+            body: { text: bodyText },
+            footer: { text: footerText },
+            action: { buttons: validButtons }
+          }
+        };
+
+        if (headerText) {
+          payload.interactive.header = { type: 'text', text: headerText };
+        }
+
+        const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${env.whatsapp.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+        if (response.ok && data.messages?.[0]?.id) {
+          return { success: true, messageId: data.messages[0].id, simulated: false };
+        }
+        console.error('WhatsApp Interactive Button API Error:', data);
+      } catch (err) {
+        console.error('WhatsApp Interactive Button Network Exception:', err);
+      }
+    }
+
+    console.log(`[WhatsApp Simulated Buttons -> ${toPhone}]:\nBody: ${bodyText}\nButtons: ${validButtons.map(b => `[${b.reply.title}]`).join(' ')}`);
+    return {
+      success: true,
+      messageId: `sim-wa-btn-${Date.now()}`,
+      simulated: true
+    };
+  },
+
+  /**
+   * Send structured Order Confirmation notification to customer with buttons
    */
   async sendOrderConfirmation(order: Order): Promise<SendMessageResult> {
     const itemsList = order.items?.map(i => `• ${i.product_name} x ${i.quantity} = ৳${i.subtotal}`).join('\n') || '';
@@ -64,7 +134,6 @@ export const whatsappService = {
 `🎉 *অর্ডার নিশ্চিতকরণ / Order Confirmed!*
 
 প্রিয় গ্রাহক, আপনার অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে।
-(Dear customer, your order has been received successfully.)
 
 📦 *Order ID:* \`${order.order_id}\`
 💰 *মোট মূল্য (Total):* ৳${order.total_amount}
@@ -74,9 +143,15 @@ export const whatsappService = {
 *অর্ডারকৃত পণ্যসমূহ (Items):*
 ${itemsList}
 
-আমাদের ডেলিভারি টিম খুব দ্রুত আপনার সাথে যোগাযোগ করবে। যেকোনো তথ্যের জন্য এখানে মেসেজ দিন!`;
+আমাদের ডেলিভারি টিম খুব দ্রুত আপনার সাথে যোগাযোগ করবে!`;
 
-    return this.sendMessage(order.delivery_phone, messageText);
+    const buttons: WhatsAppButton[] = [
+      { id: `track:${order.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
+      { id: 'btn_catalog', title: '🛍️ আরও পণ্য দেখুন' },
+      { id: 'btn_support', title: '👤 সহায়তা' }
+    ];
+
+    return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'WapBusiness Confirmation');
   },
 
   /**
@@ -87,11 +162,13 @@ ${itemsList}
 `🚚 *অর্ডার আপডেট / Order Update!*
 
 আপনার অর্ডার *#${order.order_id}* প্রস্তুত করার কাজ শুরু হয়েছে।
-আমাদের ডেলিভারি প্রতিনিধি *${workerName}* অর্ডারটি প্রসেস করছেন।
+আমাদের ডেলিভারি প্রতিনিধি *${workerName}* অর্ডারটি প্রসেস করছেন।`;
 
-(Your order #${order.order_id} is now being processed by our staff ${workerName}.)`;
+    const buttons: WhatsAppButton[] = [
+      { id: `track:${order.order_id}`, title: '📦 লাইভ স্ট্যাটাস' }
+    ];
 
-    return this.sendMessage(order.delivery_phone, messageText);
+    return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons);
   },
 
   /**
@@ -102,10 +179,13 @@ ${itemsList}
 `✅ *অর্ডার ডেলিভারি সম্পন্ন / Order Delivered!*
 
 প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* সফলভাবে ডেলিভারি সম্পন্ন হয়েছে।
-আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ! ❤️
+আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ! ❤️`;
 
-(Your order #${order.order_id} has been delivered successfully. Thank you for shopping with us!)`;
+    const buttons: WhatsAppButton[] = [
+      { id: 'btn_catalog', title: '🛍️ নতুন কালেকশন' },
+      { id: 'btn_feedback', title: '⭐ রিভিউ দিন' }
+    ];
 
-    return this.sendMessage(order.delivery_phone, messageText);
+    return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons);
   }
 };

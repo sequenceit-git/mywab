@@ -18,7 +18,8 @@ import {
   ExternalLink,
   MessageCircle,
   Clock,
-  ShieldCheck
+  ShieldCheck,
+  MousePointerClick
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -27,6 +28,7 @@ interface SimMessage {
   sender: 'user' | 'bot';
   text: string;
   time: string;
+  buttons?: Array<{ id: string; title: string }>;
 }
 
 interface ExecutionLog {
@@ -40,7 +42,7 @@ const PRESET_PROMPTS = [
   { label: '🛍️ Browse Catalog', text: 'আপনাদের দোকানে কি কি পণ্য পাওয়া যাবে আর দাম কত?' },
   { label: '🚚 Ask Delivery Charges', text: 'ঢাকার ভেতরে এবং বাইরে ডেলিভারি চার্জ কত এবং কতদিন সময় লাগে?' },
   { label: '💳 Payment Methods', text: 'ক্যাশ অন ডেলিভারি এবং বিকাশে পেমেন্ট করার সুযোগ আছে কি?' },
-  { label: '⚡ Complete Order Flow', text: 'আমি ১টি Classic Polo Shirt কিনতে চাই। নাম: তানভীর আহমেদ, ঠিকানা: বাসা ১২, রোড ৪, ধানমন্ডি, ঢাকা, ফোন: 01711223344' },
+  { label: '⚡ Fast Order', text: 'আমি ১টি Classic Polo Shirt কিনতে চাই। নাম: তানভীর আহমেদ, ঠিকানা: বাসা ১২, রোড ৪, ধানমন্ডি, ঢাকা, ফোন: 01711223344' },
 ];
 
 export default function WhatsAppSimulatorPage() {
@@ -48,8 +50,13 @@ export default function WhatsAppSimulatorPage() {
     {
       id: 'welcome-1',
       sender: 'bot',
-      text: '👋 আসসালামু আলাইকুম! WapBusiness AI শপিং অ্যাসিস্ট্যান্টে আপনাকে স্বাগতম।\n\nপণ্য তালিকা দেখতে, মূল্য জানতে বা সরাসরি অর্ডার করতে যেকোনো বার্তা লিখুন। 😊',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      text: '👋 আসসালামু আলাইকুম! WapBusiness AI শপিং অ্যাসিস্ট্যান্টে আপনাকে স্বাগতম।\n\nপণ্য দেখতে বা অর্ডার করতে নিচের অপশন বেছে নিন অথবা মেসেজ লিখুন: 😊',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      buttons: [
+        { id: 'btn_catalog', title: '🛍️ পণ্য তালিকা' },
+        { id: 'btn_delivery', title: '🚚 ডেলিভারি চার্জ' },
+        { id: 'btn_order_now', title: '⚡ অর্ডার করুন' }
+      ]
     }
   ]);
   const [inputText, setInputText] = useState('');
@@ -96,7 +103,8 @@ export default function WhatsAppSimulatorPage() {
           id: `bot-${Date.now()}`,
           sender: 'bot',
           text: data.reply,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          buttons: data.buttons || []
         };
         setMessages(prev => [...prev, botMsg]);
 
@@ -130,8 +138,13 @@ export default function WhatsAppSimulatorPage() {
       {
         id: `welcome-${Date.now()}`,
         sender: 'bot',
-        text: '👋 আসসালামু আলাইকুম! WapBusiness AI শপিং অ্যাসিস্ট্যান্টে আপনাকে স্বাগতম।\n\nপণ্য তালিকা দেখতে, মূল্য জানতে বা সরাসরি অর্ডার করতে যেকোনো বার্তা লিখুন। 😊',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        text: '👋 আসসালামু আলাইকুম! WapBusiness AI শপিং অ্যাসিস্ট্যান্টে আপনাকে স্বাগতম।\n\nপণ্য দেখতে বা অর্ডার করতে নিচের অপশন বেছে নিন অথবা মেসেজ লিখুন: 😊',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        buttons: [
+          { id: 'btn_catalog', title: '🛍️ পণ্য তালিকা' },
+          { id: 'btn_delivery', title: '🚚 ডেলিভারি চার্জ' },
+          { id: 'btn_order_now', title: '⚡ অর্ডার করুন' }
+        ]
       }
     ]);
     setExecutionLogs([]);
@@ -141,8 +154,8 @@ export default function WhatsAppSimulatorPage() {
   return (
     <div className="flex-1 flex flex-col min-h-screen">
       <Header
-        title="WhatsApp AI Test Lab & Demo Flow"
-        subtitle="Live end-to-end interactive simulation of customer WhatsApp chatting, AI processing, Supabase storage & Telegram dispatch"
+        title="WhatsApp AI Test Lab & Interactive Button Simulator"
+        subtitle="Test customer WhatsApp chatting with interactive buttons, AI intent processing & Telegram dispatch"
       />
 
       <main className="p-6 max-w-7xl mx-auto w-full space-y-6">
@@ -154,11 +167,11 @@ export default function WhatsAppSimulatorPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-white">Full Autonomous Backend Engine Active</h3>
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Live Test Lab</span>
+                <h3 className="text-sm font-bold text-white">Interactive WhatsApp Buttons Active</h3>
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Meta Cloud API Format</span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Messages typed below trigger the <b>real backend LangChain AI agent</b>, save to <b>Supabase</b>, and dispatch live order cards to your <b>Telegram Worker Group</b>.
+                The AI now responds with <b>Interactive Quick Reply Buttons</b> (e.g. <code>[🛍️ পণ্য তালিকা]</code>, <code>[🚚 ডেলিভারি চার্জ]</code>, <code>[⚡ অর্ডার করুন]</code>). Click any button to reply instantly!
               </p>
             </div>
           </div>
@@ -178,7 +191,7 @@ export default function WhatsAppSimulatorPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left: Smartphone WhatsApp Simulation (7 Cols) */}
           <div className="lg:col-span-7 flex flex-col items-center">
-            <div className="w-full max-w-md rounded-[38px] border-4 border-slate-800 bg-[#0b141a] shadow-2xl overflow-hidden flex flex-col h-[680px] relative">
+            <div className="w-full max-w-md rounded-[38px] border-4 border-slate-800 bg-[#0b141a] shadow-2xl overflow-hidden flex flex-col h-[700px] relative">
               {/* Phone Speaker & Camera Notch */}
               <div className="h-6 bg-[#1f2c34] flex items-center justify-center relative">
                 <div className="w-16 h-1.5 rounded-full bg-slate-800"></div>
@@ -218,7 +231,7 @@ export default function WhatsAppSimulatorPage() {
               <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#0b141a] bg-opacity-95">
                 <div className="text-center my-2">
                   <span className="text-[10px] bg-[#182229] text-slate-400 px-3 py-1 rounded-lg border border-slate-800 shadow-sm">
-                    🔒 Messages are end-to-end encrypted & powered by WapBot AI
+                    🔒 Official WhatsApp Interactive Messages & Quick Replies
                   </span>
                 </div>
 
@@ -230,6 +243,7 @@ export default function WhatsAppSimulatorPage() {
                       key={msg.id}
                       className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
                     >
+                      {/* Message Bubble */}
                       <div
                         className={`max-w-[85%] p-3 rounded-2xl text-xs whitespace-pre-wrap leading-relaxed shadow-md relative ${
                           isUser
@@ -244,6 +258,23 @@ export default function WhatsAppSimulatorPage() {
                           {isUser && <CheckCheck className="w-3.5 h-3.5 text-sky-400" />}
                         </div>
                       </div>
+
+                      {/* Interactive Buttons (WhatsApp Quick Reply Format) */}
+                      {!isUser && msg.buttons && msg.buttons.length > 0 && (
+                        <div className="w-full max-w-[85%] mt-1.5 space-y-1">
+                          {msg.buttons.map((btn, bIdx) => (
+                            <button
+                              key={bIdx}
+                              disabled={loading}
+                              onClick={() => handleSendMessage(btn.title)}
+                              className="w-full text-center py-2 px-3 rounded-xl bg-[#202c33] hover:bg-[#2a3942] border border-[#00a884]/40 hover:border-[#00a884] text-[#00a884] font-semibold text-xs transition shadow-sm flex items-center justify-center gap-2 group disabled:opacity-50"
+                            >
+                              <MousePointerClick className="w-3.5 h-3.5 text-[#00a884] group-hover:scale-110 transition" />
+                              <span>{btn.title}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -252,7 +283,7 @@ export default function WhatsAppSimulatorPage() {
                   <div className="flex items-start">
                     <div className="bg-[#202c33] border border-slate-800 p-3 rounded-2xl rounded-tl-none text-xs text-emerald-400 flex items-center gap-2">
                       <Bot className="w-3.5 h-3.5 animate-spin" />
-                      <span className="animate-pulse">WapBot AI is typing...</span>
+                      <span className="animate-pulse">WapBot AI is preparing options...</span>
                     </div>
                   </div>
                 )}
@@ -350,15 +381,15 @@ export default function WhatsAppSimulatorPage() {
             <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md space-y-3">
               <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-brand-400" />
-                <span>Backend Autonomous Flow</span>
+                <span>Interactive AI Button Pipeline</span>
               </h4>
 
               <div className="space-y-2 text-xs">
                 <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-start gap-2.5">
                   <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
                   <div>
-                    <div className="font-semibold text-slate-200">Customer Messages on WhatsApp</div>
-                    <div className="text-[11px] text-slate-400">Inbound webhook received at <code>/api/webhooks/whatsapp</code></div>
+                    <div className="font-semibold text-slate-200">Interactive WhatsApp Buttons</div>
+                    <div className="text-[11px] text-slate-400">AI outputs structured buttons for catalog, pricing, FAQs, and one-tap ordering</div>
                   </div>
                 </div>
 
@@ -366,7 +397,7 @@ export default function WhatsAppSimulatorPage() {
                   <span className="w-5 h-5 rounded-full bg-brand-500/20 text-brand-400 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
                   <div>
                     <div className="font-semibold text-slate-200">LangChain AI Agent Reasoning</div>
-                    <div className="text-[11px] text-slate-400">Detects product interest, checks stock in DB, asks delivery address</div>
+                    <div className="text-[11px] text-slate-400">Processes button callback titles or customer text inquiries</div>
                   </div>
                 </div>
 
@@ -400,7 +431,7 @@ export default function WhatsAppSimulatorPage() {
 
               {executionLogs.length === 0 ? (
                 <div className="py-8 text-center text-slate-500 text-xs bg-slate-950/40 rounded-xl border border-slate-800/50">
-                  Send a message from the phone to view live backend logs.
+                  Send a message or tap an interactive button to view live logs.
                 </div>
               ) : (
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1">

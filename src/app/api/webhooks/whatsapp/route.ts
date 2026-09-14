@@ -41,7 +41,14 @@ export async function POST(request: NextRequest) {
     const fromPhone = message.from; // e.g. "8801700000001"
     const formattedPhone = fromPhone.startsWith('+') ? fromPhone : `+${fromPhone}`;
     const customerName = value?.contacts?.[0]?.profile?.name || 'Customer';
-    const messageText = message.text?.body || '';
+    
+    // Extract message text or button click response
+    let messageText = '';
+    if (message.type === 'text') {
+      messageText = message.text?.body || '';
+    } else if (message.type === 'interactive') {
+      messageText = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '';
+    }
 
     if (!messageText) {
       return NextResponse.json({ status: 'non_text_received' }, { status: 200 });
@@ -58,17 +65,21 @@ export async function POST(request: NextRequest) {
 
     // 4. If AI is active for this conversation, process via LangChain
     if (conversation.is_ai_active) {
-      const aiReply = await langChainAgent.processMessage({
+      const response = await langChainAgent.processStructuredMessage({
         phone: formattedPhone,
         messageText,
         conversationId: conversation.id
       });
 
       // Save Bot message to DB
-      await db.addMessage(conversation.id, 'BOT', aiReply);
+      await db.addMessage(conversation.id, 'BOT', response.text);
 
-      // Send reply back to customer's WhatsApp
-      await whatsappService.sendMessage(formattedPhone, aiReply);
+      // Send reply with interactive buttons back to customer's WhatsApp
+      if (response.buttons && response.buttons.length > 0) {
+        await whatsappService.sendInteractiveButtons(formattedPhone, response.text, response.buttons);
+      } else {
+        await whatsappService.sendMessage(formattedPhone, response.text);
+      }
     }
 
     return NextResponse.json({ success: true }, { status: 200 });

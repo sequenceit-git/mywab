@@ -33,8 +33,8 @@ export async function POST(request: NextRequest) {
       type: 'ai'
     });
 
-    // Run AI Agent
-    const reply = await langChainAgent.processMessage({
+    // Run AI Agent structured processor
+    const response = await langChainAgent.processStructuredMessage({
       phone,
       messageText: message,
       conversationId
@@ -42,16 +42,21 @@ export async function POST(request: NextRequest) {
 
     logs.push({
       step: 'AI Response Generated',
-      detail: reply.slice(0, 120) + (reply.length > 120 ? '...' : ''),
+      detail: response.text.slice(0, 120) + (response.text.length > 120 ? '...' : ''),
       timestamp,
       type: 'ai'
     });
 
     // Check if an order was created during this interaction
-    const latestOrders = await db.getOrders();
-    let createdOrder = null;
-    if (latestOrders.length > initialOrderCount) {
-      createdOrder = latestOrders[0];
+    let createdOrder = response.createdOrder || null;
+    if (!createdOrder) {
+      const latestOrders = await db.getOrders();
+      if (latestOrders.length > initialOrderCount) {
+        createdOrder = latestOrders[0];
+      }
+    }
+
+    if (createdOrder) {
       logs.push({
         step: 'Supabase Database Insert',
         detail: `New order ${createdOrder.order_id} (৳${createdOrder.total_amount}) written to 'orders' & 'order_items' tables`,
@@ -68,7 +73,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      reply,
+      reply: response.text,
+      buttons: response.buttons || [],
       createdOrder,
       logs
     });
