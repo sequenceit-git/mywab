@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { whatsappService } from '@/lib/whatsapp/service';
+import { telegramBot } from '@/lib/telegram/bot';
 
 export async function GET(
   request: NextRequest,
@@ -36,17 +37,34 @@ export async function PATCH(
       });
 
       if (claimResult.success && claimResult.order) {
-        await whatsappService.sendOrderClaimedNotification(claimResult.order, workerName);
+        // Sync Telegram Group Card
+        telegramBot.syncOrderStatus(claimResult.order, { deletePrevious: true, workerName }).catch(err => {
+          console.error('[API Order Claim] Telegram sync error:', err);
+        });
+
+        // Notify customer on WhatsApp
+        whatsappService.sendOrderClaimedNotification(claimResult.order, workerName).catch(err => {
+          console.error('[API Order Claim] WhatsApp notify error:', err);
+        });
       }
 
       return NextResponse.json(claimResult);
     }
 
-    // Handle status update (e.g. DELIVERED)
+    // Handle status update (e.g. OUT_FOR_DELIVERY, DELIVERED, CANCELLED, etc.)
     if (status) {
       const updateResult = await db.updateOrderStatus(id, status);
-      if (updateResult.success && updateResult.order && status === 'DELIVERED') {
-        await whatsappService.sendOrderDeliveredNotification(updateResult.order);
+      if (updateResult.success && updateResult.order) {
+        // Sync Telegram Group Card (Delete previous stale message and post updated state card)
+        telegramBot.syncOrderStatus(updateResult.order, { deletePrevious: true }).catch(err => {
+          console.error('[API Order Status] Telegram sync error:', err);
+        });
+
+        if (status === 'DELIVERED') {
+          whatsappService.sendOrderDeliveredNotification(updateResult.order).catch(err => {
+            console.error('[API Order Status] WhatsApp delivery notify error:', err);
+          });
+        }
       }
       return NextResponse.json(updateResult);
     }

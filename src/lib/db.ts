@@ -573,6 +573,23 @@ export const db = {
     return { success: true, order };
   },
 
+  async updateOrderTelegramMessageId(orderIdCodeOrId: string, messageId: number | null): Promise<void> {
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      await client
+        .from('orders')
+        .update({ telegram_message_id: messageId, updated_at: new Date().toISOString() })
+        .or(`id.eq.${orderIdCodeOrId},order_id.eq.${orderIdCodeOrId}`);
+    }
+
+    for (const o of mockStore.orders.values()) {
+      if (o.id === orderIdCodeOrId || o.order_id.toLowerCase() === orderIdCodeOrId.toLowerCase()) {
+        o.telegram_message_id = messageId;
+        break;
+      }
+    }
+  },
+
   // WORKERS
   async getWorkers(): Promise<Worker[]> {
     const client = getDbClient();
