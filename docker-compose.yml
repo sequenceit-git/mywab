@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wapbusiness-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.enable=true"
+      
+      # HTTP Router (automatic redirect to HTTPS or direct)
+      - "traefik.http.routers.wapbusiness-http.rule=Host(`${DOMAIN:-app.yourdomain.com}`)"
+      - "traefik.http.routers.wapbusiness-http.entrypoints=web"
+      
+      # HTTPS Router
+      - "traefik.http.routers.wapbusiness-https.rule=Host(`${DOMAIN:-app.yourdomain.com}`)"
+      - "traefik.http.routers.wapbusiness-https.entrypoints=websecure"
+      - "traefik.http.routers.wapbusiness-https.tls=true"
+      - "traefik.http.routers.wapbusiness-https.tls.certresolver=${CERT_RESOLVER:-letsencrypt}"
+      
+      # Service Load Balancer Port
+      - "traefik.http.services.wapbusiness.loadbalancer.server.port=3000"
+
+networks:
+  traefik-network:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik-network}

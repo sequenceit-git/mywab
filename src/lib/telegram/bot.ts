@@ -1,0 +1,206 @@
+import { Order } from '@/types';
+import { db } from '@/lib/db';
+import { whatsappService } from '@/lib/whatsapp/service';
+import { env } from '@/lib/config/env';
+
+export const telegramBot = {
+  /**
+   * Send new order card to the Telegram Worker Group with Claim button
+   */
+  async dispatchNewOrder(order: Order): Promise<{ success: boolean; messageId?: number; simulated?: boolean }> {
+    const itemsText = order.items
+      ?.map(item => `  ▪️ <b>${item.product_name}</b> x ${item.quantity} = ৳${item.subtotal}`)
+      .join('\n') || '  ▪️ No item details';
+
+    const cardHtml = 
+`🚨 <b>NEW ORDER AVAILABLE FOR CLAIM / নতুন অর্ডার</b>
+
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+👤 <b>Customer:</b> ${order.customer?.name || order.delivery_address.name || 'Anonymous'}
+📞 <b>Phone:</b> <code>${order.delivery_phone}</code>
+📍 <b>Delivery Address:</b> ${order.delivery_address.address}
+📝 <b>Notes:</b> ${order.customer_notes || 'None'}
+
+🛍 <b>Items:</b>
+${itemsText}
+
+<i>Click below to claim and assign this order to yourself.</i>`;
+
+    const inlineKeyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '⚡ Claim Order (গ্রহণ করুন)',
+            callback_data: `claim:${order.order_id}`
+          }
+        ]
+      ]
+    };
+
+    if (env.telegram.isConfigured) {
+      try {
+        const response = await fetch(`${env.telegram.apiUrl}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: env.telegram.workerGroupId,
+            text: cardHtml,
+            parse_mode: 'HTML',
+            reply_markup: inlineKeyboard
+          })
+        });
+
+        const data = await response.json();
+        if (data.ok && data.result?.message_id) {
+          order.telegram_message_id = data.result.message_id;
+          return { success: true, messageId: data.result.message_id, simulated: false };
+        }
+        console.error('Telegram API Dispatch Error:', data);
+      } catch (err) {
+        console.error('Telegram API Network Error:', err);
+      }
+    }
+
+    console.log(`[Telegram Group Simulated -> ${env.telegram.workerGroupId || 'WORKER_GROUP'}]:\n${cardHtml}`);
+    return {
+      success: true,
+      messageId: Math.floor(100000 + Math.random() * 900000),
+      simulated: true
+    };
+  },
+
+  /**
+   * Handle interactive callback queries from Telegram inline buttons
+   */
+  async handleCallbackQuery(callbackQuery: {
+    id: string;
+    from: { id: number; first_name: string; last_name?: string; username?: string };
+    message?: { message_id: number; chat: { id: number | string } };
+    data?: string;
+  }): Promise<{ success: boolean; message: string; alertText?: string }> {
+    const { id, from, message, data } = callbackQuery;
+    if (!data) return { success: false, message: 'No callback data' };
+
+    const [action, orderIdCode] = data.split(':');
+    const workerName = [from.first_name, from.last_name].filter(Boolean).join(' ') || from.username || `Worker-${from.id}`;
+
+    // 1. ACTION: CLAIM ORDER
+    if (action === 'claim') {
+      const claimResult = await db.claimOrderAtomic({
+        orderIdCode,
+        telegramUserId: from.id,
+        workerName,
+        telegramUsername: from.username
+      });
+
+      if (!claimResult.success) {
+        await this.answerCallbackQuery(id, `⚠️ ${claimResult.message}`, true);
+        return { success: false, message: claimResult.message, alertText: claimResult.message };
+      }
+
+      const order = claimResult.order!;
+      
+      // Update Telegram Card UI to show claimed status and operational buttons
+      if (message) {
+        const updatedText = 
+`✅ <b>ORDER CLAIMED / অর্ডার গ্রহণ করা হয়েছে</b>
+
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+👷 <b>Claimed by:</b> <b>${workerName}</b> (@${from.username || 'NoUsername'})
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+📍 <b>Delivery Address:</b> ${order.delivery_address.address}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+
+<i>Worker actions:</i>`;
+
+        const claimedKeyboard = {
+          inline_keyboard: [
+            [
+              { text: '🚚 Out for Delivery', callback_data: `status_out:${order.order_id}` },
+              { text: '✅ Mark Delivered', callback_data: `status_delivered:${order.order_id}` }
+            ]
+          ]
+        };
+
+        await this.editMessageText(message.chat.id, message.message_id, updatedText, claimedKeyboard);
+      }
+
+      // Notify customer on WhatsApp
+      await whatsappService.sendOrderClaimedNotification(order, workerName);
+
+      await this.answerCallbackQuery(id, `✅ You have successfully claimed order #${order.order_id}!`, false);
+      return { success: true, message: `Claimed by ${workerName}` };
+    }
+
+    // 2. ACTION: OUT FOR DELIVERY
+    if (action === 'status_out') {
+      await db.updateOrderStatus(orderIdCode, 'OUT_FOR_DELIVERY', from.id);
+      await this.answerCallbackQuery(id, `🚚 Order #${orderIdCode} is now out for delivery!`, false);
+      return { success: true, message: 'Status updated to OUT_FOR_DELIVERY' };
+    }
+
+    // 3. ACTION: MARK DELIVERED
+    if (action === 'status_delivered') {
+      const updateResult = await db.updateOrderStatus(orderIdCode, 'DELIVERED', from.id);
+      const order = updateResult.order;
+
+      if (order && message) {
+        const completedText = 
+`🎉 <b>ORDER COMPLETED & DELIVERED</b>
+
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+👷 <b>Delivered by:</b> <b>${workerName}</b>
+💰 <b>Collected Amount:</b> ৳${order.total_amount}
+📍 <b>Delivered to:</b> ${order.delivery_address.address}
+🕒 <b>Delivered at:</b> ${new Date().toLocaleTimeString()}`;
+
+        await this.editMessageText(message.chat.id, message.message_id, completedText, { inline_keyboard: [] });
+
+        // Trigger automated WhatsApp delivery confirmation to customer!
+        await whatsappService.sendOrderDeliveredNotification(order);
+      }
+
+      await this.answerCallbackQuery(id, `🎉 Order #${orderIdCode} marked as Delivered!`, false);
+      return { success: true, message: 'Delivered successfully' };
+    }
+
+    return { success: false, message: 'Unknown action' };
+  },
+
+  async answerCallbackQuery(callbackQueryId: string, text: string, showAlert = false) {
+    if (!env.telegram.isConfigured) return;
+    try {
+      await fetch(`${env.telegram.apiUrl}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callback_query_id: callbackQueryId,
+          text,
+          show_alert: showAlert
+        })
+      });
+    } catch (e) {
+      console.error('Error answering callback query:', e);
+    }
+  },
+
+  async editMessageText(chatId: string | number, messageId: number, text: string, replyMarkup?: unknown) {
+    if (!env.telegram.isConfigured) return;
+    try {
+      await fetch(`${env.telegram.apiUrl}/editMessageText`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: messageId,
+          text,
+          parse_mode: 'HTML',
+          reply_markup: replyMarkup
+        })
+      });
+    } catch (e) {
+      console.error('Error editing message text:', e);
+    }
+  }
+};

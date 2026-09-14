@@ -1,0 +1,389 @@
+import { ChatOpenAI } from '@langchain/openai';
+import { tool } from '@langchain/core/tools';
+import { z } from 'zod';
+import { db } from '@/lib/db';
+import { telegramBot } from '@/lib/telegram/bot';
+import { whatsappService } from '@/lib/whatsapp/service';
+import { env } from '@/lib/config/env';
+
+// 1. LangChain Tools Definition
+
+export const searchCatalogTool = tool(
+  async ({ query }: { query: string }) => {
+    const products = await db.getProducts();
+    const cleanQuery = query.toLowerCase();
+
+    const matches = products.filter(
+      p =>
+        p.name_en.toLowerCase().includes(cleanQuery) ||
+        p.name_bn.includes(cleanQuery) ||
+        p.category.toLowerCase().includes(cleanQuery) ||
+        p.sku.toLowerCase().includes(cleanQuery)
+    );
+
+    if (matches.length === 0) {
+      return JSON.stringify({
+        found: false,
+        message: 'No exact product matched the query.',
+        available_products: products.map(p => ({
+          sku: p.sku,
+          name_en: p.name_en,
+          name_bn: p.name_bn,
+          price: p.price,
+          stock: p.stock_qty
+        }))
+      });
+    }
+
+    return JSON.stringify({
+      found: true,
+      results: matches.map(p => ({
+        sku: p.sku,
+        name_en: p.name_en,
+        name_bn: p.name_bn,
+        price: `৳${p.price}`,
+        in_stock: p.stock_qty > 0,
+        stock_qty: p.stock_qty,
+        description_bn: p.description_bn,
+        description_en: p.description_en
+      }))
+    });
+  },
+  {
+    name: 'search_catalog',
+    description: 'Search for products, prices, stock availability, and descriptions in the store catalog (Bangla/English).',
+    schema: z.object({
+      query: z.string().describe('Product name, category, or keyword to search for (e.g. "t-shirt", "পোলো শার্ট", "shoes")')
+    })
+  }
+);
+
+export const getFaqTool = tool(
+  async ({ topic }: { topic: string }) => {
+    const faqs = await db.getFAQs();
+    const cleanTopic = topic.toLowerCase();
+
+    const matched = faqs.filter(
+      f =>
+        f.question_en.toLowerCase().includes(cleanTopic) ||
+        f.question_bn.includes(cleanTopic) ||
+        f.category.toLowerCase().includes(cleanTopic)
+    );
+
+    return JSON.stringify({
+      results: (matched.length > 0 ? matched : faqs).map(f => ({
+        category: f.category,
+        question_bn: f.question_bn,
+        answer_bn: f.answer_bn,
+        question_en: f.question_en,
+        answer_en: f.answer_en
+      }))
+    });
+  },
+  {
+    name: 'get_faq',
+    description: 'Get answers to common store questions such as delivery charges, delivery timeframe, payment methods, and return/exchange policy.',
+    schema: z.object({
+      topic: z.string().describe('Topic or question keyword (e.g. "delivery charge", "ডেলিভারি", "payment", "return")')
+    })
+  }
+);
+
+export const createOrderTool = tool(
+  async (params: {
+    customerPhone: string;
+    customerName: string;
+    deliveryAddress: string;
+    items: Array<{ skuOrName: string; quantity: number }>;
+    customerNotes?: string;
+  }) => {
+    try {
+      // 1. Resolve customer
+      const user = await db.getOrCreateUser(params.customerPhone, params.customerName, params.deliveryAddress);
+
+      // 2. Resolve items with pricing from catalog
+      const allProducts = await db.getProducts();
+      const resolvedItems: Array<{ product_id?: string; product_name: string; unit_price: number; quantity: number }> = [];
+
+      for (const item of params.items) {
+        const found = allProducts.find(
+          p =>
+            p.sku.toLowerCase() === item.skuOrName.toLowerCase() ||
+            p.name_en.toLowerCase().includes(item.skuOrName.toLowerCase()) ||
+            p.name_bn.includes(item.skuOrName)
+        );
+
+        if (found) {
+          resolvedItems.push({
+            product_id: found.id,
+            product_name: found.name_bn || found.name_en,
+            unit_price: Number(found.price),
+            quantity: item.quantity || 1
+          });
+        } else {
+          // Fallback if generic item name
+          resolvedItems.push({
+            product_name: item.skuOrName,
+            unit_price: 500,
+            quantity: item.quantity || 1
+          });
+        }
+      }
+
+      if (resolvedItems.length === 0) {
+        return JSON.stringify({ success: false, error: 'No valid products could be resolved.' });
+      }
+
+      // 3. Create the Order in Central Database
+      const order = await db.createOrder({
+        userId: user.id,
+        items: resolvedItems,
+        deliveryAddress: {
+          name: params.customerName,
+          phone: params.customerPhone,
+          address: params.deliveryAddress
+        },
+        deliveryPhone: params.customerPhone,
+        customerNotes: params.customerNotes
+      });
+
+      // 4. Automatically Forward to Telegram Worker Group
+      await telegramBot.dispatchNewOrder(order);
+
+      // 5. Send Order Confirmation Template via WhatsApp
+      await whatsappService.sendOrderConfirmation(order);
+
+      return JSON.stringify({
+        success: true,
+        order_id: order.order_id,
+        total_amount: order.total_amount,
+        delivery_phone: order.delivery_phone,
+        delivery_address: order.delivery_address.address,
+        message: 'Order created successfully and forwarded to worker dispatch team.'
+      });
+    } catch (err) {
+      return JSON.stringify({ success: false, error: String(err) });
+    }
+  },
+  {
+    name: 'create_order',
+    description: 'Create a confirmed order for the customer once product, quantity, customer name, delivery address, and phone number are gathered.',
+    schema: z.object({
+      customerPhone: z.string().describe('Customer phone number (e.g. +88017XXXXXXXX)'),
+      customerName: z.string().describe('Full name of the customer'),
+      deliveryAddress: z.string().describe('Detailed delivery address (House, Road, Area, City)'),
+      items: z.array(
+        z.object({
+          skuOrName: z.string().describe('Product SKU or name (e.g. TSHIRT-BLK-M or "প্রিমিয়াম কটন টি-শার্ট")'),
+          quantity: z.number().describe('Quantity of items')
+        })
+      ).describe('List of ordered items'),
+      customerNotes: z.string().nullable().optional().describe('Any special customer instructions (e.g. "Call before delivery")')
+    })
+  }
+);
+
+export const trackOrderTool = tool(
+  async ({ orderId }: { orderId: string }) => {
+    const order = await db.getOrderByCode(orderId.trim().toUpperCase());
+    if (!order) {
+      return JSON.stringify({ found: false, message: `No order found with ID ${orderId}` });
+    }
+
+    const statusTranslations: Record<string, string> = {
+      PENDING_PAYMENT: 'পেমেন্ট প্রক্রিয়াধীন (Pending Payment)',
+      PENDING_CLAIM: 'কর্মী গ্রহণের অপেক্ষায় (Waiting for Worker Assignment)',
+      CLAIMED: 'কর্মী অর্ডার গ্রহণ করেছেন এবং প্রসেস করছেন (Claimed & Processing)',
+      PROCESSING: 'অর্ডার প্যাকেজিং ও প্রসেসিং চলছে (Packaging)',
+      OUT_FOR_DELIVERY: 'ডেলিভারির জন্য বের হয়েছে (Out for Delivery)',
+      DELIVERED: 'ডেলিভারি সম্পন্ন (Successfully Delivered)',
+      CANCELLED: 'বাতিল করা হয়েছে (Cancelled)'
+    };
+
+    return JSON.stringify({
+      found: true,
+      order_id: order.order_id,
+      status: order.status,
+      status_bn: statusTranslations[order.status] || order.status,
+      total_amount: `৳${order.total_amount}`,
+      created_at: order.created_at,
+      worker: order.current_worker ? order.current_worker.full_name : 'Not yet assigned'
+    });
+  },
+  {
+    name: 'track_order',
+    description: 'Track live status and delivery updates of an existing order using the Order ID (e.g. WAP-20260914-1001).',
+    schema: z.object({
+      orderId: z.string().describe('The Order ID string like WAP-20260914-1001')
+    })
+  }
+);
+
+// 2. LangChain + OpenAI Conversational AI Agent Core
+
+export class LangChainAgentService {
+  private llm: ChatOpenAI | null = null;
+  private tools = [searchCatalogTool, getFaqTool, createOrderTool, trackOrderTool];
+
+  constructor() {
+    if (env.openai.apiKey) {
+      const model = env.openai.model || 'gpt-4o-mini';
+      const isFixedTempModel = 
+        model.startsWith('o1') || 
+        model.startsWith('o3') || 
+        model.startsWith('gpt-5');
+
+      const config: ConstructorParameters<typeof ChatOpenAI>[0] = {
+        openAIApiKey: env.openai.apiKey,
+        modelName: model,
+      };
+
+      if (!isFixedTempModel) {
+        config.temperature = 0.3;
+      }
+
+      this.llm = new ChatOpenAI(config);
+    }
+  }
+
+  getSystemPrompt(): string {
+    return `You are "WapBot", the intelligent, friendly, and helpful WhatsApp AI shopping assistant for WapBusiness.
+
+YOUR GOALS:
+1. Help customers inquire about products, pricing, stock, colors, sizes, and store policies.
+2. Provide answers in fluent Bengali (বাংলা) by default, or in English if the customer speaks English or Banglish.
+3. Help customers create orders smoothly by collecting:
+   - Specific product(s) and quantities
+   - Customer Full Name
+   - Detailed Delivery Address (House/Road/Area/District)
+   - Phone number
+4. Once all details are confirmed with the customer, invoke the \`create_order\` tool.
+5. Answer questions about delivery charges (Inside Dhaka ৳60, Outside Dhaka ৳120), payment methods (Cash on Delivery, bKash, Nagad), and returns using \`get_faq\`.
+6. Look up order statuses using \`track_order\` when given an Order ID.
+
+CONVERSATIONAL RULES:
+- Be polite, concise, and natural for WhatsApp messaging.
+- Use emojis tastefully (🛍️, 📦, 🚚, ✨).
+- Always format prices with ৳ symbol (e.g. ৳৪৫০ / ৳450).
+- If customer wants human support, reply that an agent will join shortly.`;
+  }
+
+  /**
+   * Process an incoming customer message through LangChain with OpenAI
+   */
+  async processMessage(params: {
+    phone: string;
+    messageText: string;
+    conversationId: string;
+  }): Promise<string> {
+    const { phone, messageText, conversationId } = params;
+
+    // If OpenAI API Key is configured in .env, use LangChain Agent with tool calling
+    if (this.llm && env.openai.apiKey) {
+      try {
+        const modelWithTools = this.llm.bindTools(this.tools);
+
+        // Fetch recent conversation history from DB
+        const conversations = await db.getConversations();
+        const conv = conversations.find(c => c.id === conversationId);
+        const historyMessages = conv?.messages || [];
+
+        const formattedHistory: Array<['system' | 'human' | 'ai', string]> = [
+          ['system', this.getSystemPrompt()]
+        ];
+
+        // Add last 6 messages
+        historyMessages.slice(-6).forEach(m => {
+          formattedHistory.push([m.sender === 'CUSTOMER' ? 'human' : 'ai', m.content]);
+        });
+
+        // Add current user prompt
+        formattedHistory.push(['human', `[Customer Phone: ${phone}] ${messageText}`]);
+
+        // Invoke model
+        const response = await modelWithTools.invoke(formattedHistory);
+
+        // Check for tool calls
+        if (response.tool_calls && response.tool_calls.length > 0) {
+          for (const call of response.tool_calls) {
+            const toolMap: Record<string, typeof searchCatalogTool | typeof getFaqTool | typeof createOrderTool | typeof trackOrderTool> = {
+              search_catalog: searchCatalogTool,
+              get_faq: getFaqTool,
+              create_order: createOrderTool,
+              track_order: trackOrderTool
+            };
+
+            const matchedTool = toolMap[call.name];
+            if (matchedTool) {
+              const toolResult = await (matchedTool as unknown as { invoke: (args: Record<string, unknown>) => Promise<string> }).invoke(call.args);
+              
+              // Feed tool result back to generate conversational response
+              const followUp = await this.llm.invoke([
+                ...formattedHistory,
+                ['ai', JSON.stringify(response.tool_calls)],
+                ['human', `Tool ${call.name} returned: ${toolResult}. Please give a friendly WhatsApp response to the customer in Bengali/English.`]
+              ]);
+
+              return String(followUp.content);
+            }
+          }
+        }
+
+        if (response.content) {
+          return String(response.content);
+        }
+      } catch (err) {
+        console.error('LangChain OpenAI Agent Error:', err);
+      }
+    }
+
+    // High-quality local heuristic fallback engine when API key is not yet set
+    return this.fallbackEngine(phone, messageText);
+  }
+
+  /**
+   * Fast rule-based heuristic fallback engine
+   */
+  private async fallbackEngine(phone: string, text: string): Promise<string> {
+    const lower = text.toLowerCase().trim();
+
+    // 1. Order Tracking
+    if (lower.includes('wap-') || lower.includes('ট্র্যাক') || lower.includes('track') || lower.includes('status')) {
+      const match = text.match(/WAP-\d{8}-\d{4}/i);
+      if (match) {
+        const orderId = match[0].toUpperCase();
+        const order = await db.getOrderByCode(orderId);
+        if (order) {
+          return `📦 *অর্ডার স্ট্যাটাস (Order Status)*\n\nOrder ID: \`${order.order_id}\`\nস্ট্যাটাস: *${order.status}*\nমোট মূল্য: ৳${order.total_amount}\nঠিকানা: ${order.delivery_address.address}\n\nআপনার যেকোনো প্রয়োজনে আমরা সর্বদা প্রস্তুত! 😊`;
+        }
+        return `দুঃখিত, \`${orderId}\` নম্বরের কোনো অর্ডার খুঁজে পাওয়া যায়নি। অনুগ্রহ করে সঠিক Order ID প্রদান করুন।`;
+      }
+    }
+
+    // 2. Delivery & Payment FAQ
+    if (lower.includes('delivery') || lower.includes('ডেলিভারি') || lower.includes('charge') || lower.includes('চার্জ')) {
+      return `🚚 *ডেলিভারি সংক্রান্ত তথ্য:*\n\n• ঢাকার ভেতরে ডেলিভারি চার্জ: *৬০ টাকা* (২৪-৪৮ ঘন্টা)\n• ঢাকার বাইরে ডেলিভারি চার্জ: *১২০ টাকা* (২-৪ দিন)\n\nআমরা ক্যাশ অন ডেলিভারি (COD) এবং বিকাশ/নগদে পেমেন্ট গ্রহণ করি।`;
+    }
+
+    if (lower.includes('payment') || lower.includes('পেমেন্ট') || lower.includes('bkash') || lower.includes('বিকাশ')) {
+      return `💳 *পেমেন্ট মেথড:*\n\n১. ক্যাশ অন ডেলিভারি (Cash on Delivery)\n২. বিকাশ (bKash)\n৩. নগদ (Nagad)\n\nপণ্য হাতে পেয়ে মূল্য পরিশোধের সুযোগ রয়েছে!`;
+    }
+
+    // 3. Product Catalog
+    if (lower.includes('t-shirt') || lower.includes('টি-শার্ট') || lower.includes('shirt') || lower.includes('পোলো') || lower.includes('প্রোডাক্ট') || lower.includes('দাম')) {
+      const products = await db.getProducts();
+      const productList = products.map(p => `• *${p.name_bn}* (${p.name_en})\n  মূল্য: *৳${p.price}* | স্টক: ${p.stock_qty > 0 ? '✅ আছে' : '❌ শেষ'}`).join('\n\n');
+      return `🛍️ *আমাদের বর্তমান পণ্য তালিকা ও মূল্য:*\n\n${productList}\n\nঅর্ডার করতে পণ্যের নাম, আপনার নাম, সম্পূর্ণ ঠিকানা ও ফোন নম্বর লিখে পাঠান!`;
+    }
+
+    // 4. Quick Order Heuristic
+    if (lower.includes('অর্ডার') || lower.includes('order') || lower.includes('কিনব') || lower.includes('চাই')) {
+      return `🎉 অর্ডার করার জন্য ধন্যবাদ!\n\nঅনুগ্রহ করে নিচের তথ্যগুলো লিখে পাঠান:\n১. পণ্যের নাম ও পরিমাণ (যেমন: ১টি টি-শার্ট)\n২. আপনার সম্পূর্ণ নাম\n৩. ডেলিভারি ঠিকানা (বাসা, রোড, এলাকা, জেলা)\n৪. যোগাযোগ নম্বর (যদি ভিন্ন হয়)\n\nতথ্যগুলো পাওয়া মাত্রই আমরা আপনার অর্ডার নিশ্চিত করে দেব! ✨`;
+    }
+
+    // 5. Default Greeting
+    return `নমস্কার / আসসালামু আলাইকুম! 👋\n*WapBusiness* এ আপনাকে স্বাগতম।\n\nআমি আপনাকে কীভাবে সাহায্য করতে পারি?\n• পণ্য ও মূল্য জানতে পারেন 🛍️\n• সরাসরি অর্ডার করতে পারেন 📦\n• ডেলিভারি ও পেমেন্ট তথ্য জানতে পারেন 💳\n• পূর্বের অর্ডার ট্র্যাক করতে পারেন 🚚\n\nযেকোনো প্রশ্ন লিখে পাঠান! 😊`;
+  }
+}
+
+export const langChainAgent = new LangChainAgentService();

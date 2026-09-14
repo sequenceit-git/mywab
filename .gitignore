@@ -1,0 +1,39 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# Testing & build outputs
+/.next/
+/out/
+/build
+dist
+
+# Environment & Secrets (NEVER COMMIT)
+.env
+.env*.local
+.env.production
+.env.staging
+
+# Debug & Task logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+
+# OS & Editor files
+.DS_Store
+*.pem
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary test scripts
+scripts/test-supabase.mjs
+scripts/setup-db.mjs
