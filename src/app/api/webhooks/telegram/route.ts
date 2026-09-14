@@ -8,10 +8,13 @@ import { env } from '@/lib/config/env';
 export async function POST(request: NextRequest) {
   try {
     const update = await request.json();
+    console.log('📥 [Telegram Webhook Received]:', JSON.stringify(update));
 
     // 1. Handle Inline Keyboard Button Callbacks (Claim, Processing, Delivered)
     if (update.callback_query) {
+      console.log(`⚡ [Telegram Webhook] Processing callback query ID: ${update.callback_query.id}, data: ${update.callback_query.data}`);
       const result = await telegramBot.handleCallbackQuery(update.callback_query);
+      console.log(`✅ [Telegram Webhook] Callback query handled result:`, result);
       return NextResponse.json(result, { status: 200 });
     }
 

@@ -345,18 +345,142 @@ export const db = {
 
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
-      const { data, error } = await client.rpc('claim_order_atomic', {
-        p_order_id_code: orderIdCode,
-        p_telegram_user_id: telegramUserId,
-        p_worker_name: workerName,
-        p_telegram_username: telegramUsername || ''
-      });
+      // 1. Try Supabase RPC Stored Procedure first
+      try {
+        const { data, error } = await client.rpc('claim_order_atomic', {
+          p_order_id_code: orderIdCode,
+          p_telegram_user_id: telegramUserId,
+          p_worker_name: workerName,
+          p_telegram_username: telegramUsername || ''
+        });
 
-      if (!error && data && data.success) {
-        const fullOrder = await this.getOrderByCode(orderIdCode);
-        return { success: true, message: data.message, order: fullOrder || undefined };
+        if (!error && data && data.success) {
+          const fullOrder = await this.getOrderByCode(orderIdCode);
+          return { success: true, message: data.message, order: fullOrder || undefined };
+        }
+        if (data && !data.success && data.message && data.message.includes('already claimed')) {
+          return { success: false, message: data.message };
+        }
+        console.warn('Supabase RPC claim_order_atomic warning/missing, attempting direct query fallback:', error || data);
+      } catch (rpcErr) {
+        console.warn('Supabase RPC claim_order_atomic threw exception, running direct query fallback:', rpcErr);
       }
-      return { success: false, message: data?.message || error?.message || 'Failed to claim order' };
+
+      // 2. Direct Supabase Query Fallback
+      try {
+        // A. Ensure worker exists or register/update
+        let workerId: string | null = null;
+        let workerObj: Worker | undefined;
+
+        const { data: existingWorker } = await client
+          .from('workers')
+          .select('*')
+          .eq('telegram_user_id', telegramUserId)
+          .maybeSingle();
+
+        if (existingWorker) {
+          workerId = existingWorker.id;
+          workerObj = existingWorker;
+          await client
+            .from('workers')
+            .update({
+              full_name: workerName,
+              telegram_username: telegramUsername || existingWorker.telegram_username
+            })
+            .eq('id', existingWorker.id);
+        } else {
+          const newWorker = {
+            id: crypto.randomUUID(),
+            telegram_user_id: telegramUserId,
+            telegram_username: telegramUsername || null,
+            full_name: workerName,
+            role: 'WORKER',
+            is_active: true,
+            created_at: new Date().toISOString()
+          };
+          const { data: insertedWorker } = await client
+            .from('workers')
+            .insert(newWorker)
+            .select('*')
+            .single();
+
+          if (insertedWorker) {
+            workerId = insertedWorker.id;
+            workerObj = insertedWorker;
+          } else {
+            workerId = newWorker.id;
+            workerObj = newWorker as Worker;
+          }
+        }
+
+        // B. Fetch order
+        const { data: orderData, error: orderErr } = await client
+          .from('orders')
+          .select('*')
+          .eq('order_id', orderIdCode)
+          .single();
+
+        if (orderErr || !orderData) {
+          return { success: false, message: 'Order not found in database' };
+        }
+
+        // Allow claim if PENDING_CLAIM or PENDING_PAYMENT
+        if (orderData.status !== 'PENDING_CLAIM' && orderData.status !== 'PENDING_PAYMENT') {
+          // Check if already claimed by this same worker
+          const { data: lastAssign } = await client
+            .from('order_assignments')
+            .select('*, worker:workers(*)')
+            .eq('order_id', orderData.id)
+            .order('claimed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (lastAssign?.worker_id === workerId || lastAssign?.worker?.telegram_user_id === telegramUserId) {
+            const fullOrder = await this.getOrderByCode(orderIdCode);
+            return {
+              success: true,
+              message: `You have already claimed order #${orderIdCode}`,
+              order: fullOrder || undefined,
+              worker: workerObj
+            };
+          }
+
+          return {
+            success: false,
+            message: `Order is already in status: ${orderData.status}`
+          };
+        }
+
+        // C. Update order status to CLAIMED
+        await client
+          .from('orders')
+          .update({ status: 'CLAIMED', updated_at: new Date().toISOString() })
+          .eq('id', orderData.id);
+
+        // D. Insert assignment
+        if (workerId) {
+          await client
+            .from('order_assignments')
+            .insert({
+              id: crypto.randomUUID(),
+              order_id: orderData.id,
+              worker_id: workerId,
+              status: 'CLAIMED',
+              claimed_at: new Date().toISOString()
+            });
+        }
+
+        const fullOrder = await this.getOrderByCode(orderIdCode);
+        return {
+          success: true,
+          message: `Order claimed successfully by ${workerName}`,
+          order: fullOrder || undefined,
+          worker: workerObj
+        };
+      } catch (directErr) {
+        console.error('Supabase direct order claim error:', directErr);
+        return { success: false, message: `Error claiming order: ${String(directErr)}` };
+      }
     }
 
     // In-memory fallback
@@ -365,7 +489,7 @@ export const db = {
       return { success: false, message: 'Order not found' };
     }
 
-    if (order.status !== 'PENDING_CLAIM') {
+    if (order.status !== 'PENDING_CLAIM' && order.status !== 'PENDING_PAYMENT') {
       return {
         success: false,
         message: `Order already claimed or in status: ${order.status}`
