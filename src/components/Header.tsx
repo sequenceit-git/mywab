@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Bell, Sparkles, RefreshCw, Bot, Database, MessageSquare } from 'lucide-react';
+import { Bell, Sparkles, RefreshCw, LogOut, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/lib/auth/AuthContext';
 
 export interface HeaderProps {
   title?: string;
@@ -10,6 +11,17 @@ export interface HeaderProps {
 }
 
 export function Header({ title = 'Operations Hub', subtitle }: HeaderProps) {
+  const { user, logout } = useAuth();
+
+  const userInitials = user?.name
+    ? user.name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : 'AD';
+
   return (
     <header className="h-16 border-b border-slate-800/80 bg-dark-900/80 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-20">
       <div>
@@ -33,24 +45,22 @@ export function Header({ title = 'Operations Hub', subtitle }: HeaderProps) {
           <span className="hidden sm:inline">Real-time Sync</span>
         </div>
 
-        {/* Notification Bell */}
-        <button
-          type="button"
-          aria-label="Notifications"
-          className="p-2 rounded-lg bg-slate-800/60 text-slate-300 hover:text-white hover:bg-slate-800 transition"
-        >
-          <Bell className="w-4 h-4" />
-        </button>
-
-        {/* Admin Profile */}
+        {/* Admin Profile & Logout */}
         <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shadow-md">
-            AD
+            {userInitials}
           </div>
           <div className="hidden md:block text-left text-xs">
-            <div className="font-semibold text-slate-200">Admin User</div>
-            <div className="text-[10px] text-slate-400">Super Admin</div>
+            <div className="font-semibold text-slate-200">{user?.name || 'Admin User'}</div>
+            <div className="text-[10px] text-slate-400 truncate max-w-[120px]">{user?.email || 'admin@sequenceit.software'}</div>
           </div>
+          <button
+            onClick={logout}
+            title="Sign out"
+            className="p-1.5 ml-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </header>

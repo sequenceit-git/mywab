@@ -32,7 +32,13 @@ export const env = {
     apiUrl: `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN || ''}`,
     isConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WORKER_GROUP_ID),
   },
+  auth: {
+    adminEmail: process.env.ADMIN_EMAIL || 'admin@sequenceit.software',
+    adminPassword: process.env.ADMIN_PASSWORD || 'admin123456',
+    secret: process.env.AUTH_SECRET || 'wapbusiness_secure_session_secret_2026',
+  },
   app: {
-    url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    url: process.env.NEXT_PUBLIC_APP_URL || 'https://mywab.sequenceit.software',
+    domain: process.env.DOMAIN || 'mywab.sequenceit.software',
   }
 };

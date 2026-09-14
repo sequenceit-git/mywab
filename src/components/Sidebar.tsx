@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/lib/auth/AuthContext';
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -11,7 +12,8 @@ import {
   Package,
   PlayCircle,
   Database,
-  Bot
+  Bot,
+  LogOut
 } from 'lucide-react';
 
 const navigation = [
@@ -26,6 +28,7 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, logout } = useAuth();
 
   return (
     <aside className="w-64 bg-dark-900 border-r border-slate-800 flex flex-col h-screen sticky top-0">
@@ -79,31 +82,43 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Integration Status Footer */}
-      <div className="p-4 m-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs text-slate-400 space-y-2">
-        <div className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
-          Connected Channels
+      {/* Connected Channels & User Footer */}
+      <div className="p-3 border-t border-slate-800 space-y-2">
+        <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs text-slate-400 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-[11px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse"></span>
+              WhatsApp
+            </span>
+            <span className="flex items-center gap-1.5 text-[11px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-telegram-500"></span>
+              Telegram
+            </span>
+            <span className="flex items-center gap-1.5 text-[11px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              Supabase
+            </span>
+          </div>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-brand-400 animate-pulse"></span>
-            WhatsApp
-          </span>
-          <span className="text-[10px] text-slate-400 font-mono">Cloud API</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-telegram-500"></span>
-            Telegram
-          </span>
-          <span className="text-[10px] text-slate-400 font-mono">Worker Bot</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            Supabase
-          </span>
-          <span className="text-[10px] text-slate-400 font-mono">Postgres DB</span>
+
+        {/* User profile & Logout */}
+        <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/50 border border-slate-800/60">
+          <div className="flex items-center gap-2 overflow-hidden">
+            <div className="w-7 h-7 rounded-lg bg-brand-500/20 text-brand-400 font-bold text-xs flex items-center justify-center shrink-0 border border-brand-500/30">
+              {user?.name?.[0] || 'A'}
+            </div>
+            <div className="overflow-hidden">
+              <div className="text-xs font-semibold text-slate-200 truncate">{user?.name || 'Admin'}</div>
+              <div className="text-[10px] text-slate-400 truncate">{user?.email || 'admin@sequenceit.software'}</div>
+            </div>
+          </div>
+          <button
+            onClick={logout}
+            title="Log out"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0 ml-1"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </aside>
