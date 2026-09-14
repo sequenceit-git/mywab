@@ -9,15 +9,18 @@ import {
   Clock,
   Send,
   Plus,
-  Bot
+  Bot,
+  RefreshCw
 } from 'lucide-react';
 import { Worker } from '@/types';
 
 export default function WorkersPage() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchWorkers = async () => {
+  const fetchWorkers = async (isManual = false) => {
+    if (isManual) setRefreshing(true);
     try {
       const res = await fetch('/api/workers', {
         headers: { 'ngrok-skip-browser-warning': 'true' }
@@ -32,11 +35,16 @@ export default function WorkersPage() {
       console.error(e);
     } finally {
       setLoading(false);
+      if (isManual) setRefreshing(false);
     }
   };
 
   useEffect(() => {
     fetchWorkers();
+    const interval = setInterval(() => {
+      fetchWorkers();
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -65,8 +73,18 @@ export default function WorkersPage() {
         {/* Worker Table */}
         <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-bold text-white text-base">Active Fulfillment Staff</h3>
-            <span className="text-xs text-slate-400">{workers.length} Registered Workers</span>
+            <div>
+              <h3 className="font-bold text-white text-base">Active Fulfillment Staff</h3>
+              <span className="text-xs text-slate-400">{workers.length} Registered Workers</span>
+            </div>
+            <button
+              onClick={() => fetchWorkers(true)}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-brand-400' : ''}`} />
+              <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
           </div>
 
           <div className="overflow-x-auto">

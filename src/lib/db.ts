@@ -451,15 +451,85 @@ export const db = {
   async getWorkers(): Promise<Worker[]> {
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
-      const { data, error } = await client
-        .from('workers')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!error && data) return data;
-      if (error) console.error('Supabase getWorkers error:', error);
+      try {
+        const { data: workers, error } = await client
+          .from('workers')
+          .select(`
+            *,
+            assignments:order_assignments(
+              id,
+              status,
+              order:orders(id, status)
+            )
+          `)
+          .order('created_at', { ascending: false });
+
+        if (!error && workers) {
+          return workers.map((w: any) => {
+            const assignments = Array.isArray(w.assignments) ? w.assignments : [];
+            const activeCount = assignments.filter((a: any) => {
+              const currentStatus = a.order?.status || a.status;
+              return ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY'].includes(currentStatus);
+            }).length;
+
+            const completedCount = assignments.filter((a: any) => {
+              const currentStatus = a.order?.status || a.status;
+              return currentStatus === 'DELIVERED';
+            }).length;
+
+            return {
+              id: w.id,
+              telegram_user_id: w.telegram_user_id,
+              telegram_username: w.telegram_username,
+              full_name: w.full_name,
+              phone_number: w.phone_number,
+              role: w.role,
+              is_active: w.is_active,
+              created_at: w.created_at,
+              active_orders: activeCount,
+              total_completed_orders: completedCount
+            };
+          });
+        }
+        if (error) console.error('Supabase getWorkers join error, falling back:', error);
+
+        // Fallback aggregation
+        const { data: baseWorkers } = await client.from('workers').select('*').order('created_at', { ascending: false });
+        const { data: allAssignments } = await client.from('order_assignments').select('*');
+        if (baseWorkers) {
+          return baseWorkers.map((w: any) => {
+            const wAssignments = (allAssignments || []).filter((a: any) => a.worker_id === w.id);
+            const activeCount = wAssignments.filter((a: any) => ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY'].includes(a.status)).length;
+            const completedCount = wAssignments.filter((a: any) => a.status === 'DELIVERED').length;
+            return {
+              ...w,
+              active_orders: activeCount,
+              total_completed_orders: completedCount
+            };
+          });
+        }
+      } catch (err) {
+        console.error('Supabase getWorkers error:', err);
+      }
       return [];
     }
-    return Array.from(mockStore.workers.values());
+
+    const orders = Array.from(mockStore.orders.values());
+    const workers = Array.from(mockStore.workers.values());
+    return workers.map(w => {
+      const workerOrders = orders.filter(o => 
+        o.current_worker?.id === w.id || 
+        o.current_worker?.telegram_user_id === w.telegram_user_id ||
+        o.assignments?.some(a => a.worker_id === w.id || a.worker?.telegram_user_id === w.telegram_user_id)
+      );
+      const activeCount = workerOrders.filter(o => ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY'].includes(o.status)).length;
+      const completedCount = workerOrders.filter(o => o.status === 'DELIVERED').length;
+      return {
+        ...w,
+        active_orders: activeCount,
+        total_completed_orders: completedCount
+      };
+    });
   },
 
   // CONVERSATIONS & CHAT
