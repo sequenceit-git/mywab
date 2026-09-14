@@ -104,6 +104,25 @@ export const createOrderTool = tool(
     customerNotes?: string;
   }) => {
     try {
+      // 0. ANTI-DUPLICATE GUARD: Check if an order was placed by this customer in the last 5 minutes
+      const existingRecentOrders = await db.getOrdersByPhone(params.customerPhone);
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      const recentOrder = existingRecentOrders.find(o => new Date(o.created_at).getTime() > fiveMinutesAgo);
+
+      if (recentOrder) {
+        console.log(`[Anti-Duplicate Guard] Blocked duplicate order creation for ${params.customerPhone}. Existing order: ${recentOrder.order_id}`);
+        return JSON.stringify({
+          success: true,
+          already_created: true,
+          order_id: recentOrder.order_id,
+          total_amount: recentOrder.total_amount,
+          delivery_phone: recentOrder.delivery_phone,
+          delivery_address: recentOrder.delivery_address.address,
+          status: recentOrder.status,
+          message: `Order #${recentOrder.order_id} has ALREADY been created and confirmed just moments ago. DO NOT CREATE ANOTHER ORDER. Reassure the customer that order #${recentOrder.order_id} is already placed and confirmed.`
+        });
+      }
+
       // 1. Resolve customer
       const user = await db.getOrCreateUser(params.customerPhone, params.customerName, params.deliveryAddress);
 
@@ -156,8 +175,7 @@ export const createOrderTool = tool(
       // 4. Automatically Forward to Telegram Worker Group
       await telegramBot.dispatchNewOrder(order);
 
-      // 5. Send Order Confirmation Template via WhatsApp
-      await whatsappService.sendOrderConfirmation(order);
+      // Note: We do NOT send a separate template message here because the agent sends the full confirmation reply directly via WhatsApp
 
       return JSON.stringify({
         success: true,
@@ -173,7 +191,7 @@ export const createOrderTool = tool(
   },
   {
     name: 'create_order',
-    description: 'Create a confirmed order for the customer once product, quantity, customer name, delivery address, and phone number are gathered.',
+    description: 'Create a NEW confirmed order for the customer. ONLY invoke this when placing a brand new order, NEVER when customer asks if an order is confirmed or inquires about status.',
     schema: z.object({
       customerPhone: z.string().describe('Customer phone number (e.g. +88017XXXXXXXX)'),
       customerName: z.string().describe('Full name of the customer'),
@@ -213,6 +231,7 @@ export const trackOrderTool = tool(
       status_bn: statusTranslations[order.status] || order.status,
       total_amount: `৳${order.total_amount}`,
       created_at: order.created_at,
+      delivery_address: order.delivery_address?.address,
       worker: order.current_worker ? order.current_worker.full_name : 'Not yet assigned'
     });
   },
@@ -225,10 +244,49 @@ export const trackOrderTool = tool(
   }
 );
 
+export const getCustomerOrdersTool = tool(
+  async ({ customerPhone }: { customerPhone: string }) => {
+    const orders = await db.getOrdersByPhone(customerPhone);
+    if (orders.length === 0) {
+      return JSON.stringify({ found: false, message: `No previous orders found for ${customerPhone}.` });
+    }
+
+    const statusTranslations: Record<string, string> = {
+      PENDING_PAYMENT: 'পেমেন্ট প্রক্রিয়াধীন (Pending Payment)',
+      PENDING_CLAIM: 'কর্মী গ্রহণের অপেক্ষায় (Waiting for Worker Assignment)',
+      CLAIMED: 'কর্মী অর্ডার গ্রহণ করেছেন এবং প্রসেস করছেন (Claimed & Processing)',
+      PROCESSING: 'অর্ডার প্যাকেজিং ও প্রসেসিং চলছে (Packaging)',
+      OUT_FOR_DELIVERY: 'ডেলিভারির জন্য বের হয়েছে (Out for Delivery)',
+      DELIVERED: 'ডেলিভারি সম্পন্ন (Successfully Delivered)',
+      CANCELLED: 'বাতিল করা হয়েছে (Cancelled)'
+    };
+
+    return JSON.stringify({
+      found: true,
+      orders: orders.slice(0, 3).map(o => ({
+        order_id: o.order_id,
+        status: o.status,
+        status_bn: statusTranslations[o.status] || o.status,
+        total_amount: `৳${o.total_amount}`,
+        created_at: o.created_at,
+        address: o.delivery_address?.address,
+        items: o.items?.map(i => `${i.product_name} x ${i.quantity}`).join(', ')
+      }))
+    });
+  },
+  {
+    name: 'get_customer_orders',
+    description: 'Check active or recent orders placed by this customer using their phone number. Use when customer asks about confirmation, status, or if order went through.',
+    schema: z.object({
+      customerPhone: z.string().describe('Customer phone number (e.g. +88017XXXXXXXX)')
+    })
+  }
+);
+
 // 2. LangChain + OpenAI Conversational AI Agent Core
 
 export class LangChainAgentService {
-  private tools = [searchCatalogTool, getFaqTool, createOrderTool, trackOrderTool];
+  private tools = [searchCatalogTool, getFaqTool, createOrderTool, trackOrderTool, getCustomerOrdersTool];
 
   getLLM(): ChatOpenAI | null {
     if (!env.openai.apiKey) return null;
@@ -254,8 +312,9 @@ export class LangChainAgentService {
     return new ChatOpenAI(config);
   }
 
-  getSystemPrompt(): string {
+  getSystemPrompt(customerPhone?: string): string {
     return `You are "WapBot", the intelligent, friendly, and helpful WhatsApp AI shopping assistant for WapBusiness.
+Current Customer Phone: ${customerPhone || 'Unknown'}
 
 YOUR GOALS:
 1. Help customers inquire about products, pricing, stock, colors, sizes, and store policies.
@@ -265,9 +324,14 @@ YOUR GOALS:
    - Customer Full Name
    - Detailed Delivery Address (House/Road/Area/District)
    - Phone number
-4. Once all details are confirmed with the customer, invoke the \`create_order\` tool.
+4. Once all details are gathered and confirmed with the customer, invoke \`create_order\` ONCE.
 5. Answer questions about delivery charges (Inside Dhaka ৳60, Outside Dhaka ৳120), payment methods (Cash on Delivery, bKash, Nagad), and returns using \`get_faq\`.
-6. Look up order statuses using \`track_order\` when given an Order ID.
+6. Look up order statuses using \`track_order\` or \`get_customer_orders\` when given an Order ID or when customer asks if their order is confirmed/placed.
+
+CRITICAL ANTI-DUPLICATE ORDER RULES (STRICT):
+- NEVER call \`create_order\` if the customer asks "Confirm hoyese?", "অর্ডার কি কনফার্ম হয়েছে?", "Is my order confirmed?", "Status ki?", "Track order", or asks about order status.
+- If an order has already been created in this conversation or if the customer is asking whether their order went through, check \`get_customer_orders\` or use the existing Order ID to reassure them that their order is ALREADY confirmed and being prepared by the delivery team. DO NOT call \`create_order\` again!
+- ONLY call \`create_order\` when the customer explicitly asks to place a brand new, separate order for additional items.
 
 CONVERSATIONAL RULES:
 - Be polite, concise, and natural for WhatsApp messaging.
@@ -299,31 +363,37 @@ CONVERSATIONAL RULES:
         const conv = conversations.find(c => c.id === conversationId);
         const historyMessages = conv?.messages || [];
 
+        // Exclude the very last message if it matches messageText to avoid duplication
+        const pastMessages = (historyMessages.length > 0 && historyMessages[historyMessages.length - 1].content === messageText)
+          ? historyMessages.slice(0, -1)
+          : historyMessages;
+
         const formattedHistory: Array<['system' | 'human' | 'ai', string]> = [
-          ['system', this.getSystemPrompt()]
+          ['system', this.getSystemPrompt(phone)]
         ];
 
-        historyMessages.slice(-6).forEach(m => {
+        pastMessages.slice(-6).forEach(m => {
           formattedHistory.push([m.sender === 'CUSTOMER' ? 'human' : 'ai', m.content]);
         });
 
-        formattedHistory.push(['human', `[Customer Phone: ${phone}] ${messageText}`]);
+        formattedHistory.push(['human', messageText]);
 
         const response = await modelWithTools.invoke(formattedHistory);
 
         // Handle tool calls
         if (response.tool_calls && response.tool_calls.length > 0) {
           for (const call of response.tool_calls) {
-            const toolMap: Record<string, typeof searchCatalogTool | typeof getFaqTool | typeof createOrderTool | typeof trackOrderTool> = {
+            const toolMap: Record<string, any> = {
               search_catalog: searchCatalogTool,
               get_faq: getFaqTool,
               create_order: createOrderTool,
-              track_order: trackOrderTool
+              track_order: trackOrderTool,
+              get_customer_orders: getCustomerOrdersTool
             };
 
             const matchedTool = toolMap[call.name];
             if (matchedTool) {
-              const toolResult = await (matchedTool as unknown as { invoke: (args: Record<string, unknown>) => Promise<string> }).invoke(call.args);
+              const toolResult = await matchedTool.invoke(call.args);
               
               const followUp = await llm.invoke([
                 ...formattedHistory,
@@ -371,7 +441,7 @@ CONVERSATIONAL RULES:
     const lowerUser = userText.toLowerCase();
     const lowerReply = aiReply.toLowerCase();
 
-    if (lowerReply.includes('order id') || lowerReply.includes('নিশ্চিত') || lowerReply.includes('confirmed')) {
+    if (lowerReply.includes('order id') || lowerReply.includes('নিশ্চিত') || lowerReply.includes('confirmed') || lowerReply.includes('wap-')) {
       return [
         { id: 'btn_track', title: '📦 অর্ডার ট্র্যাক' },
         { id: 'btn_catalog', title: '🛍️ আরও পণ্য' },
@@ -408,25 +478,33 @@ CONVERSATIONAL RULES:
   private async fallbackEngineStructured(phone: string, text: string): Promise<StructuredAgentResponse> {
     const lower = text.toLowerCase().trim();
 
-    // 1. Order Tracking
-    if (lower.includes('wap-') || lower.includes('ট্র্যাক') || lower.includes('track') || lower.includes('status')) {
+    // 1. Order Status / Confirmation Check
+    if (
+      lower.includes('confirm') ||
+      lower.includes('কনফার্ম') ||
+      lower.includes('নিশ্চিত') ||
+      lower.includes('status') ||
+      lower.includes('ট্র্যাক') ||
+      lower.includes('track') ||
+      lower.includes('wap-') ||
+      lower.includes('hoyese') ||
+      lower.includes('হয়েছে')
+    ) {
       const match = text.match(/WAP-\d{8}-\d{4}/i);
+      let order = null;
       if (match) {
-        const orderId = match[0].toUpperCase();
-        const order = await db.getOrderByCode(orderId);
-        if (order) {
-          return {
-            text: `📦 *অর্ডার স্ট্যাটাস (Order Status)*\n\nOrder ID: \`${order.order_id}\`\nস্ট্যাটাস: *${order.status}*\nমোট মূল্য: ৳${order.total_amount}\nঠিকানা: ${order.delivery_address.address}\n\nআপনার যেকোনো প্রয়োজনে আমরা সর্বদা প্রস্তুত! 😊`,
-            buttons: [
-              { id: 'btn_catalog', title: '🛍️ পণ্য তালিকা' },
-              { id: 'btn_support', title: '👤 কাস্টমার কেয়ার' }
-            ]
-          };
-        }
+        order = await db.getOrderByCode(match[0].toUpperCase());
+      } else {
+        const recentOrders = await db.getOrdersByPhone(phone);
+        order = recentOrders[0] || null;
+      }
+
+      if (order) {
         return {
-          text: `দুঃখিত, \`${orderId}\` নম্বরের কোনো অর্ডার খুঁজে পাওয়া যায়নি। অনুগ্রহ করে সঠিক Order ID প্রদান করুন।`,
+          text: `🎉 *অর্ডার নিশ্চিতকরণ ও স্ট্যাটাস*\n\nপ্রিয় গ্রাহক, আপনার অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে।\n\n📦 *Order ID:* \`${order.order_id}\`\n📊 *বর্তমান স্ট্যাটাস:* *${order.status}*\n💰 *মোট মূল্য:* ৳${order.total_amount}\n📍 *ডেলিভারি ঠিকানা:* ${order.delivery_address?.address || 'N/A'}\n\nআমাদের ডেলিভারি টিম খুব দ্রুত আপনার সাথে যোগাযোগ করবে! 🚚✨`,
           buttons: [
-            { id: 'btn_catalog', title: '🛍️ পণ্য তালিকা' },
+            { id: `track:${order.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
+            { id: 'btn_catalog', title: '🛍️ আরও পণ্য' },
             { id: 'btn_support', title: '👤 কাস্টমার কেয়ার' }
           ]
         };
@@ -471,15 +549,32 @@ CONVERSATIONAL RULES:
       };
     }
 
-    // 5. Complete Order Placer
-    if (lower.includes('নাম') || lower.includes('ঠিকানা') || lower.includes('ধানমন্ডি') || lower.includes('অর্ডার') || lower.includes('order')) {
-      // Check if address & name are present in text
+    // 5. Complete Order Placer (Only if name AND address explicitly provided AND no order created in last 5 min)
+    if (
+      (lower.includes('নাম') && lower.includes('ঠিকানা')) ||
+      (lower.includes('name:') && lower.includes('address:'))
+    ) {
+      const recentOrders = await db.getOrdersByPhone(phone);
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      const recentOrder = recentOrders.find(o => new Date(o.created_at).getTime() > fiveMinutesAgo);
+
+      if (recentOrder) {
+        return {
+          text: `🎉 প্রিয় গ্রাহক, আপনার অর্ডারটি (\`${recentOrder.order_id}\`) ইতিমধ্যে তৈরি করা হয়েছে।\n\n💰 মোট মূল্য: ৳${recentOrder.total_amount}\n📍 ঠিকানা: ${recentOrder.delivery_address?.address}\n\nআমাদের টিম শীঘ্রই ডেলিভারির জন্য যোগাযোগ করবে!`,
+          buttons: [
+            { id: `track:${recentOrder.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
+            { id: 'btn_catalog', title: '🛍️ আরও পণ্য' },
+            { id: 'btn_support', title: '👤 সহায়তা' }
+          ]
+        };
+      }
+
       const nameMatch = text.match(/(?:নাম|name)[:\s]+([^,\n]+)/i);
       const addressMatch = text.match(/(?:ঠিকানা|address)[:\s]+([^,\n]+)/i);
 
-      if (nameMatch || addressMatch || lower.includes('ধানমন্ডি') || lower.includes('ঢাকা') || lower.includes('road')) {
-        const customerName = nameMatch ? nameMatch[1].trim() : 'Customer';
-        const address = addressMatch ? addressMatch[1].trim() : 'House 12, Road 4, Dhanmondi, Dhaka';
+      if (nameMatch && addressMatch) {
+        const customerName = nameMatch[1].trim();
+        const address = addressMatch[1].trim();
 
         const products = await db.getProducts();
         const chosenProduct = products[0] || { id: 'prod-1', name_bn: 'Classic Polo Shirt', name_en: 'Classic Polo Shirt', price: 650 };

@@ -301,6 +301,39 @@ export const db = {
     return null;
   },
 
+  async getOrdersByPhone(phone: string): Promise<Order[]> {
+    const cleanPhone = phone.trim();
+    const digitsOnly = cleanPhone.replace(/\D/g, '');
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      const { data, error } = await client
+        .from('orders')
+        .select(`
+          *,
+          customer:users(*),
+          items:order_items(*),
+          assignments:order_assignments(*, worker:workers(*))
+        `)
+        .or(`delivery_phone.eq.${cleanPhone},delivery_phone.eq.${digitsOnly},delivery_phone.eq.+${digitsOnly}`)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      if (!error && data) {
+        return data.map((o: Order) => {
+          const lastAssignment = o.assignments && o.assignments.length > 0 ? o.assignments[o.assignments.length - 1] : null;
+          return {
+            ...o,
+            current_worker: lastAssignment?.worker || undefined
+          };
+        });
+      }
+      if (error) console.error('Supabase getOrdersByPhone error:', error);
+      return [];
+    }
+    return Array.from(mockStore.orders.values())
+      .filter(o => o.delivery_phone.replace(/\D/g, '') === digitsOnly)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  },
+
   // ATOMIC ORDER CLAIM (Double-Claim Prevention)
   async claimOrderAtomic(params: {
     orderIdCode: string;
