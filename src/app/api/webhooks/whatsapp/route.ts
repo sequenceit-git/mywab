@@ -76,9 +76,9 @@ export async function POST(request: NextRequest) {
               const orderId = replyId.replace('track:', '').trim();
               messageText = `Track order ${orderId}`;
             } else if (replyId === 'btn_60uc') {
-              messageText = '60 UC';
+              messageText = '60 UC nibo';
             } else if (replyId === 'btn_385uc') {
-              messageText = '385 UC';
+              messageText = '385 UC nibo';
             } else if (replyId === 'btn_catalog') {
               messageText = 'UC price list koto';
             } else if (replyId === 'btn_website') {
@@ -92,9 +92,9 @@ export async function POST(request: NextRequest) {
             if (payload.startsWith('track:')) {
               messageText = `Track order ${payload.replace('track:', '').trim()}`;
             } else if (payload === 'btn_60uc') {
-              messageText = '60 UC';
+              messageText = '60 UC nibo';
             } else if (payload === 'btn_385uc') {
-              messageText = '385 UC';
+              messageText = '385 UC nibo';
             } else if (payload === 'btn_catalog') {
               messageText = 'UC price list koto';
             } else if (payload === 'btn_website') {

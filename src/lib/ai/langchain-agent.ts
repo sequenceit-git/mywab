@@ -323,6 +323,7 @@ function getContextualButtons(params: {
   const { rawText, messageText, sessionState, createdOrderResult } = params;
   const lowerMsg = messageText.toLowerCase();
   const lowerText = rawText.toLowerCase();
+  const hasSelectedPackage = Boolean(sessionState.draftOrder?.items && sessionState.draftOrder.items.length > 0);
 
   // 1. If an order was placed, offer Track Order & Website buttons
   const orderId = createdOrderResult?.order_id || sessionState.lastOrderId;
@@ -341,8 +342,26 @@ function getContextualButtons(params: {
     return [];
   }
 
-  // 3. If customer is asking for prices or exploring packages, offer package selection buttons
-  const hasSelectedPackage = Boolean(sessionState.draftOrder?.items && sessionState.draftOrder.items.length > 0);
+  // 3. If customer is viewing the price list / catalog, offer direct action buttons to order top packages
+  const isViewingPriceList = 
+    lowerMsg.includes('price list') || 
+    lowerMsg.includes('প্রাইস লিস্ট') || 
+    lowerMsg.includes('rate list') || 
+    lowerMsg.includes('রেট লিস্ট') || 
+    lowerMsg.includes('full price') || 
+    lowerMsg === 'btn_catalog' || 
+    lowerText.includes('price list') || 
+    lowerText.includes('প্রাইস লিস্ট');
+
+  if (isViewingPriceList && !hasSelectedPackage) {
+    return [
+      { id: 'btn_60uc', title: '⚡ 60 UC (৳115)' },
+      { id: 'btn_385uc', title: '👑 385 UC (৳710)' },
+      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
+    ];
+  }
+
+  // 4. If customer is asking for prices of a single item or exploring packages, offer package selection buttons
   if ((lowerMsg.includes('uc') || lowerMsg.includes('price') || lowerMsg.includes('dam') || lowerMsg.includes('koto') || lowerMsg.includes('প্যাকেজ') || lowerText.includes('কোন uc')) && !hasSelectedPackage) {
     return [
       { id: 'btn_60uc', title: '⚡ 60 UC (৳115)' },
@@ -351,7 +370,7 @@ function getContextualButtons(params: {
     ];
   }
 
-  // 4. If greeting / general start, provide Catalog & Website buttons
+  // 5. If greeting / general start, provide Catalog & Website buttons
   const isGreeting = ['hi', 'hello', 'hlw', 'hey', 'vai', 'bhai', 'ভাই', 'হ্যালো'].some(g => lowerMsg.startsWith(g) || lowerMsg === g);
   if (isGreeting && !hasSelectedPackage) {
     return [

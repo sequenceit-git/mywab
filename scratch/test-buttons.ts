@@ -17,7 +17,7 @@ async function testButtons() {
   console.log('\n--- 2. Testing Button: btn_60uc (⚡ 60 UC) ---');
   const res2 = await langchainAgent.processStructuredMessage({
     phone,
-    messageText: '60 UC',
+    messageText: '60 UC nibo',
     conversationId: conv.id
   });
   console.log('Response:', res2.text);

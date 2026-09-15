@@ -20,12 +20,16 @@ export const searchCatalogTool = tool(
 
     return JSON.stringify({
       count: results.length,
+      formatted_catalog: results
+        .filter(p => p.price > 0)
+        .map(p => `• ${p.name_en || p.name_bn} : ৳${p.price}`)
+        .join('\n'),
       products: results.map(p => ({
         id: p.id,
         sku: p.sku,
         name_en: p.name_en,
         name_bn: p.name_bn,
-        price: `৳${p.price}`,
+        price: p.price > 0 ? `৳${p.price}` : 'লাইভ রেট জানতে ইনবক্সে বলুন',
         category: p.category,
         description_bn: p.description_bn,
         description_en: p.description_en
