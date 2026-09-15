@@ -5,37 +5,28 @@ import { env } from '@/lib/config/env';
 import { WhatsAppButton } from '@/lib/whatsapp/service';
 import { ConversationSessionState } from '@/types';
 import {
-  searchCatalogTool,
   getFaqTool,
   updateDraftOrderTool,
   createOrderTool,
-  trackOrderTool,
-  getCustomerOrdersTool
+  trackOrderTool
 } from './tools';
 import { buildSystemPrompt } from './prompts';
-import { extractSlotsFromMessage, isAffirmativePhrase } from './slot-extractor';
+import { extractSlotsFromMessage, isAffirmativePhrase, isResetIntent } from './slot-extractor';
 import { fallbackEngineStructured, StructuredAgentResponse } from './fallback-engine';
 import { orderStateGraph } from './order-graph';
 
 export type { StructuredAgentResponse, WhatsAppButton };
 export {
-  searchCatalogTool,
   getFaqTool,
   updateDraftOrderTool,
   createOrderTool,
   trackOrderTool,
-  getCustomerOrdersTool,
   orderStateGraph
 };
 
 export class LangChainAgentService {
   private tools = [
-    searchCatalogTool,
-    getFaqTool,
-    updateDraftOrderTool,
-    createOrderTool,
-    trackOrderTool,
-    getCustomerOrdersTool
+    getFaqTool
   ];
 
   private getLLM() {
@@ -54,8 +45,6 @@ export class LangChainAgentService {
   getSystemPrompt(params: {
     customerPhone: string;
     sessionState: ConversationSessionState;
-    products?: any[];
-    policies?: any[];
     faqs?: any[];
   }): string {
     return buildSystemPrompt(params);
@@ -71,6 +60,15 @@ export class LangChainAgentService {
   }): Promise<StructuredAgentResponse> {
     const { phone, messageText, conversationId } = params;
 
+    // 0. Explicit User Reset / Cancel Intent
+    if (isResetIntent(messageText)) {
+      db.clearSessionDraft(conversationId);
+      return {
+        text: 'আপনার অর্ডার ড্রাফট রিসেট করা হয়েছে ভাইয়া। নতুনভাবে কী প্যাকেজ নিতে চান বলুন! 🎮',
+        buttons: undefined
+      };
+    }
+
     // 1. Fetch current session state & conversation history
     let sessionState = db.getSessionState(conversationId);
     let draft = sessionState.draftOrder;
@@ -79,9 +77,11 @@ export class LangChainAgentService {
     const { extractedUid, extractedTrx, extractedPaymentMethod, extractedItems, parallelOrders } = extractSlotsFromMessage(messageText);
 
     if (extractedUid || extractedTrx || extractedPaymentMethod || extractedItems || parallelOrders) {
-      const updatedUid = extractedUid || draft.playerUid;
-      const updatedTrx = extractedTrx || draft.trxId;
-      const updatedPayment = extractedPaymentMethod || draft.paymentMethod;
+      // If customer specifies a new package while session is IDLE, start a fresh draft
+      const isFreshPackage = extractedItems && extractedItems.length > 0 && sessionState.step === 'IDLE';
+      const updatedUid = isFreshPackage ? (extractedUid || undefined) : (extractedUid || draft.playerUid);
+      const updatedTrx = isFreshPackage ? (extractedTrx || undefined) : (extractedTrx || draft.trxId);
+      const updatedPayment = isFreshPackage ? (extractedPaymentMethod || undefined) : (extractedPaymentMethod || draft.paymentMethod);
       const updatedItems = extractedItems && extractedItems.length > 0 ? extractedItems : draft.items;
 
       let nextStep = sessionState.step;
@@ -110,12 +110,14 @@ export class LangChainAgentService {
       draft = sessionState.draftOrder;
     }
 
-    // 2. Check Affirmation / Complete Slot Fast-Path (When all slots including payment are already complete or user confirms after payment)
+    // 2. Check Affirmation / Complete Slot Fast-Path
     const isAffirmative = isAffirmativePhrase(messageText);
-    const hasTopUpSlots = Boolean(draft.items && draft.items.length > 0 && draft.playerUid);
-    const hasCompleteOrder = Boolean(hasTopUpSlots && draft.trxId);
+    const hasValidUid = Boolean(draft.playerUid && /^\d{5,12}$/.test(draft.playerUid.trim()));
+    const hasValidTrx = Boolean(draft.trxId && draft.trxId.trim().length >= 4);
+    const hasTopUpSlots = Boolean(draft.items && draft.items.length > 0 && hasValidUid);
+    const hasCompleteOrder = Boolean(hasTopUpSlots && hasValidTrx);
 
-    if (hasCompleteOrder || (sessionState.step === 'AWAITING_CONFIRMATION' && isAffirmative && draft.trxId)) {
+    if (hasCompleteOrder || (sessionState.step === 'AWAITING_CONFIRMATION' && isAffirmative && hasValidTrx)) {
       console.log(`[AI Fast-Path] Complete top-up slots / affirmative response received. Placing top-up order directly...`);
       const targetPhone = draft.customerPhone || phone;
       const targetName = draft.customerName || 'PUBG Player';
@@ -137,6 +139,7 @@ export class LangChainAgentService {
 
       const toolResult = JSON.parse(toolResultRaw);
       if (toolResult.success) {
+        db.clearSessionDraft(conversationId, toolResult.order_id);
         const text = 
 `🎉 *টপ-আপ অর্ডার সফলভাবে গ্রহণ করা হয়েছে!*
 
@@ -149,20 +152,11 @@ export class LangChainAgentService {
 
 আপনার টপ-আপ প্রসেসিং শুরু হয়েছে। খুব শীঘ্রই ইউসি আপনার আইডিতে যুক্ত হয়ে যাবে! 🚀✨`;
 
-        const buttons: WhatsAppButton[] = [
-          { id: `track:${toolResult.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
-          { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-          { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-        ];
-
-        return { text, buttons, createdOrder: toolResult };
+        return { text, buttons: undefined, createdOrder: toolResult };
       }
     }
 
-    const activeProducts = await db.getProducts();
-    const activePolicies = await db.getAIPolicies();
     const activeFaqs = await db.getFAQs();
-
     const llm = this.getLLM();
 
     // 3. Primary Path: Intelligent OpenAI LLM with Tools
@@ -182,8 +176,6 @@ export class LangChainAgentService {
         const systemPromptStr = this.getSystemPrompt({
           customerPhone: phone,
           sessionState,
-          products: activeProducts,
-          policies: activePolicies,
           faqs: activeFaqs
         });
 
@@ -191,7 +183,8 @@ export class LangChainAgentService {
           new SystemMessage(systemPromptStr)
         ];
 
-        pastMessages.slice(-8).forEach(m => {
+        // Maintain full multi-turn conversational memory (last 16 messages)
+        pastMessages.slice(-16).forEach(m => {
           if (m.sender === 'CUSTOMER') {
             formattedHistory.push(new HumanMessage(m.content));
           } else {
@@ -235,30 +228,17 @@ export class LangChainAgentService {
           const finalResponse = await llm.invoke(finalMessages);
           const rawText = String(finalResponse.content || '');
 
-          const dynamicButtons = getContextualButtons({
-            rawText,
-            messageText,
-            sessionState,
-            createdOrderResult
-          });
-
           return {
             text: rawText,
-            buttons: dynamicButtons.length > 0 ? dynamicButtons : undefined,
+            buttons: undefined,
             createdOrder: createdOrderResult
           };
         }
 
         const rawText = String(response.content || '');
-        const dynamicButtons = getContextualButtons({
-          rawText,
-          messageText,
-          sessionState
-        });
-
         return {
           text: rawText,
-          buttons: dynamicButtons.length > 0 ? dynamicButtons : undefined
+          buttons: undefined
         };
       } catch (err) {
         console.error('[LangChain Agent Exception, falling back to graph/rules]:', err);
@@ -285,7 +265,7 @@ export class LangChainAgentService {
       if (graphResult.finalResponseText) {
         return {
           text: graphResult.finalResponseText,
-          buttons: graphResult.buttons,
+          buttons: undefined,
           createdOrder: graphResult.createdOrders?.[0]
         };
       }
@@ -294,7 +274,12 @@ export class LangChainAgentService {
     }
 
     // 5. Ultimate Fallback: Rule Engine
-    return fallbackEngineStructured({ phone, messageText, conversationId });
+    const fallbackRes = await fallbackEngineStructured({ phone, messageText, conversationId });
+    return {
+      text: fallbackRes.text,
+      buttons: undefined,
+      createdOrder: fallbackRes.createdOrder
+    };
   }
 
   async generateResponse(params: {
@@ -314,72 +299,4 @@ export class LangChainAgentService {
 export const langchainAgent = new LangChainAgentService();
 export const langChainAgent = langchainAgent;
 
-function getContextualButtons(params: {
-  rawText: string;
-  messageText: string;
-  sessionState: ConversationSessionState;
-  createdOrderResult?: any;
-}): WhatsAppButton[] {
-  const { rawText, messageText, sessionState, createdOrderResult } = params;
-  const lowerMsg = messageText.toLowerCase();
-  const lowerText = rawText.toLowerCase();
-  const hasSelectedPackage = Boolean(sessionState.draftOrder?.items && sessionState.draftOrder.items.length > 0);
-
-  // 1. If an order was placed, offer Track Order & Website buttons
-  const orderId = createdOrderResult?.order_id || sessionState.lastOrderId;
-  if (orderId && (createdOrderResult?.order_id || lowerText.includes('order id:') || lowerText.includes('অর্ডার গ্রহণ') || lowerText.includes('অর্ডার ক্রিয়েট'))) {
-    return [
-      { id: `track:${orderId}`, title: '📦 অর্ডার ট্র্যাক' },
-      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-    ];
-  }
-
-  // 2. If the AI is asking for Player UID or payment TrxID / last 4 digits, DO NOT HOLD/SHOW BUTTONS (user needs keyboard)
-  const isAskingUid = lowerText.includes('player uid') || lowerText.includes('uid টি') || lowerText.includes('ইউআইডি') || lowerText.includes('আইডি দিন') || lowerText.includes('uid দিন');
-  const isAskingPayment = lowerText.includes('trxid') || lowerText.includes('ট্রানজেকশন') || lowerText.includes('লাস্ট ৪') || lowerText.includes('send money') || lowerText.includes('সেন্ড মানি') || lowerText.includes('টাকা সেন্ড');
-
-  if (isAskingUid || isAskingPayment || sessionState.step === 'COLLECTING_DETAILS' || sessionState.step === 'AWAITING_PAYMENT') {
-    return [];
-  }
-
-  // 3. If customer is viewing the price list / catalog, offer direct action buttons to order top packages
-  const isViewingPriceList = 
-    lowerMsg.includes('price list') || 
-    lowerMsg.includes('প্রাইস লিস্ট') || 
-    lowerMsg.includes('rate list') || 
-    lowerMsg.includes('রেট লিস্ট') || 
-    lowerMsg.includes('full price') || 
-    lowerMsg === 'btn_catalog' || 
-    lowerText.includes('price list') || 
-    lowerText.includes('প্রাইস লিস্ট');
-
-  if (isViewingPriceList && !hasSelectedPackage) {
-    return [
-      { id: 'btn_60uc', title: '⚡ 60 UC (৳115)' },
-      { id: 'btn_385uc', title: '👑 385 UC (৳710)' },
-      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-    ];
-  }
-
-  // 4. If customer is asking for prices of a single item or exploring packages, offer package selection buttons
-  if ((lowerMsg.includes('uc') || lowerMsg.includes('price') || lowerMsg.includes('dam') || lowerMsg.includes('koto') || lowerMsg.includes('প্যাকেজ') || lowerText.includes('কোন uc')) && !hasSelectedPackage) {
-    return [
-      { id: 'btn_60uc', title: '⚡ 60 UC (৳115)' },
-      { id: 'btn_385uc', title: '👑 385 UC (৳710)' },
-      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' }
-    ];
-  }
-
-  // 5. If greeting / general start, provide Catalog & Website buttons
-  const isGreeting = ['hi', 'hello', 'hlw', 'hey', 'vai', 'bhai', 'ভাই', 'হ্যালো'].some(g => lowerMsg.startsWith(g) || lowerMsg === g);
-  if (isGreeting && !hasSelectedPackage) {
-    return [
-      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-    ];
-  }
-
-  // Otherwise, no buttons
-  return [];
-}
 

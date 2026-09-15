@@ -30,20 +30,6 @@ export interface UserProfile {
   updated_at?: string;
 }
 
-export interface Product {
-  id: string;
-  sku: string;
-  name_en: string;
-  name_bn: string;
-  description_en: string | null;
-  description_bn: string | null;
-  price: number;
-  stock_qty: number;
-  category: string;
-  is_active: boolean;
-  created_at: string;
-}
-
 export interface FAQ {
   id: string;
   question_en: string;
@@ -52,18 +38,6 @@ export interface FAQ {
   answer_bn: string;
   category: string;
   is_active: boolean;
-  created_at: string;
-}
-
-export interface AIPolicy {
-  id: string;
-  type: 'DO' | 'DONT';
-  title: string;
-  rule_bn: string;
-  rule_en: string;
-  category: string;
-  is_active: boolean;
-  priority: number;
   created_at: string;
 }
 

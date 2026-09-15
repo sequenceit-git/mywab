@@ -50,12 +50,18 @@ export function extractSlotsFromMessage(messageText: string): ExtractedSlots {
 
   let extractedTrx: string | null = explicitTrxMatch ? explicitTrxMatch[1].trim() : null;
 
-  // Fallback standalone token: If a single word token (4-16 chars) is sent and not a UID or common word
+  // Fallback standalone token: Only if alphanumeric containing digits AND not matching common conversational words
   if (!extractedTrx) {
     const trimmed = messageText.trim();
-    if (/^[a-zA-Z0-9]{4,16}$/.test(trimmed) && !allUids.includes(trimmed)) {
+    const isAlphanumericCode = /^[a-zA-Z0-9]{4,16}$/.test(trimmed) && /\d/.test(trimmed);
+    if (isAlphanumericCode && !allUids.includes(trimmed)) {
       const lowerToken = trimmed.toLowerCase();
-      const ignoredWords = ['hello', 'bhai', 'acen', 'vaiya', 'koto', 'nibo', 'taka', 'send', 'koreci', 'korechi', 'dam', 'rate', 'price'];
+      const ignoredWords = [
+        'hello', 'bhai', 'acen', 'vaiya', 'koto', 'nibo', 'taka', 'send', 'koreci', 'korechi',
+        'dam', 'rate', 'price', 'clear', 'reset', 'cancel', 'start', 'prime', 'plus', 'growth',
+        'pack', 'order', 'track', 'status', 'thanks', 'dhonnobad', 'please', 'admin', 'button',
+        'website', 'discount', 'account', 'number', 'payment'
+      ];
       if (!ignoredWords.includes(lowerToken)) {
         extractedTrx = trimmed;
       }
@@ -130,3 +136,12 @@ export function isAffirmativePhrase(messageText: string): boolean {
   ];
   return affirmativeExactOrRegex.some(regex => regex.test(lower));
 }
+
+export function isResetIntent(messageText: string): boolean {
+  const lower = messageText.toLowerCase().trim();
+  const resetKeywords = [
+    'clear', 'reset', 'cancel', 'start', 'বাতিল', 'ক্লিয়ার', 'নতুন অর্ডার', 'start over', 'restart'
+  ];
+  return resetKeywords.includes(lower) || /^(?:cancel|clear|reset|বাতিল\s*করুন)$/i.test(lower);
+}
+

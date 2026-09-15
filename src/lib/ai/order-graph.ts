@@ -5,6 +5,7 @@ import { WhatsAppButton } from '@/lib/whatsapp/service';
 import { ConversationSessionState, ConversationDraftOrder } from '@/types';
 import { extractSlotsFromMessage, isAffirmativePhrase, ExtractedSlots } from './slot-extractor';
 import { createOrderTool, trackOrderTool, getCustomerOrdersTool } from './tools';
+import { EXACT_UC_PRICE_LIST } from './prompts';
 
 export const orderGraphCheckpointer = new MemorySaver();
 
@@ -212,25 +213,11 @@ async function handleCatalogAndFaqNode(state: OrderGraphState): Promise<Partial<
       if (isMatch) {
         return {
           finalResponseText: faq.answer_bn || faq.answer_en,
-          buttons: [
-            { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-            { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-          ]
+          buttons: undefined
         };
       }
     }
   }
-
-  // 2. Dynamic Catalog lookup
-  const allProducts = await db.getProducts();
-  const dynamicRateMap: Record<string, number> = {};
-  for (const p of allProducts) {
-    if (p.price > 0) {
-      const numMatch = p.name_en.match(/\d+/);
-      if (numMatch) dynamicRateMap[numMatch[0]] = p.price;
-    }
-  }
-  const getPrice = (uc: string, fallback: number) => dynamicRateMap[uc] || fallback;
 
   if (intent === 'GREETING') {
     const text = 
@@ -240,48 +227,18 @@ async function handleCatalogAndFaqNode(state: OrderGraphState): Promise<Partial<
 ⚡ ডেলিভারি সময়: মাত্র ৫–১৫ মিনিট (শুধুমাত্র Player UID প্রয়োজন)।
 🌐 ওয়েবসাইটে সরাসরি কিনতে ভিজিট করুন: https://www.dsdukan.com/# (পাবেন ২% ইনস্ট্যান্ট ডিসকাউন্ট!)
 
-নিচের বাটন চেপে বা আপনার কাঙ্ক্ষিত প্যাকেজ ও UID লিখে জানান:`;
+কী প্যাকেজ নিতে চান ভাইয়া?`;
 
     return {
       finalResponseText: text,
-      buttons: [
-        { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-        { id: 'btn_track', title: '📦 অর্ডার ট্র্যাক' },
-        { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-      ]
+      buttons: undefined
     };
   }
 
   // Default Catalog Response
-  const catalogText = 
-`✅ *NEW UPDATED PUBG UC & PACKAGE LIST (DS Dukan)*:
-
-• 60 UC : ৳${getPrice('60', 115)} BDT
-• 120 UC : ৳${getPrice('120', 230)} BDT
-• 180 UC : ৳${getPrice('180', 340)} BDT
-• 325 UC : ৳${getPrice('325', 600)} BDT
-• 385 UC [50 RP] : ৳${getPrice('385', 710)} BDT
-• 660 UC : ৳${getPrice('660', 1150)} BDT
-• 720 UC [100 RP] : ৳${getPrice('720', 1250)} BDT
-• 1045 UC : ৳${getPrice('1045', 1850)} BDT
-• 1800/3850/8100 UC : লাইভ রেট জানতে ইনবক্স করুন
-
-🎮 *GROWTH PACK:*
-• GP 1 : ৳${allProducts.find(p => p.sku === 'PUBG-GP-1')?.price || 150} | GP 2 : ৳${allProducts.find(p => p.sku === 'PUBG-GP-2')?.price || 390} | GP 3 : ৳${allProducts.find(p => p.sku === 'PUBG-GP-3')?.price || 590}
-
-👑 *PRIME SUBSCRIPTION:*
-• Prime (1M) : ৳${allProducts.find(p => p.sku === 'PUBG-PRIME-1M')?.price || 150} | Prime Plus (1M) : ৳${allProducts.find(p => p.sku === 'PUBG-PRIMEPLUS-1M')?.price || 1150}
-
-📌 *কোনো লগইন বা পাসওয়ার্ড লাগবে না, শুধুমাত্র Player UID প্রয়োজন।*
-🎁 ওয়েবসাইট (https://www.dsdukan.com/#) থেকে কিনলে পাচ্ছেন ২% অটো ডিসকাউন্ট!`;
-
   return {
-    finalResponseText: catalogText,
-    buttons: [
-      { id: 'btn_order_60', title: `⚡ 60 UC (৳${getPrice('60', 115)})` },
-      { id: 'btn_order_385', title: `👑 385 UC (৳${getPrice('385', 710)})` },
-      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-    ]
+    finalResponseText: EXACT_UC_PRICE_LIST,
+    buttons: undefined
   };
 }
 
@@ -306,7 +263,7 @@ async function handleSingleOrderNode(state: OrderGraphState): Promise<Partial<Or
 টপ-আপ সম্পন্ন করতে অনুগ্রহ করে আপনার সঠিক **Player UID** (যেমন: \`5123456789\`) লিখে পাঠান।`;
     return {
       finalResponseText: text,
-      buttons: [{ id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' }]
+      buttons: undefined
     };
   }
 
@@ -317,7 +274,7 @@ async function handleSingleOrderNode(state: OrderGraphState): Promise<Partial<Or
 `ধন্যবাদ! আপনার পেমেন্টটি ভেরিফাই করতে অনুগ্রহ করে আপনার বিকাশ/নগদ/রকেটের **TrxID** (যেমন: \`3dhhs6js\`) অথবা যে নাম্বার থেকে টাকা পাঠিয়েছেন তার শেষ ৪ সংখ্যা লিখে পাঠান। ⚡`;
       return {
         finalResponseText: text,
-        buttons: [{ id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }]
+        buttons: undefined
       };
     }
 
@@ -333,9 +290,7 @@ async function handleSingleOrderNode(state: OrderGraphState): Promise<Partial<Or
 • **Nagad (Personal):** \`01330719250\``;
     return {
       finalResponseText: text,
-      buttons: [
-        { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-      ]
+      buttons: undefined
     };
   }
 
@@ -368,17 +323,13 @@ async function handleSingleOrderNode(state: OrderGraphState): Promise<Partial<Or
     return {
       finalResponseText: text,
       createdOrders: [res],
-      buttons: [
-        { id: `track:${res.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
-        { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-        { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-      ]
+      buttons: undefined
     };
   }
 
   return {
     finalResponseText: `⚠️ অর্ডার তৈরিতে ত্রুটি: ${res.error || 'অনুগ্রহ করে আবার চেষ্টা করুন'}`,
-    buttons: [{ id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' }]
+    buttons: undefined
   };
 }
 
@@ -413,10 +364,7 @@ TrxID পাওয়ার পর সবগুলো অর্ডার একস�
 
     return {
       finalResponseText: text,
-      buttons: [
-        { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-        { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-      ]
+      buttons: undefined
     };
   }
 
@@ -483,11 +431,7 @@ ${successList}
   return {
     finalResponseText: text,
     createdOrders,
-    buttons: [
-      { id: `track:${createdOrders[0]?.order_id || 'recent'}`, title: '📦 অর্ডার ট্র্যাক' },
-      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-    ]
+    buttons: undefined
   };
 }
 
@@ -529,10 +473,7 @@ async function handleTrackingNode(state: OrderGraphState): Promise<Partial<Order
 
   return {
     finalResponseText: trackText,
-    buttons: [
-      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-    ]
+    buttons: undefined
   };
 }
 
@@ -550,10 +491,7 @@ async function handleGeneralGuideNode(state: OrderGraphState): Promise<Partial<O
 
   return {
     finalResponseText: text,
-    buttons: [
-      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-    ]
+    buttons: undefined
   };
 }
 

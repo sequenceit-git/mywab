@@ -30,7 +30,6 @@ export async function GET(request: NextRequest) {
     const client = supabaseAdmin || supabase;
     let dbConnected = false;
     let stats = {
-      productsCount: 0,
       ordersCount: 0,
       workersCount: 0,
       conversationsCount: 0,
@@ -40,23 +39,20 @@ export async function GET(request: NextRequest) {
     if (isSupabaseConfigured() && client) {
       try {
         const [
-          { count: prodCount, error: prodErr },
           { count: ordCount, error: ordErr },
           { count: workCount, error: workErr },
           { count: convCount, error: convErr },
           { count: faqCount, error: faqErr }
         ] = await Promise.all([
-          client.from('products').select('*', { count: 'exact', head: true }),
           client.from('orders').select('*', { count: 'exact', head: true }),
           client.from('workers').select('*', { count: 'exact', head: true }),
           client.from('conversations').select('*', { count: 'exact', head: true }),
           client.from('faqs').select('*', { count: 'exact', head: true })
         ]);
 
-        if (!prodErr) {
+        if (!ordErr) {
           dbConnected = true;
           stats = {
-            productsCount: prodCount || 0,
             ordersCount: ordCount || 0,
             workersCount: workCount || 0,
             conversationsCount: convCount || 0,

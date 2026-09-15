@@ -3,48 +3,6 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { telegramBot } from '@/lib/telegram/bot';
 
-export const searchCatalogTool = tool(
-  async ({ query }: { query: string }) => {
-    const products = await db.getProducts();
-    const cleanQuery = query.toLowerCase().trim();
-
-    const matched = products.filter(
-      p =>
-        p.name_en.toLowerCase().includes(cleanQuery) ||
-        p.name_bn.includes(cleanQuery) ||
-        p.category.toLowerCase().includes(cleanQuery) ||
-        p.sku.toLowerCase().includes(cleanQuery)
-    );
-
-    const results = (matched.length > 0 ? matched : products);
-
-    return JSON.stringify({
-      count: results.length,
-      formatted_catalog: results
-        .filter(p => p.price > 0)
-        .map(p => `• ${p.name_en || p.name_bn} : ৳${p.price}`)
-        .join('\n'),
-      products: results.map(p => ({
-        id: p.id,
-        sku: p.sku,
-        name_en: p.name_en,
-        name_bn: p.name_bn,
-        price: p.price > 0 ? `৳${p.price}` : 'লাইভ রেট জানতে ইনবক্সে বলুন',
-        category: p.category,
-        description_bn: p.description_bn,
-        description_en: p.description_en
-      }))
-    });
-  },
-  {
-    name: 'search_catalog',
-    description: 'Search for PUBG UC packages, Growth Packs, and Prime subscriptions in the DS Dukan catalog.',
-    schema: z.object({
-      query: z.string().describe('Package name, UC amount, or keyword (e.g. "60 UC", "385 UC", "growth pack", "prime", "uc rate")')
-    })
-  }
-);
-
 export const getFaqTool = tool(
   async ({ topic }: { topic: string }) => {
     const faqs = await db.getFAQs();
@@ -71,9 +29,9 @@ export const getFaqTool = tool(
   },
   {
     name: 'get_faq',
-    description: 'Look up answered Q&As: greetings ("bhai acen", "hlw"), pricing queries, delivery times (5-15 mins for website/chat orders), ordering instructions ("uc nibo vaiya"), login UC safety policy, payment accounts, and website discounts.',
+    description: 'Look up answered Q&As from the store knowledgebase for any customer questions, inquiries about delivery time, account safety, login requirements, trust, payment accounts, website discounts, or store policies.',
     schema: z.object({
-      topic: z.string().describe('Topic keyword or user query (e.g. "bhai acen", "delivery time", "login uc", "uc nibo", "payment", "discount")')
+      topic: z.string().describe('Search keyword or question topic (e.g. "delivery time", "is it safe", "login required", "payment accounts", "website discount", "instructions")')
     })
   }
 );
@@ -175,72 +133,54 @@ export const createOrderTool = tool(
         params.playerUid ? `PUBG UID: ${params.playerUid}` : undefined
       );
 
-      // 2. Resolve items against the live database catalog
-      const allProducts = await db.getProducts();
+      // 2. Resolve items against the fixed top-up catalog
+      const TOPUP_CATALOG = [
+        { sku: '60 UC', name: '৬০ ইউসি (60 UC)', price: 115 },
+        { sku: '120 UC', name: '১২০ ইউসি (120 UC)', price: 230 },
+        { sku: '180 UC', name: '১৮০ ইউসি (180 UC)', price: 340 },
+        { sku: '325 UC', name: '৩২৫ ইউসি (325 UC)', price: 600 },
+        { sku: '385 UC', name: '৩৮৫ ইউসি [50 RP]', price: 710 },
+        { sku: '660 UC', name: '৬৬০ ইউসি (660 UC)', price: 1150 },
+        { sku: '720 UC', name: '৭২০ ইউসি [100 RP]', price: 1250 },
+        { sku: '1045 UC', name: '১০৪৫ ইউসি (1045 UC)', price: 1850 },
+        { sku: 'Growth Pack 1', name: 'Growth Pack 1', price: 150 },
+        { sku: 'Growth Pack 2', name: 'Growth Pack 2', price: 390 },
+        { sku: 'Growth Pack 3', name: 'Growth Pack 3', price: 590 },
+        { sku: 'Prime', name: 'Prime 1 Month', price: 150 },
+        { sku: 'Prime Plus', name: 'Prime Plus 1 Month', price: 1150 }
+      ];
+
       const resolvedItems = [];
-
-      const dynamicRateMap: Record<string, number> = {};
-      for (const p of allProducts) {
-        if (p.price > 0) {
-          const numMatch = p.name_en.match(/\d+/);
-          if (numMatch) {
-            dynamicRateMap[numMatch[0]] = p.price;
-          }
-        }
-      }
-
       for (const item of params.items) {
         const itemLower = item.skuOrName.toLowerCase();
         const numMatch = itemLower.match(/\d+/)?.[0];
-        
-        // 1. Strict exact match
-        let found = allProducts.find(
-          p =>
-            p.sku.toLowerCase() === itemLower ||
-            p.name_en.toLowerCase() === itemLower ||
-            p.name_bn === item.skuOrName
+
+        let found = TOPUP_CATALOG.find(
+          p => p.sku.toLowerCase() === itemLower || p.name.toLowerCase() === itemLower
         );
 
-        // 2. Word boundary match on numeric UC (e.g. \b385\b so 385 doesn't match 3850)
         if (!found && numMatch) {
-          const numRegex = new RegExp(`\\b${numMatch}\\b`);
-          found = allProducts.find(
-            p =>
-              (numRegex.test(p.sku.toLowerCase()) ||
-               numRegex.test(p.name_en.toLowerCase()) ||
-               numRegex.test(p.name_bn)) &&
-              p.price > 0
+          found = TOPUP_CATALOG.find(
+            p => p.sku.includes(numMatch) || p.name.includes(numMatch)
           );
         }
 
-        // 3. Fallback substring match
         if (!found) {
-          found = allProducts.find(
-            p =>
-              p.name_en.toLowerCase().includes(itemLower) ||
-              itemLower.includes(p.name_en.toLowerCase())
+          found = TOPUP_CATALOG.find(
+            p => itemLower.includes(p.sku.toLowerCase()) || p.sku.toLowerCase().includes(itemLower)
           );
         }
 
         if (found) {
           resolvedItems.push({
-            product_id: found.id,
-            product_name: found.name_bn || found.name_en,
-            unit_price: Number(found.price),
+            product_name: found.name,
+            unit_price: found.price,
             quantity: item.quantity || 1
           });
         } else {
-          let resolvedPrice = 115;
-          const sortedEntries = Object.entries(dynamicRateMap).sort((a, b) => b[0].length - a[0].length);
-          for (const [key, price] of sortedEntries) {
-            if (itemLower.includes(key) || key === itemLower) {
-              resolvedPrice = price;
-              break;
-            }
-          }
           resolvedItems.push({
             product_name: item.skuOrName,
-            unit_price: resolvedPrice,
+            unit_price: 115,
             quantity: item.quantity || 1
           });
         }

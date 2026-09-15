@@ -33,7 +33,6 @@ interface SystemStatus {
     publishableKeyMasked: string;
     serviceRoleKeyMasked: string;
     stats: {
-      productsCount: number;
       ordersCount: number;
       workersCount: number;
       conversationsCount: number;
@@ -269,8 +268,8 @@ export default function ConfigPage() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Live Table Row Counts</span>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-800/40">
-                  <div className="text-base font-extrabold text-white">{status?.supabase.stats.productsCount ?? 0}</div>
-                  <div className="text-[10px] text-slate-400">Products</div>
+                  <div className="text-base font-extrabold text-white">{status?.supabase.stats.faqsCount ?? 0}</div>
+                  <div className="text-[10px] text-slate-400">FAQs / Q&A</div>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-800/40">
                   <div className="text-base font-extrabold text-brand-400">{status?.supabase.stats.ordersCount ?? 0}</div>
