@@ -1,4 +1,5 @@
 import { ChatOpenAI } from '@langchain/openai';
+import { SystemMessage, HumanMessage, AIMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 import { db } from '@/lib/db';
 import { env } from '@/lib/config/env';
 import { WhatsAppButton } from '@/lib/whatsapp/service';
@@ -41,10 +42,12 @@ export class LangChainAgentService {
     if (!env.openai.apiKey) {
       return null;
     }
+    const model = env.openai.model || 'gpt-4o-mini';
+    const isSpecialModel = model.includes('gpt-5') || model.includes('o1') || model.includes('o3') || model.includes('nano');
     return new ChatOpenAI({
       openAIApiKey: env.openai.apiKey,
-      modelName: env.openai.model || 'gpt-4o-mini',
-      temperature: 0.3
+      modelName: model,
+      ...(isSpecialModel ? {} : { temperature: 0.3 })
     });
   }
 
@@ -59,7 +62,7 @@ export class LangChainAgentService {
   }
 
   /**
-   * Process customer message using LangGraph StateGraph for multi-customer concurrency & parallel orders
+   * Process customer message using LLM-agent with real-time tool calling and conversational reasoning
    */
   async processStructuredMessage(params: {
     phone: string;
@@ -68,42 +71,14 @@ export class LangChainAgentService {
   }): Promise<StructuredAgentResponse> {
     const { phone, messageText, conversationId } = params;
 
-    try {
-      // 1. Invoke LangGraph State Machine with thread_id session checkpointing
-      const graphResult = await orderStateGraph.invoke(
-        {
-          phone,
-          messageText,
-          conversationId,
-          sessionState: db.getSessionState(conversationId),
-          messages: []
-        },
-        {
-          configurable: {
-            thread_id: conversationId
-          }
-        }
-      );
-
-      if (graphResult.finalResponseText) {
-        return {
-          text: graphResult.finalResponseText,
-          buttons: graphResult.buttons,
-          createdOrder: graphResult.createdOrders?.[0]
-        };
-      }
-    } catch (graphErr) {
-      console.error('[LangGraph Execution Error, falling back to LLM/Rules]:', graphErr);
-    }
-
-    // 2. Fetch current session state & conversation history
+    // 1. Fetch current session state & conversation history
     let sessionState = db.getSessionState(conversationId);
     let draft = sessionState.draftOrder;
 
     // 1b. Proactive Deterministic Slot Extraction & State Sync for this customer's session
-    const { extractedUid, extractedTrx, extractedPaymentMethod, extractedItems } = extractSlotsFromMessage(messageText);
+    const { extractedUid, extractedTrx, extractedPaymentMethod, extractedItems, parallelOrders } = extractSlotsFromMessage(messageText);
 
-    if (extractedUid || extractedTrx || extractedPaymentMethod || extractedItems) {
+    if (extractedUid || extractedTrx || extractedPaymentMethod || extractedItems || parallelOrders) {
       const updatedUid = extractedUid || draft.playerUid;
       const updatedTrx = extractedTrx || draft.trxId;
       const updatedPayment = extractedPaymentMethod || draft.paymentMethod;
@@ -135,7 +110,7 @@ export class LangChainAgentService {
       draft = sessionState.draftOrder;
     }
 
-    // 2. Check Affirmation Fast-Path
+    // 2. Check Affirmation Fast-Path (When all slots are already complete and user sends confirmation)
     const isAffirmative = isAffirmativePhrase(messageText);
     const hasTopUpSlots = Boolean(draft.items && draft.items.length > 0 && draft.playerUid);
 
@@ -176,10 +151,10 @@ export class LangChainAgentService {
         const buttons: WhatsAppButton[] = [
           { id: `track:${toolResult.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
           { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-          { id: 'btn_support', title: '👤 কাস্টমার কেয়ার' }
+          { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
         ];
 
-        return { text, buttons };
+        return { text, buttons, createdOrder: toolResult };
       }
     }
 
@@ -189,10 +164,10 @@ export class LangChainAgentService {
 
     const llm = this.getLLM();
 
-    // 3. If OpenAI API Key is configured, use LangChain Agent
+    // 3. Primary Path: Intelligent OpenAI LLM with Tools
     if (llm && env.openai.apiKey) {
       try {
-        console.log(`[AI Agent] Processing message from ${phone}: "${messageText}" using model ${env.openai.model} (Step: ${sessionState.step})`);
+        console.log(`[AI Agent] Processing message from ${phone}: "${messageText}" using model ${env.openai.model || 'gpt-4o-mini'}`);
         const modelWithTools = llm.bindTools(this.tools);
 
         const conversations = await db.getConversations();
@@ -204,44 +179,55 @@ export class LangChainAgentService {
           ? historyMessages.slice(0, -1)
           : historyMessages;
 
-        const formattedHistory: Array<['system' | 'human' | 'ai', string]> = [
-          ['system', this.getSystemPrompt({
-            customerPhone: phone,
-            sessionState,
-            products: activeProducts,
-            policies: activePolicies,
-            faqs: activeFaqs
-          })]
+        const systemPromptStr = this.getSystemPrompt({
+          customerPhone: phone,
+          sessionState,
+          products: activeProducts,
+          policies: activePolicies,
+          faqs: activeFaqs
+        });
+
+        const formattedHistory: BaseMessage[] = [
+          new SystemMessage(systemPromptStr)
         ];
 
         pastMessages.slice(-8).forEach(m => {
-          formattedHistory.push([m.sender === 'CUSTOMER' ? 'human' : 'ai', m.content]);
+          if (m.sender === 'CUSTOMER') {
+            formattedHistory.push(new HumanMessage(m.content));
+          } else {
+            formattedHistory.push(new AIMessage(m.content));
+          }
         });
 
-        formattedHistory.push(['human', messageText]);
+        formattedHistory.push(new HumanMessage(messageText));
 
         const response = await modelWithTools.invoke(formattedHistory);
+        let createdOrderResult: any = null;
 
         // Tool Calling Execution Loop
         if (response.tool_calls && response.tool_calls.length > 0) {
           console.log(`[AI Agent] Tool calls detected (${response.tool_calls.length}):`, response.tool_calls.map(tc => tc.name).join(', '));
           
-          const toolMessages: any[] = [];
+          const toolMessages: ToolMessage[] = [];
           for (const toolCall of response.tool_calls) {
             const selectedTool = this.tools.find(t => t.name === toolCall.name);
             if (selectedTool) {
               const toolOutput = await (selectedTool as any).invoke(toolCall.args);
-              toolMessages.push({
-                role: 'tool',
+              if (toolCall.name === 'create_order') {
+                try {
+                  createdOrderResult = JSON.parse(String(toolOutput));
+                } catch (_) {}
+              }
+              toolMessages.push(new ToolMessage({
+                tool_call_id: toolCall.id || `tool-${Date.now()}`,
                 name: toolCall.name,
-                tool_call_id: toolCall.id,
                 content: String(toolOutput)
-              });
+              }));
             }
           }
 
-          const finalMessages: any[] = [
-            ...formattedHistory.map(([role, content]) => ({ role, content })),
+          const finalMessages: BaseMessage[] = [
+            ...formattedHistory,
             response,
             ...toolMessages
           ];
@@ -249,34 +235,80 @@ export class LangChainAgentService {
           const finalResponse = await llm.invoke(finalMessages);
           const rawText = String(finalResponse.content || '');
 
-          const dynamicButtons: WhatsAppButton[] = [
-            { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-            { id: 'btn_track', title: '📦 অর্ডার ট্র্যাক' },
-            { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-          ];
+          const dynamicButtons: WhatsAppButton[] = createdOrderResult?.order_id
+            ? [
+                { id: `track:${createdOrderResult.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
+                { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
+                { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
+              ]
+            : [
+                { id: 'btn_60uc', title: '⚡ 60 UC (৳115)' },
+                { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
+                { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
+              ];
 
           return {
             text: rawText,
-            buttons: dynamicButtons
+            buttons: dynamicButtons,
+            createdOrder: createdOrderResult
           };
         }
 
         const rawText = String(response.content || '');
-        const dynamicButtons: WhatsAppButton[] = [
+        const lowerMsg = messageText.toLowerCase();
+        
+        let dynamicButtons: WhatsAppButton[] = [
           { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-          { id: 'btn_track', title: '📦 অর্ডার ট্র্যাক' }
+          { id: 'btn_track', title: '📦 অর্ডার ট্র্যাক' },
+          { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
         ];
+
+        if (lowerMsg.includes('uc') || lowerMsg.includes('price') || lowerMsg.includes('dam') || lowerMsg.includes('koto')) {
+          dynamicButtons = [
+            { id: 'btn_60uc', title: '⚡ 60 UC (৳115)' },
+            { id: 'btn_385uc', title: '👑 385 UC (৳710)' },
+            { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' }
+          ];
+        }
 
         return {
           text: rawText,
           buttons: dynamicButtons
         };
       } catch (err) {
-        console.error('[LangChain Agent Exception, falling back]:', err);
+        console.error('[LangChain Agent Exception, falling back to graph/rules]:', err);
       }
     }
 
-    // 4. Fallback Rule Engine if OpenAI is not available
+    // 4. Secondary Fallback: LangGraph State Graph
+    try {
+      const graphResult = await orderStateGraph.invoke(
+        {
+          phone,
+          messageText,
+          conversationId,
+          sessionState: db.getSessionState(conversationId),
+          messages: []
+        },
+        {
+          configurable: {
+            thread_id: conversationId
+          }
+        }
+      );
+
+      if (graphResult.finalResponseText) {
+        return {
+          text: graphResult.finalResponseText,
+          buttons: graphResult.buttons,
+          createdOrder: graphResult.createdOrders?.[0]
+        };
+      }
+    } catch (graphErr) {
+      console.error('[LangGraph Fallback Error]:', graphErr);
+    }
+
+    // 5. Ultimate Fallback: Rule Engine
     return fallbackEngineStructured({ phone, messageText, conversationId });
   }
 

@@ -133,19 +133,19 @@ export const updateDraftOrderTool = tool(
     name: 'update_draft_order',
     description: 'Save or update the customer draft order details into active conversation memory as slots are collected (Player UID, selected package, TrxID, payment method).',
     schema: z.object({
-      conversationId: z.string().optional().describe('Active conversation ID'),
-      customerPhone: z.string().optional().describe('Customer contact phone number'),
-      customerName: z.string().optional().describe('Customer name or in-game name'),
-      playerUid: z.string().optional().describe('PUBG Player UID (e.g. 5123456789)'),
-      paymentMethod: z.string().optional().describe('Payment method (BKASH, NAGAD, ROCKET)'),
-      trxId: z.string().optional().describe('Transaction ID or sender last 4 digits'),
+      conversationId: z.string().optional().nullable().describe('Active conversation ID'),
+      customerPhone: z.string().optional().nullable().describe('Customer contact phone number'),
+      customerName: z.string().optional().nullable().describe('Customer name or in-game name'),
+      playerUid: z.string().optional().nullable().describe('PUBG Player UID (e.g. 5123456789)'),
+      paymentMethod: z.string().optional().nullable().describe('Payment method (BKASH, NAGAD, ROCKET)'),
+      trxId: z.string().optional().nullable().describe('Transaction ID or sender last 4 digits'),
       items: z.array(
         z.object({
           skuOrName: z.string().describe('Product SKU or name (e.g. 60 UC, 385 UC, Prime)'),
           quantity: z.number().describe('Quantity of items')
         })
-      ).optional().describe('Items selected by customer'),
-      customerNotes: z.string().optional().describe('Special customer notes')
+      ).optional().nullable().describe('Items selected by customer'),
+      customerNotes: z.string().optional().nullable().describe('Special customer notes')
     })
   }
 );

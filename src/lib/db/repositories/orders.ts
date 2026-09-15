@@ -35,20 +35,22 @@ export const ordersRepository = {
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
       // 1. Insert order record
+      const deliveryAddressObj = params.deliveryAddress || {
+        address: `PUBG Player UID: ${params.playerUid || 'N/A'}`,
+        player_uid: params.playerUid || null,
+        trx_id: params.trxId || null,
+        payment_method: params.paymentMethod || 'BKASH'
+      };
+
       const orderPayload = {
         id: orderUuid,
         order_id: orderIdCode,
         user_id: params.userId,
         total_amount: totalAmount,
         status: 'PENDING_CLAIM',
-        delivery_address: params.deliveryAddress || {
-          address: `PUBG Player UID: ${params.playerUid || 'N/A'}`
-        },
+        delivery_address: deliveryAddressObj,
         delivery_phone: params.deliveryPhone,
-        customer_notes: params.customerNotes || null,
-        player_uid: params.playerUid || null,
-        trx_id: params.trxId || null,
-        payment_method: params.paymentMethod || 'BKASH',
+        customer_notes: params.customerNotes || (params.playerUid ? `PUBG UID: ${params.playerUid} | Trx: ${params.trxId || 'N/A'} | Pay: ${params.paymentMethod || 'BKASH'}` : null),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -87,6 +89,9 @@ export const ordersRepository = {
       const user = await usersRepository.getUserById(params.userId);
       return {
         ...createdOrder,
+        player_uid: params.playerUid || (deliveryAddressObj as any).player_uid,
+        trx_id: params.trxId || (deliveryAddressObj as any).trx_id,
+        payment_method: params.paymentMethod || (deliveryAddressObj as any).payment_method || 'BKASH',
         customer: user || undefined,
         items: params.items.map(i => ({
           ...i,

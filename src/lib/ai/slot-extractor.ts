@@ -70,9 +70,15 @@ export function extractSlotsFromMessage(messageText: string): ExtractedSlots {
 
   // 4. Extract Package Intent
   let extractedItems: Array<{ skuOrName: string; quantity: number }> | null = null;
+  const validUcAmounts = [60, 120, 180, 325, 385, 660, 720, 1045, 1800, 3850, 8100];
   const ucMatches = Array.from(messageText.matchAll(/(\d{2,4})\s*(?:uc|ইউসি)/gi));
-  if (ucMatches.length > 0) {
-    extractedItems = ucMatches.map(m => ({ skuOrName: `${m[1]} UC`, quantity: 1 }));
+  const filteredUc = ucMatches.filter(m => {
+    const num = parseInt(m[1], 10);
+    return validUcAmounts.includes(num);
+  });
+
+  if (filteredUc.length > 0) {
+    extractedItems = filteredUc.map(m => ({ skuOrName: `${m[1]} UC`, quantity: 1 }));
   } else if (lower.includes('growth pack 1') || lower.includes('গ্রোথ প্যাক ১')) {
     extractedItems = [{ skuOrName: 'Growth Pack 1', quantity: 1 }];
   } else if (lower.includes('growth pack 2') || lower.includes('গ্রোথ প্যাক ২')) {
