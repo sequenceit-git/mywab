@@ -182,10 +182,13 @@ export const ordersRepository = {
   },
 
   async getOrderByCode(orderIdCode: string): Promise<Order | null> {
+    const clean = orderIdCode.trim();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean);
     const client = getDbClient();
+
     if (isSupabaseConfigured() && client) {
       try {
-        const { data, error } = await client
+        let query = client
           .from('orders')
           .select(`
             *,
@@ -197,9 +200,15 @@ export const ordersRepository = {
               claimed_at,
               worker:workers(*)
             )
-          `)
-          .or(`order_id.eq.${orderIdCode.trim().toUpperCase()},id.eq.${orderIdCode.trim()}`)
-          .single();
+          `);
+
+        if (isUuid) {
+          query = query.or(`order_id.eq.${clean.toUpperCase()},id.eq.${clean}`);
+        } else {
+          query = query.eq('order_id', clean.toUpperCase());
+        }
+
+        const { data, error } = await query.maybeSingle();
 
         if (!error && data) {
           const activeAssignment = data.assignments?.find(
@@ -210,14 +219,17 @@ export const ordersRepository = {
             current_worker: activeAssignment?.worker || null
           };
         }
+        if (error) {
+          console.error('Supabase getOrderByCode error:', error);
+        }
       } catch (err) {
-        console.error('Supabase getOrderByCode error:', err);
+        console.error('Supabase getOrderByCode exception:', err);
       }
     }
 
-    const clean = orderIdCode.trim().toUpperCase();
+    const cleanUpper = clean.toUpperCase();
     for (const o of mockStore.orders.values()) {
-      if (o.order_id.toUpperCase() === clean || o.id === orderIdCode.trim()) {
+      if (o.order_id.toUpperCase() === cleanUpper || o.id === clean) {
         return o;
       }
     }
