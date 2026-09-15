@@ -249,8 +249,33 @@ ${itemsText}
 
     console.log(`[Telegram Callback] Action: "${action}" | OrderCode: "${orderIdCode}" | Worker: "${workerName}" (ID: ${from.id})`);
 
+    const existingOrder = await db.getOrderByCode(orderIdCode);
+    if (!existingOrder) {
+      await this.answerCallbackQuery(id, '⚠️ Order not found in database', true);
+      return { success: false, message: 'Order not found' };
+    }
+
+    const assignedWorker = existingOrder.current_worker ||
+      existingOrder.assignments?.find(a => ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY'].includes(a.status))?.worker;
+    const assignedTelegramId = assignedWorker?.telegram_user_id;
+    const assignedWorkerName = assignedWorker?.full_name || 'অন্য একজন কর্মী';
+
     // 1. ACTION: CLAIM ORDER
     if (action === 'claim') {
+      // If already claimed by another worker
+      if (
+        ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(existingOrder.status) &&
+        assignedTelegramId &&
+        assignedTelegramId !== from.id
+      ) {
+        await this.answerCallbackQuery(
+          id,
+          `⛔ একশন বাতিল!\nএই অর্ডারটি ইতোমধ্যে [${assignedWorkerName}] ক্লেইম করেছেন। অন্য কোনো কর্মী এতে একশন নিতে পারবেন না (শুধুমাত্র অ্যাডমিন প্যানেল পরিবর্তন করতে পারে)।`,
+          true
+        );
+        return { success: false, message: `Order already claimed by ${assignedWorkerName}` };
+      }
+
       try {
         const claimResult = await db.claimOrderAtomic({
           orderIdCode,
@@ -290,8 +315,28 @@ ${itemsText}
 
     // 2. ACTION: OUT FOR DELIVERY / PROCESSING
     if (action === 'status_out') {
+      // Must be claimed first
+      if (!assignedTelegramId && (existingOrder.status === 'PENDING_CLAIM' || existingOrder.status === 'PENDING_PAYMENT')) {
+        await this.answerCallbackQuery(id, `⚠️ প্রথমে 'Claim Top-Up' বাটনে ক্লিক করে অর্ডারটি গ্রহণ করুন!`, true);
+        return { success: false, message: 'Order must be claimed first' };
+      }
+
+      // Check worker lock
+      if (assignedTelegramId && assignedTelegramId !== from.id) {
+        await this.answerCallbackQuery(
+          id,
+          `⛔ একশন বাতিল!\nএই অর্ডারটি [${assignedWorkerName}] ক্লেইম করেছেন। শুধুমাত্র তিনি অথবা অ্যাডমিন প্যানেল এতে একশন নিতে পারবেন।`,
+          true
+        );
+        return { success: false, message: `Unauthorized: Claimed by ${assignedWorkerName}` };
+      }
+
       try {
-        const updateResult = await db.updateOrderStatus(orderIdCode, 'OUT_FOR_DELIVERY', from.id);
+        const updateResult = await db.updateOrderStatus(orderIdCode, 'OUT_FOR_DELIVERY', { workerTelegramId: from.id });
+        if (!updateResult.success) {
+          await this.answerCallbackQuery(id, `⚠️ ${updateResult.message}`, true);
+          return { success: false, message: updateResult.message || 'Update failed' };
+        }
         const order = updateResult.order;
         
         if (message && order) {
@@ -310,8 +355,28 @@ ${itemsText}
 
     // 3. ACTION: MARK DELIVERED / COMPLETED
     if (action === 'status_delivered') {
+      // Must be claimed first
+      if (!assignedTelegramId && (existingOrder.status === 'PENDING_CLAIM' || existingOrder.status === 'PENDING_PAYMENT')) {
+        await this.answerCallbackQuery(id, `⚠️ প্রথমে 'Claim Top-Up' বাটনে ক্লিক করে অর্ডারটি গ্রহণ করুন!`, true);
+        return { success: false, message: 'Order must be claimed first' };
+      }
+
+      // Check worker lock
+      if (assignedTelegramId && assignedTelegramId !== from.id) {
+        await this.answerCallbackQuery(
+          id,
+          `⛔ একশন বাতিল!\nএই অর্ডারটি [${assignedWorkerName}] ক্লেইম করেছেন। শুধুমাত্র তিনি অথবা অ্যাডমিন প্যানেল এটি সম্পন্ন করতে পারবেন।`,
+          true
+        );
+        return { success: false, message: `Unauthorized: Claimed by ${assignedWorkerName}` };
+      }
+
       try {
-        const updateResult = await db.updateOrderStatus(orderIdCode, 'DELIVERED', from.id);
+        const updateResult = await db.updateOrderStatus(orderIdCode, 'DELIVERED', { workerTelegramId: from.id });
+        if (!updateResult.success) {
+          await this.answerCallbackQuery(id, `⚠️ ${updateResult.message}`, true);
+          return { success: false, message: updateResult.message || 'Delivery failed' };
+        }
         const order = updateResult.order;
 
         if (order && message) {

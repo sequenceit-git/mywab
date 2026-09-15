@@ -743,18 +743,48 @@ export const db = {
     };
   },
 
-  async updateOrderStatus(orderIdCode: string, status: OrderStatus, workerTelegramId?: number): Promise<{ success: boolean; order?: Order }> {
+  async updateOrderStatus(
+    orderIdCode: string,
+    status: OrderStatus,
+    options?: { workerTelegramId?: number; isAdminOverride?: boolean } | number
+  ): Promise<{ success: boolean; message?: string; order?: Order }> {
     const order = await this.getOrderByCode(orderIdCode);
-    if (!order) return { success: false };
+    if (!order) return { success: false, message: 'Order not found' };
+
+    const workerTelegramId = typeof options === 'number' ? options : options?.workerTelegramId;
+    const isAdminOverride = typeof options === 'object' ? Boolean(options.isAdminOverride) : false;
+
+    // 1. Worker Ownership Lock Check (If triggered by a worker and not overridden by admin)
+    if (workerTelegramId && !isAdminOverride) {
+      const assignedWorkerTelegramId = order.current_worker?.telegram_user_id ||
+        order.assignments?.find(a => ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY'].includes(a.status))?.worker?.telegram_user_id;
+
+      if (assignedWorkerTelegramId && assignedWorkerTelegramId !== workerTelegramId) {
+        const assignedName = order.current_worker?.full_name || 'অন্য একজন কর্মী';
+        return {
+          success: false,
+          message: `এই অর্ডারটি ইতোমধ্যে ${assignedName} ক্লেইম করেছেন। শুধুমাত্র তিনি অথবা অ্যাডমিন প্যানেল এটি পরিবর্তন করতে পারবেন।`
+        };
+      }
+    }
+
+    // 2. Admin Override Actions
+    if (isAdminOverride && (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT')) {
+      order.current_worker = undefined;
+    }
 
     order.status = status;
     order.updated_at = new Date().toISOString();
 
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
+      const updatePayload: Record<string, any> = {
+        status,
+        updated_at: new Date().toISOString()
+      };
       await client
         .from('orders')
-        .update({ status, updated_at: new Date().toISOString() })
+        .update(updatePayload)
         .eq('order_id', orderIdCode);
       
       if (status === 'DELIVERED') {
@@ -762,10 +792,15 @@ export const db = {
           .from('order_assignments')
           .update({ status: 'DELIVERED', completed_at: new Date().toISOString() })
           .eq('order_id', order.id);
+      } else if (isAdminOverride && (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT')) {
+        await client
+          .from('order_assignments')
+          .update({ status: 'CANCELLED', completed_at: new Date().toISOString() })
+          .eq('order_id', order.id);
       }
     }
 
-    return { success: true, order };
+    return { success: true, message: `Status updated to ${status}`, order };
   },
 
   async updateOrderTelegramMessageId(orderIdCodeOrId: string, messageId: number | null): Promise<void> {

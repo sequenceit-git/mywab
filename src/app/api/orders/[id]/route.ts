@@ -51,9 +51,9 @@ export async function PATCH(
       return NextResponse.json(claimResult);
     }
 
-    // Handle status update (e.g. OUT_FOR_DELIVERY, DELIVERED, CANCELLED, etc.)
+    // Handle status update from Admin Panel (e.g. OUT_FOR_DELIVERY, DELIVERED, CANCELLED, etc.)
     if (status) {
-      const updateResult = await db.updateOrderStatus(id, status);
+      const updateResult = await db.updateOrderStatus(id, status, { isAdminOverride: true });
       if (updateResult.success && updateResult.order) {
         // Sync Telegram Group Card (Delete previous stale message and post updated state card)
         telegramBot.syncOrderStatus(updateResult.order, { deletePrevious: true }).catch(err => {
