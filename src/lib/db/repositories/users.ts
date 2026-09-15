@@ -125,5 +125,61 @@ export const usersRepository = {
       return user;
     }
     return null;
+  },
+
+  async getCustomerProfile(phone: string): Promise<import('@/types').CustomerMemoryProfile> {
+    const cleanPhone = phone.trim();
+    const user = await this.getUserByPhone(cleanPhone);
+    const defaultProfile: import('@/types').CustomerMemoryProfile = {
+      saved_uids: [],
+      total_completed_orders: 0,
+      preferred_payment: 'bKash'
+    };
+
+    if (!user || !user.customer_profile) {
+      return defaultProfile;
+    }
+
+    return {
+      ...defaultProfile,
+      ...user.customer_profile
+    };
+  },
+
+  async updateCustomerProfile(phone: string, updates: Partial<import('@/types').CustomerMemoryProfile>): Promise<void> {
+    const cleanPhone = phone.trim();
+    const user = await this.getOrCreateUser(cleanPhone);
+    const currentProfile = user.customer_profile || {
+      saved_uids: [],
+      total_completed_orders: 0,
+      preferred_payment: 'bKash'
+    };
+
+    const newSavedUids = Array.from(new Set([
+      ...(updates.last_used_uid ? [updates.last_used_uid] : []),
+      ...(updates.saved_uids || []),
+      ...(currentProfile.saved_uids || [])
+    ])).filter(Boolean);
+
+    const mergedProfile: import('@/types').CustomerMemoryProfile = {
+      ...currentProfile,
+      ...updates,
+      saved_uids: newSavedUids,
+      last_used_uid: updates.last_used_uid || currentProfile.last_used_uid || (newSavedUids[0] ?? undefined)
+    };
+
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      await client
+        .from('users')
+        .update({
+          customer_profile: mergedProfile,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+    }
+
+    user.customer_profile = mergedProfile;
+    user.updated_at = new Date().toISOString();
   }
 };

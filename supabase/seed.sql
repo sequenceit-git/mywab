@@ -1,36 +1,77 @@
--- Sample Seed Data for WapBusiness
+-- Seed Data for DS Dukan PUBG Mobile Top-Up Store
 
--- 1. Sample Products (Bengali & English)
-INSERT INTO public.products (sku, name_en, name_bn, description_en, description_bn, price, stock_qty, category, is_active)
-VALUES
-('TSHIRT-BLK-M', 'Premium Cotton T-Shirt (Black, M)', 'প্রিমিয়াম কটন টি-শার্ট (কালো, M)', '100% combed organic cotton, breathable fabric.', '১০০% কম্বড অর্গানিক কটন, আরামদায়ক কাপড়।', 450.00, 50, 'Clothing', true),
-('TSHIRT-WHT-L', 'Classic Polo Shirt (White, L)', 'ক্লাসিক পোলো শার্ট (সাদা, L)', 'High quality pique cotton polo shirt.', 'উন্নত মানের পিকে কটন পোলো শার্ট।', 650.00, 35, 'Clothing', true),
-('JEANS-BLU-32', 'Slim Fit Denim Jeans (Size 32)', 'স্লিম ফিট ডেনিম জিন্স (সাইজ ৩২)', 'Stretchable denim fabric with stylish wash.', 'স্ট্রেচেবল ডেনিম কাপড় ও প্রিমিয়াম ওয়াশ।', 1250.00, 20, 'Clothing', true),
-('SHOE-SNK-42', 'Casual Urban Sneakers (Size 42)', 'ক্যাজুয়াল আরবান স্নিকার্স (সাইজ ৪২)', 'Lightweight and durable daily wear sneakers.', 'হালকা এবং টেকসই দৈনন্দিন ব্যবহারের জুতো।', 1850.00, 15, 'Footwear', true),
-('WTCH-SMT-01', 'Smart Fitness Watch V2', 'স্মার্ট ফিটনেস ওয়াচ V2', 'Heart rate monitor, step tracker, 7 days battery.', 'হার্ট রেট মনিটর, স্টেপ ট্র্যাকার, ৭ দিনের ব্যাটারি লাইফ।', 2200.00, 25, 'Electronics', true)
-ON CONFLICT (sku) DO NOTHING;
-
--- 2. Sample FAQs (Bengali & English)
-INSERT INTO public.faqs (question_en, question_bn, answer_en, answer_bn, category)
+-- Seed Official Store FAQs
+INSERT INTO public.faqs (question_en, question_bn, answer_en, answer_bn, category, is_active)
 VALUES
 (
-    'What are your delivery charges and timeframe?',
-    'ডেলিভারি চার্জ এবং সময় কত লাগবে?',
-    'Inside Dhaka: ৳60 (24-48 hours). Outside Dhaka: ৳120 (2-4 days).',
-    'ঢাকার ভেতরে: ৬০ টাকা (২৪-৪৮ ঘন্টা)। ঢাকার বাইরে: ১২০ টাকা (২-৪ দিন)।',
-    'Delivery'
+    'UC price list / Regular UC list',
+    'ইউসি প্রাইস লিস্ট / ইউসির দাম কত?',
+    'Regular UC: 60 UC: 115 Tk, 120 UC: 230 Tk, 180 UC: 340 Tk, 325 UC: 600 Tk, 385 UC [50 RP]: 710 Tk, 660 UC: 1150 Tk, 720 UC [100 RP]: 1250 Tk, 1045 UC: 1850 Tk. Website gets 2% instant discount!',
+    '✅ NEW UPDATED REGULAR UC LIST:\n• 60 UC : 115 Tk\n• 120 UC : 230 Tk\n• 180 UC : 340 Tk\n• 325 UC : 600 Tk\n• 385 UC [50 RP] : 710 Tk\n• 660 UC : 1150 Tk\n• 720 UC [100 RP] : 1250 Tk\n• 1045 UC : 1850 Tk\n• 1800/3850/8100 UC : লাইভ রেট জানতে ইনবক্স করুন\n🎁 ওয়েবসাইট (https://www.dsdukan.com/#) থেকে কিনলে পাচ্ছেন ২% ইনস্ট্যান্ট ডিসকাউন্ট!',
+    'Pricing & UC',
+    true
 ),
 (
-    'What payment methods do you accept?',
-    'পেমেন্ট করার কি কি মাধ্যম আছে?',
-    'We accept Cash on Delivery (COD), bKash, Nagad, and Rocket.',
-    'আমরা ক্যাশ অন ডেলিভারি (COD), বিকাশ, নগদ এবং রকেট গ্রহণ করি।',
-    'Payment'
+    '60 uc koto tk / 60 uc price',
+    '৬০ ইউসি কত টাকা? / 60 UC দাম কত?',
+    '60 UC price is 115 Tk BDT. Only PUBG Player UID needed.',
+    '🎮 ৬০ ইউসি (60 UC) এর দাম মাত্র ১১৫ টাকা (115 Tk)। ডেলিভারি ৫-১৫ মিনিট, শুধুমাত্র Player UID প্রয়োজন।',
+    'Pricing & UC',
+    true
 ),
 (
-    'What is your return/exchange policy?',
-    'রিটার্ন বা এক্সচেঞ্জ পলিসি কি?',
-    'You can exchange or return any defective product within 7 days of receipt with original invoice.',
-    'পণ্য পাওয়ার ৭ দিনের মধ্যে যেকোনো ত্রুটিযুক্ত পণ্য ক্যাশ মেমোসহ পরিবর্তন করতে পারবেন।',
-    'Return'
+    '325 uc koto tk / 325 uc price',
+    '৩২৫ ইউসি কত টাকা? / 325 UC দাম কত?',
+    '325 UC price is 600 Tk BDT. Only PUBG Player UID needed.',
+    '🎮 ৩২৫ ইউসি (325 UC) এর দাম মাত্র ৬০০ টাকা (600 Tk)। শুধুমাত্র আপনার Player UID লাগবে।',
+    'Pricing & UC',
+    true
+),
+(
+    'Prime koto tk / Prime Plus koto tk / Prime subscription',
+    'প্রাইম কত টাকা? / প্রাইম প্লাস কত টাকা?',
+    'Prime (1 Month): 150 Tk, Prime Plus (1 Month): 1150 Tk. Only Player UID needed!',
+    '👑 PUBG MOBILE PRIME SUBSCRIPTION:\n• Prime (1 Month): ১৫০ টাকা (150 Tk)\n• Prime Plus (1 Month): ১১৫০ টাকা (1150 Tk)\n📌 কোনো আইডি পাসওয়ার্ড লাগবে না, শুধুমাত্র Player UID প্রয়োজন।',
+    'Subscriptions',
+    true
+),
+(
+    'Bhai acen / Vai / Line a acen / Hlw / Hello / Hi',
+    'ভাই আছেন? / লাইনে আছেন? / হ্যালো / হাই',
+    'Hello! Yes, DS Dukan is online and active 24/7. How can we help you with PUBG UC or top-up today?',
+    '👋 আসসালামু আলাইকুম! জি ভাইয়া, আমরা লাইনে আছি এবং সম্পূর্ণ অ্যাক্টিভ আছি। আপনাকে কীভাবে সাহায্য করতে পারি? কত ইউসি বা কোন প্যাকেজটি নিতে চান?',
+    'Greetings',
+    true
+),
+(
+    'Uc nibo vaiya / UC kinbo / How to order UC',
+    'ইউসি নিব ভাইয়া / ইউসি কিনতে চাই / কীভাবে কিনব?',
+    'To buy UC, just tell us which package you want and provide your PUBG Player UID. Then send payment to bKash/Nagad/Rocket and share the TrxID!',
+    '🎮 ইউসি নিতে আপনার কাঙ্ক্ষিত প্যাকেজের নাম (যেমন: ৬০ ইউসি, ৩৮৫ ইউসি, ৬৬০ ইউসি) এবং আপনার Player UID লিখে জানান। এরপর আমাদের বিকাশ/নগদ/রকেট নাম্বারে টাকা পাঠিয়ে TrxID দিলে ৫-১৫ মিনিটে টপ-আপ হয়ে যাবে!',
+    'Ordering',
+    true
+),
+(
+    'Login uc list / ID password uc',
+    'লগইন ইউসি আছে কি? / আইডি পাসওয়ার্ড লাগবে?',
+    'We only provide 100% safe direct In-Game Top-Up using PUBG Player UID. No login access or password is ever required!',
+    '🔒 আমরা ১০০% নিরাপদ উপায়ে শুধুমাত্র আপনার Player UID দিয়ে ইন-গেম টপ-আপ করে থাকি। কোনো আইডি-পাসওয়ার্ড বা লগইন এক্সেসের কোনো প্রয়োজন নেই!',
+    'Security & Policy',
+    true
+),
+(
+    'Website a order korci / Website order Delivery Time / Delivery dite koto somoi lagbe',
+    'ওয়েবসাইটে অর্ডার করেছি / ডেলিভারি দিতে কত সময় লাগবে?',
+    'Delivery time is 5 to 15 minutes. If you ordered on the website (https://www.dsdukan.com/#), please share your Order ID / UID here for instant tracking!',
+    '⚡ আমাদের ডেলিভারি সময় সাধারণত ৫ থেকে ১৫ মিনিট (5-15 Minutes)। আপনি যদি ওয়েবসাইটে (https://www.dsdukan.com/#) অর্ডার করে থাকেন, তাহলে আপনার Order ID অথবা Player UID-টি এখানে দিন, আমরা সাথে সাথে চেক করে ডেলিভারি নিশ্চিত করছি!',
+    'Delivery & Website',
+    true
+),
+(
+    'Payment number / bKash Nagad Rocket number',
+    'পেমেন্ট নাম্বার কি? / বিকাশ নগদ রকেট নাম্বার',
+    'bKash (Personal): 01872239597, Rocket (Personal): 01872239597, Nagad (Personal): 01330719250.',
+    '💳 DS Dukan পেমেন্ট নাম্বারসমূহ (Personal):\n• BKASH: 01872239597\n• ROCKET: 01872239597\n• NAGAD: 01330719250\n(Send Money বা Cash In করে TrxID বা লাস্ট ৪ সংখ্যা পাঠান)',
+    'Payment',
+    true
 );

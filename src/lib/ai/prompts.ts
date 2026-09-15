@@ -22,23 +22,60 @@ Website Link : https://www.dsdukan.com/#`;
 export function buildSystemPrompt(params: {
   customerPhone: string;
   sessionState: ConversationSessionState;
+  customerProfile?: import('@/types').CustomerMemoryProfile;
+  recentOrders?: import('@/types').Order[];
+  summary?: string;
   faqs?: FAQ[];
 }): string {
-  const { customerPhone, sessionState } = params;
+  const { customerPhone, sessionState, customerProfile, recentOrders, summary } = params;
   const draft = sessionState.draftOrder;
 
   const hasPackage = !!(draft.items && draft.items.length > 0);
   const hasUid = !!draft.playerUid;
   const hasTrx = !!draft.trxId;
 
+  // Build Customer Profile / Memory Section
+  const savedUids = customerProfile?.saved_uids || [];
+  const lastUid = customerProfile?.last_used_uid || (savedUids.length > 0 ? savedUids[0] : undefined);
+  const preferredPayment = customerProfile?.preferred_payment || 'bKash';
+  const totalCompletedOrders = customerProfile?.total_completed_orders || 0;
+
+  let profileSection = '';
+  if (lastUid || savedUids.length > 0 || totalCompletedOrders > 0) {
+    profileSection = `\n=== CUSTOMER MEMORY & RETURNING PROFILE ===
+- Customer Status: ${totalCompletedOrders > 0 ? `Returning Customer (${totalCompletedOrders} completed orders)` : 'New Customer'}
+- Saved Player UID: ${lastUid || 'None'}
+- All Known UIDs: ${savedUids.length > 0 ? savedUids.join(', ') : 'None'}
+- Preferred Payment: ${preferredPayment}
+* SMART RETURNING CUSTOMER RULE: When this customer picks a package, if they don't provide a UID in the message, ask if they want to send UC to their saved UID (\`${lastUid}\`)! Example: "আপনার আগের প্লেয়ার UID ${lastUid} তেই কি টপ-আপ করবেন ভাইয়া?". If they say yes ("হ্যাঁ", "ha", "yes", "আগেরটা"), immediately proceed with that saved UID!\n`;
+  }
+
+  // Build Recent Orders Section
+  let recentOrdersSection = '';
+  if (recentOrders && recentOrders.length > 0) {
+    const formattedOrders = recentOrders.slice(0, 3).map(o => {
+      const itemsStr = o.items ? o.items.map(i => `${i.product_name} x${i.quantity}`).join(', ') : 'Top-Up';
+      return `• Order #${o.order_id}: ${itemsStr} (৳${o.total_amount}) | Status: ${o.status} | UID: ${o.player_uid || 'N/A'}`;
+    }).join('\n');
+    recentOrdersSection = `\n=== RECENT ORDER HISTORY (Instant Reference) ===
+${formattedOrders}
+* If customer asks about previous orders, status, or past payments, use the exact data above to answer clearly.\n`;
+  }
+
+  // Conversation Summary Section (for long chats)
+  let summarySection = '';
+  if (summary && summary.trim().length > 0) {
+    summarySection = `\n=== PREVIOUS CONVERSATION SUMMARY ===\n${summary}\n`;
+  }
+
   // Tell the model exactly what's still missing, in priority order.
-  // This replaces the rigid "STEP 1/2/3/4" state machine with a checklist
-  // the model can satisfy in whatever order the customer actually talks.
   let nextMissing: string;
   if (!hasPackage) {
     nextMissing = 'PACKAGE — customer has not chosen a package yet.';
   } else if (!hasUid) {
-    nextMissing = 'PLAYER UID — package is set, still need PUBG Player UID.';
+    nextMissing = lastUid 
+      ? `PLAYER UID — package is set. Offer to use saved UID (${lastUid}) or ask for new UID.`
+      : 'PLAYER UID — package is set, still need PUBG Player UID.';
   } else if (!hasTrx) {
     nextMissing = 'PAYMENT + TRXID — UID is set, still need payment + TrxID.';
   } else {
@@ -48,7 +85,7 @@ export function buildSystemPrompt(params: {
   return `You are "DS Dukan Assistant", a warm, quick, and trustworthy WhatsApp sales assistant for DS Dukan (PUBG Mobile Top-Up Store in Bangladesh). You chat like a helpful shop owner on WhatsApp, not like a form — friendly, efficient, a little bit of personality, never robotic or over-explained.
 
 Customer Phone: ${customerPhone}
-
+${profileSection}${recentOrdersSection}${summarySection}
 === CURRENT ORDER STATE (single source of truth) ===
 - Selected Package: ${hasPackage ? draft.items!.map(i => `${i.skuOrName} x${i.quantity}`).join(', ') : 'Not chosen yet'}
 - Player UID: ${draft.playerUid || 'Not provided yet'}

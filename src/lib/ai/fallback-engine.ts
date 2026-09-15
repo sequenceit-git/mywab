@@ -39,16 +39,24 @@ export async function fallbackEngineStructured(params: {
     }
   }
 
+  // 2. Customer Profile
+  const customerProfile = await db.getCustomerProfile(phone);
+  const savedUid = customerProfile?.last_used_uid;
+
   // 3. Greetings
   if (['hi', 'hello', 'hlw', 'hey', 'bhai acen', 'vai', 'line a acen', 'ভাই আছেন', 'হ্যালো', 'হাই'].some(g => lower === g || lower.startsWith(g))) {
-    const text = 
+    let text = 
 `👋 আসসালামু আলাইকুম! **DS Dukan**-এ আপনাকে স্বাগতম। 🎮✨
 
 আমরা PUBG Mobile UC, Growth Pack এবং Prime Subscription টপ-আপ সেবা প্রদান করি।
 ⚡ ডেলিভারি সময়: মাত্র ৫–১৫ মিনিট (শুধুমাত্র Player UID প্রয়োজন)।
-🌐 ওয়েবসাইটে সরাসরি কিনতে ভিজিট করুন: https://www.dsdukan.com/# (পাবেন ২% ইনস্ট্যান্ট ডিসকাউন্ট!)
+🌐 ওয়েবসাইটে সরাসরি কিনতে ভিজিট করুন: https://www.dsdukan.com/# (পাবেন ২% ইনস্ট্যান্ট ডিসকাউন্ট!)`;
 
-কী প্যাকেজ নিতে চান ভাইয়া?`;
+    if (savedUid) {
+      text += `\n\nস্বাগতম ভাইয়া! আপনার সেভ করা Player UID: \`${savedUid}\`। কী প্যাকেজ নিতে চান বলুন! 🚀`;
+    } else {
+      text += `\n\nকী প্যাকেজ নিতে চান ভাইয়া?`;
+    }
 
     return { text, buttons: undefined };
   }

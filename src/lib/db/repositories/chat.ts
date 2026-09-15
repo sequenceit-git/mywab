@@ -5,6 +5,7 @@ import { usersRepository } from './users';
 
 export const chatRepository = {
   // SESSION STATES & MULTI-CUSTOMER MEMORY
+  // SESSION STATES & MULTI-CUSTOMER MEMORY
   getSessionState(conversationId: string): ConversationSessionState {
     const defaultState: ConversationSessionState = {
       step: 'IDLE',
@@ -42,19 +43,62 @@ export const chatRepository = {
       lastInteractionTimestamp: Date.now()
     };
     mockStore.sessionStates.set(conversationId, updated);
+
+    // Asynchronously sync session state to Supabase conversations table for serverless persistence
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      Promise.resolve(
+        client
+          .from('conversations')
+          .update({
+            draft_state: updated,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', conversationId)
+      ).catch((err: any) => console.error('[State Sync] Error saving draft_state to Supabase:', err));
+    }
+
     return updated;
   },
 
   clearSessionDraft(conversationId: string, lastOrderId?: string): void {
     const existing = this.getSessionState(conversationId);
-    mockStore.sessionStates.set(conversationId, {
+    const clearedState: ConversationSessionState = {
       step: 'IDLE',
       draftOrder: { items: [] },
       parallelDrafts: undefined,
       lastOrderId: lastOrderId || existing.lastOrderId,
       lastCreatedOrders: existing.lastCreatedOrders,
       lastInteractionTimestamp: Date.now()
-    });
+    };
+    mockStore.sessionStates.set(conversationId, clearedState);
+
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      Promise.resolve(
+        client
+          .from('conversations')
+          .update({
+            draft_state: clearedState,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', conversationId)
+      ).catch(() => {});
+    }
+  },
+
+  async updateConversationSummary(conversationId: string, summary: string): Promise<void> {
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      await client
+        .from('conversations')
+        .update({ summary })
+        .eq('id', conversationId);
+    }
+    const conv = mockStore.conversations.get(conversationId);
+    if (conv) {
+      conv.summary = summary;
+    }
   },
 
   updateCustomerProfileSlot(conversationId: string, slot: {
@@ -128,6 +172,9 @@ export const chatRepository = {
           .single();
 
         if (!error && data) {
+          if (data.draft_state && !mockStore.sessionStates.has(data.id)) {
+            mockStore.sessionStates.set(data.id, data.draft_state);
+          }
           const sortedMessages = (data.messages || []).sort(
             (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
@@ -165,6 +212,9 @@ export const chatRepository = {
         .single();
 
       if (data) {
+        if (data.draft_state && !mockStore.sessionStates.has(data.id)) {
+          mockStore.sessionStates.set(data.id, data.draft_state);
+        }
         const sortedMessages = (data.messages || []).sort(
           (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         );

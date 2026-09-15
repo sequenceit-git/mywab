@@ -48,6 +48,9 @@ export class LangChainAgentService {
   getSystemPrompt(params: {
     customerPhone: string;
     sessionState: ConversationSessionState;
+    customerProfile?: import('@/types').CustomerMemoryProfile;
+    recentOrders?: import('@/types').Order[];
+    summary?: string;
     faqs?: any[];
   }): string {
     return buildSystemPrompt(params);
@@ -72,11 +75,27 @@ export class LangChainAgentService {
       };
     }
 
-    // 1. Fetch current session state & conversation history
+    // 1. Fetch current session state, customer memory profile, and recent order history (<10ms)
     let sessionState = db.getSessionState(conversationId);
     let draft = sessionState.draftOrder;
+    const customerProfile = await db.getCustomerProfile(phone);
+    const recentOrders = await db.getOrdersByPhone(phone);
+    const isAffirmative = isAffirmativePhrase(messageText);
 
-    // 1b. Proactive Deterministic Slot Extraction & State Sync for this customer's session
+    // 1b. Returning Customer Auto-Fill: If customer confirms using saved UID
+    if (isAffirmative && !draft.playerUid && customerProfile.last_used_uid && draft.items && draft.items.length > 0) {
+      console.log(`[Memory Auto-Fill] Reusing saved Player UID ${customerProfile.last_used_uid} for returning customer ${phone}`);
+      sessionState = db.setSessionState(conversationId, {
+        step: draft.trxId ? 'AWAITING_CONFIRMATION' : 'AWAITING_PAYMENT',
+        draftOrder: {
+          ...draft,
+          playerUid: customerProfile.last_used_uid
+        }
+      });
+      draft = sessionState.draftOrder;
+    }
+
+    // 1c. Proactive Deterministic Slot Extraction & State Sync for this customer's session
     const { extractedUid, extractedTrx, extractedPaymentMethod, extractedItems, parallelOrders } = extractSlotsFromMessage(messageText);
 
     if (extractedUid || extractedTrx || extractedPaymentMethod || extractedItems || parallelOrders) {
@@ -114,7 +133,6 @@ export class LangChainAgentService {
     }
 
     // 2. Check Affirmation / Complete Slot Fast-Path
-    const isAffirmative = isAffirmativePhrase(messageText);
     const hasValidUid = Boolean(draft.playerUid && /^\d{5,12}$/.test(draft.playerUid.trim()));
     const hasValidTrx = Boolean(draft.trxId && draft.trxId.trim().length >= 4);
     const hasTopUpSlots = Boolean(draft.items && draft.items.length > 0 && hasValidUid);
@@ -143,6 +161,12 @@ export class LangChainAgentService {
       const toolResult = JSON.parse(toolResultRaw);
       if (toolResult.success) {
         db.clearSessionDraft(conversationId, toolResult.order_id);
+        db.updateCustomerProfile(phone, {
+          last_used_uid: targetUid,
+          preferred_payment: targetPayment,
+          total_completed_orders: (customerProfile.total_completed_orders || 0) + 1
+        }).catch(() => {});
+
         const text = 
 `🎉 *টপ-আপ অর্ডার সফলভাবে গ্রহণ করা হয়েছে!*
 
@@ -179,6 +203,9 @@ export class LangChainAgentService {
         const systemPromptStr = this.getSystemPrompt({
           customerPhone: phone,
           sessionState,
+          customerProfile,
+          recentOrders,
+          summary: conv?.summary,
           faqs: activeFaqs
         });
 

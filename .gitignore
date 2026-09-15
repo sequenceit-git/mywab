@@ -37,3 +37,4 @@ yarn-error.log*
 # Temporary test scripts
 scripts/test-supabase.mjs
 scripts/setup-db.mjs
+scratch/

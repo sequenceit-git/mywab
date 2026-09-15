@@ -217,7 +217,15 @@ export const createOrderTool = tool(
       // 4. Automatically Forward to Telegram Worker Group
       await telegramBot.dispatchNewOrder(order);
 
-      // 5. Clear the active draft session state
+      // 5. Update Customer Persistent Memory Profile (Saved UIDs, Preferred Payment)
+      if (effectiveUid) {
+        db.updateCustomerProfile(params.customerPhone, {
+          last_used_uid: effectiveUid,
+          preferred_payment: effectivePayment || 'bKash'
+        }).catch(err => console.error('[Memory] Error updating customer profile:', err));
+      }
+
+      // 6. Clear the active draft session state
       if (params.conversationId) {
         db.clearSessionDraft(params.conversationId, order.order_id);
       }

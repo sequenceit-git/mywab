@@ -13,17 +13,27 @@ export type PaymentMethod = 'COD' | 'BKASH' | 'NAGAD' | 'ROCKET' | 'CARD';
 
 export type UserRole = 'CUSTOMER' | 'WORKER' | 'SUPERVISOR' | 'ADMIN';
 
+export interface CustomerMemoryProfile {
+  saved_uids: string[];
+  last_used_uid?: string;
+  preferred_payment?: string;
+  total_completed_orders: number;
+  vip_status?: boolean;
+  notes?: string;
+}
+
 export interface UserProfile {
   id: string;
   phone_number: string;
   name: string | null;
-  address_profile: {
+  address_profile?: {
     street?: string;
     city?: string;
     area?: string;
     postal_code?: string;
     full_address?: string;
   };
+  customer_profile?: CustomerMemoryProfile;
   language_pref: 'bn' | 'en';
   status_tag: 'VIP' | 'REGULAR' | 'FLAGGED';
   created_at: string;
@@ -162,6 +172,8 @@ export interface Conversation {
   is_ai_active: boolean;
   last_message_at: string;
   created_at: string;
+  summary?: string;
+  draft_state?: ConversationSessionState;
   user?: UserProfile;
   messages?: Message[];
   session_state?: ConversationSessionState;

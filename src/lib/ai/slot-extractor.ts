@@ -130,9 +130,10 @@ export function extractSlotsFromMessage(messageText: string): ExtractedSlots {
 export function isAffirmativePhrase(messageText: string): boolean {
   const lower = messageText.toLowerCase().trim();
   const affirmativeExactOrRegex = [
-    /^(?:yes|all\s*ok(?:ey)?|ok(?:ey|ay)?|confirm(?:ed)?|plz\s*confirm|please\s*confirm|proceed|done|paid)$/i,
-    /^(?:thik\s*ase|thik\s*ache|thik|yes\s*please|yes\s*go\s*ahead|all\s*order\s*confirm|duto\s*e\s*confirm)$/i,
-    /(?:^|\s)(?:হ্যাঁ|হ্যা|ঠিক আছে|কনফার্ম|কনফার্ম করুন|টাকা পাঠিয়েছি|টাকা দিছি|অর্ডার করুন|অর্ডার দিন|এগিয়ে যান|অর্ডার কনফার্ম|সবগুলো কনফার্ম)(?:$|\s)/i
+    /^(?:yes|ha|haa|ji|all\s*ok(?:ey)?|ok(?:ey|ay)?|confirm(?:ed)?|plz\s*confirm|please\s*confirm|proceed|done|paid)$/i,
+    /^(?:thik\s*ase|thik\s*ache|thik|yes\s*please|yes\s*go\s*ahead|all\s*order\s*confirm|duto\s*e\s*confirm|ager\s*ta|ager\s*tai|ager\s*uid|ager\s*uide)$/i,
+    /(?:^|\s)(?:ha|haa|yes|ji)?\s*(?:ager\s*ta|ager\s*tai|ager\s*uid|ager\s*uide)(?:$|\s)/i,
+    /(?:^|\s)(?:হ্যাঁ|হ্যা|হাঁ|জি|ঠিক আছে|কনফার্ম|কনফার্ম করুন|টাকা পাঠিয়েছি|টাকা দিছি|অর্ডার করুন|অর্ডার দিন|এগিয়ে যান|অর্ডার কনফার্ম|সবগুলো কনফার্ম|আগেরটা|আগেরটায়|আগেরটাতে|আগের আইডিতে)(?:$|\s)/i
   ];
   return affirmativeExactOrRegex.some(regex => regex.test(lower));
 }
