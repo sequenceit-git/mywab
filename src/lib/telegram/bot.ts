@@ -93,8 +93,8 @@ ${itemsText}
 🎮 <b>Player UID:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
-
-<i>This order has been cancelled from the system.</i>`,
+${order.customer_notes ? `📝 <b>Notes / Reason:</b> ${order.customer_notes}\n` : ''}
+<i>⚠️ This top-up order was cancelled by Admin. No worker action needed.</i>`,
         replyMarkup: {
           inline_keyboard: []
         }
@@ -253,6 +253,15 @@ ${itemsText}
     if (!existingOrder) {
       await this.answerCallbackQuery(id, '⚠️ Order not found in database', true);
       return { success: false, message: 'Order not found' };
+    }
+
+    if (existingOrder.status === 'CANCELLED') {
+      await this.answerCallbackQuery(
+        id,
+        '❌ এই অর্ডারটি অ্যাডমিন কর্তৃক বাতিল করা হয়েছে (This order was cancelled by Admin).',
+        true
+      );
+      return { success: false, message: 'Order is cancelled' };
     }
 
     const assignedWorker = existingOrder.current_worker ||

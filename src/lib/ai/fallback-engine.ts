@@ -32,7 +32,31 @@ export async function fallbackEngineStructured(params: {
 
   const getPrice = (uc: string, fallback: number) => dynamicRateMap[uc] || fallback;
 
-  // 2. Greetings
+  // 2. Dynamic FAQ Matching (Admin-Managed Q&As)
+  const allFaqs = await db.getFAQs();
+  const activeFaqs = allFaqs.filter(f => f.is_active);
+
+  for (const faq of activeFaqs) {
+    const qEnTokens = faq.question_en.toLowerCase().split(/[\/,\n|]+/).map(t => t.trim()).filter(Boolean);
+    const qBnTokens = (faq.question_bn || '').toLowerCase().split(/[\/,\n|?？!！]+/).map(t => t.trim()).filter(Boolean);
+    const allPatterns = [...qEnTokens, ...qBnTokens];
+
+    const isMatch = allPatterns.some(pat => {
+      if (pat.length <= 2) return lower === pat;
+      return lower.includes(pat) || (lower.length > 5 && pat.includes(lower));
+    });
+
+    if (isMatch) {
+      const text = faq.answer_bn || faq.answer_en;
+      const buttons: WhatsAppButton[] = [
+        { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
+        { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
+      ];
+      return { text, buttons };
+    }
+  }
+
+  // 3. Greetings
   if (['hi', 'hello', 'hlw', 'hey', 'bhai acen', 'vai', 'line a acen', 'ভাই আছেন', 'হ্যালো', 'হাই'].some(g => lower === g || lower.startsWith(g))) {
     const text = 
 `👋 আসসালামু আলাইকুম! **DS Dukan**-এ আপনাকে স্বাগতম। 🎮✨

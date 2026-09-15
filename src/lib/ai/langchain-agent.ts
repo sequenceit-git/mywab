@@ -51,6 +51,7 @@ export class LangChainAgentService {
     sessionState: ConversationSessionState;
     products?: any[];
     policies?: any[];
+    faqs?: any[];
   }): string {
     return buildSystemPrompt(params);
   }
@@ -154,6 +155,7 @@ export class LangChainAgentService {
 
     const activeProducts = await db.getProducts();
     const activePolicies = await db.getAIPolicies();
+    const activeFaqs = await db.getFAQs();
 
     const llm = this.getLLM();
 
@@ -173,7 +175,13 @@ export class LangChainAgentService {
           : historyMessages;
 
         const formattedHistory: Array<['system' | 'human' | 'ai', string]> = [
-          ['system', this.getSystemPrompt({ customerPhone: phone, sessionState, products: activeProducts, policies: activePolicies })]
+          ['system', this.getSystemPrompt({
+            customerPhone: phone,
+            sessionState,
+            products: activeProducts,
+            policies: activePolicies,
+            faqs: activeFaqs
+          })]
         ];
 
         pastMessages.slice(-8).forEach(m => {

@@ -1,12 +1,13 @@
-import { ConversationSessionState, Product, AIPolicy } from '@/types';
+import { ConversationSessionState, Product, AIPolicy, FAQ } from '@/types';
 
 export function buildSystemPrompt(params: {
   customerPhone: string;
   sessionState: ConversationSessionState;
   products?: Product[];
   policies?: AIPolicy[];
+  faqs?: FAQ[];
 }): string {
-  const { customerPhone, sessionState, products = [], policies = [] } = params;
+  const { customerPhone, sessionState, products = [], policies = [], faqs = [] } = params;
   const draft = sessionState.draftOrder;
 
   const draftInfo = `
@@ -57,6 +58,11 @@ ACTIVE SESSION STATE & CART MEMORY:
     ? dontPolicies.map(p => `• [STRICT PROHIBITION - ${p.title}]: ${p.rule_bn} (${p.rule_en})`).join('\n')
     : `• NEVER ask for passwords, logins, or social account access.\n• NEVER give unapproved custom discounts.\n• NEVER create order without Player UID.`;
 
+  const activeFaqs = faqs.filter(f => f.is_active);
+  const faqText = activeFaqs.length > 0
+    ? activeFaqs.map(f => `• [Q: ${f.question_bn} (${f.question_en})]: ${f.answer_bn}`).join('\n')
+    : `• 60 UC: 115 Tk | 325 UC: 600 Tk | Delivery: 5-15 mins via Player UID.`;
+
   return `You are "DS Dukan Assistant", the fast, friendly, and expert WhatsApp AI assistant for **DS Dukan** (https://www.dsdukan.com/#) - the leading digital top-up shop for PUBG Mobile UC, Growth Packs, and Prime Subscriptions in Bangladesh.
 Current Customer Phone: ${customerPhone}
 
@@ -90,9 +96,12 @@ ${doPolicyText}
 WHAT AI MUST NEVER DO (STRICT DONT'S & PROHIBITIONS):
 ${dontPolicyText}
 
+=== FREQUENTLY ASKED QUESTIONS & ANSWERS (LIVE KNOWLEDGE BASE) ===
+${faqText}
+
 ORDERING LIFECYCLE & STATE RULES:
-1. When customer inquires about packages or rates:
-   - Provide the requested UC/Growth Pack price clearly in Bengali.
+1. When customer inquires about packages, rates, or FAQs:
+   - Provide the requested UC/Growth Pack price or answer clearly in Bengali matching the knowledge base.
    - Mention that only their Player UID is needed (no password).
    - Inform them about the 2% discount on the website (https://www.dsdukan.com/#).
 2. When customer selects package or provides Player UID:
