@@ -507,17 +507,83 @@ CONVERSATIONAL RULES:
     const lowerMessage = messageText.toLowerCase().trim();
 
     // 1. Fetch current session state & conversation history
-    const sessionState = db.getSessionState(conversationId);
-    const draft = sessionState.draftOrder;
+    let sessionState = db.getSessionState(conversationId);
+    let draft = sessionState.draftOrder;
+
+    // 1b. Proactive Deterministic Slot Extraction & State Sync for this customer's session
+    const uidMatch = messageText.match(/(?:uid|id|আইডি)[:\s]+(\d{5,12})/i) ||
+                     messageText.match(/\b(5\d{7,10})\b/) ||
+                     messageText.match(/\b(\d{8,11})\b/);
+    const trxMatch = messageText.match(/(?:trx|trxid|ট্রানজেকশন|লাস্ট|last\s*4)[:\s]+([a-zA-Z0-9]{4,14})/i) ||
+                     messageText.match(/\b([A-Z0-9]{8,12})\b/);
+    
+    let detectedPackage: { skuOrName: string; quantity: number } | null = null;
+    if (lowerMessage.includes('prime plus') || lowerMessage.includes('প্রাইম প্লাস')) {
+      detectedPackage = { skuOrName: 'Prime Plus (1 Month)', quantity: 1 };
+    } else if (lowerMessage.includes('prime') || lowerMessage.includes('প্রাইম')) {
+      detectedPackage = { skuOrName: 'Prime (1 Month)', quantity: 1 };
+    } else if (lowerMessage.includes('growth 1') || lowerMessage.includes('gp 1') || lowerMessage.includes('growth pack 1')) {
+      detectedPackage = { skuOrName: 'Growth Pack 1', quantity: 1 };
+    } else if (lowerMessage.includes('growth 2') || lowerMessage.includes('gp 2') || lowerMessage.includes('growth pack 2')) {
+      detectedPackage = { skuOrName: 'Growth Pack 2', quantity: 1 };
+    } else if (lowerMessage.includes('growth 3') || lowerMessage.includes('gp 3') || lowerMessage.includes('growth pack 3')) {
+      detectedPackage = { skuOrName: 'Growth Pack 3', quantity: 1 };
+    } else {
+      const ucRates = ['8100', '3850', '1800', '1045', '720', '660', '385', '325', '180', '120', '60'];
+      for (const r of ucRates) {
+        if (new RegExp(`\\b${r}\\s*(?:uc|ইউসি)?\\b`, 'i').test(messageText) || lowerMessage.includes(r)) {
+          if (r === '385') detectedPackage = { skuOrName: '385 UC [50 RP]', quantity: 1 };
+          else if (r === '720') detectedPackage = { skuOrName: '720 UC [100 RP]', quantity: 1 };
+          else detectedPackage = { skuOrName: `${r} UC`, quantity: 1 };
+          break;
+        }
+      }
+    }
+
+    let detectedPayment: string | null = null;
+    if (lowerMessage.includes('bkash') || lowerMessage.includes('বিকাশ')) detectedPayment = 'bKash';
+    else if (lowerMessage.includes('nagad') || lowerMessage.includes('নগদ')) detectedPayment = 'Nagad';
+    else if (lowerMessage.includes('rocket') || lowerMessage.includes('রকেট')) detectedPayment = 'Rocket';
+
+    const extractedUid = uidMatch ? (uidMatch[1] || uidMatch[0]) : null;
+    const extractedTrx = trxMatch ? (trxMatch[1] || trxMatch[0]) : null;
+
+    if (extractedUid || detectedPackage || extractedTrx || detectedPayment) {
+      const updatedItems = detectedPackage ? [detectedPackage] : draft.items;
+      const updatedUid = extractedUid || draft.playerUid;
+      const updatedTrx = extractedTrx && extractedTrx !== extractedUid && !extractedTrx.startsWith('+88') ? extractedTrx : draft.trxId;
+      const updatedPayment = detectedPayment || draft.paymentMethod;
+
+      let nextStep: ConversationSessionState['step'] = sessionState.step;
+      if (updatedItems && updatedItems.length > 0 && updatedUid && updatedTrx) {
+        nextStep = 'AWAITING_CONFIRMATION';
+      } else if (updatedItems && updatedItems.length > 0 && updatedUid && !updatedTrx) {
+        nextStep = 'AWAITING_PAYMENT';
+      } else if (updatedItems && updatedItems.length > 0 && !updatedUid) {
+        nextStep = 'COLLECTING_DETAILS';
+      }
+
+      sessionState = db.setSessionState(conversationId, {
+        step: nextStep,
+        draftOrder: {
+          items: updatedItems,
+          playerUid: updatedUid,
+          trxId: updatedTrx,
+          paymentMethod: updatedPayment,
+          customerPhone: phone
+        }
+      });
+      draft = sessionState.draftOrder;
+    }
 
     // 2. Check Affirmation Fast-Path
     // If we have package + UID + TrxID (or customer confirms)
     const isAffirmative = [
-      'yes', 'yes all okey', 'yes all ok', 'all okey', 'all ok', 'okey', 'ok', 'okay',
+      'yes', 'all okey', 'all ok', 'okey', 'ok', 'okay',
       'confirm', 'confirmed', 'plz confirm', 'please confirm', 'proceed', 'done', 'paid',
       'thik ase', 'thik ache', 'thik', 'yes please', 'yes go ahead',
       'হ্যাঁ', 'হ্যা', 'ঠিক আছে', 'কনফার্ম', 'কনফার্ম করুন', 'টাকা পাঠিয়েছি', 'টাকা দিছি', 'অর্ডার করুন', 'অর্ডার দিন', 'এগিয়ে যান', 'অর্ডার কনফার্ম'
-    ].some(phrase => lowerMessage === phrase || lowerMessage.startsWith(phrase));
+    ].some(phrase => lowerMessage === phrase || lowerMessage.includes(phrase));
 
     const hasTopUpSlots = Boolean(
       draft.items && draft.items.length > 0 &&
