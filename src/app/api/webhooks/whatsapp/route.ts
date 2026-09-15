@@ -64,14 +64,44 @@ export async function POST(request: NextRequest) {
           const formattedPhone = fromPhone.startsWith('+') ? fromPhone : `+${fromPhone}`;
           const customerName = value.contacts?.[0]?.profile?.name || 'Customer';
           
-          // Extract message text or button click response
+          // Extract message text or button click response with robust action routing
           let messageText = '';
           if (message.type === 'text') {
             messageText = message.text?.body || '';
           } else if (message.type === 'interactive') {
-            messageText = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || message.interactive?.button_reply?.id || '';
+            const replyId = message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || '';
+            const replyTitle = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '';
+            
+            if (replyId.startsWith('track:')) {
+              const orderId = replyId.replace('track:', '').trim();
+              messageText = `Track order ${orderId}`;
+            } else if (replyId === 'btn_60uc') {
+              messageText = '60 UC';
+            } else if (replyId === 'btn_385uc') {
+              messageText = '385 UC';
+            } else if (replyId === 'btn_catalog') {
+              messageText = 'UC price list koto';
+            } else if (replyId === 'btn_website') {
+              messageText = 'Website discount link den';
+            } else {
+              messageText = replyTitle || replyId;
+            }
           } else if (message.type === 'button') {
-            messageText = message.button?.text || message.button?.payload || '';
+            const payload = message.button?.payload || '';
+            const text = message.button?.text || '';
+            if (payload.startsWith('track:')) {
+              messageText = `Track order ${payload.replace('track:', '').trim()}`;
+            } else if (payload === 'btn_60uc') {
+              messageText = '60 UC';
+            } else if (payload === 'btn_385uc') {
+              messageText = '385 UC';
+            } else if (payload === 'btn_catalog') {
+              messageText = 'UC price list koto';
+            } else if (payload === 'btn_website') {
+              messageText = 'Website discount link den';
+            } else {
+              messageText = text || payload;
+            }
           }
 
           console.log(`💬 [WhatsApp Inbound Message] From: ${formattedPhone} (${customerName}) | Text: "${messageText}" | Type: ${message.type} | MessageID: ${message.id}`);

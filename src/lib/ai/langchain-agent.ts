@@ -234,46 +234,30 @@ export class LangChainAgentService {
           const finalResponse = await llm.invoke(finalMessages);
           const rawText = String(finalResponse.content || '');
 
-          const dynamicButtons: WhatsAppButton[] = createdOrderResult?.order_id
-            ? [
-                { id: `track:${createdOrderResult.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
-                { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-                { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-              ]
-            : [
-                { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-                { id: 'btn_track', title: '📦 অর্ডার ট্র্যাক' },
-                { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-              ];
+          const dynamicButtons = getContextualButtons({
+            rawText,
+            messageText,
+            sessionState,
+            createdOrderResult
+          });
 
           return {
             text: rawText,
-            buttons: dynamicButtons,
+            buttons: dynamicButtons.length > 0 ? dynamicButtons : undefined,
             createdOrder: createdOrderResult
           };
         }
 
         const rawText = String(response.content || '');
-        const lowerMsg = messageText.toLowerCase();
-        
-        let dynamicButtons: WhatsAppButton[] = [
-          { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
-          { id: 'btn_track', title: '📦 অর্ডার ট্র্যাক' },
-          { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
-        ];
-
-        const hasSelectedPackage = Boolean(sessionState.draftOrder?.items && sessionState.draftOrder.items.length > 0);
-        if ((lowerMsg.includes('uc') || lowerMsg.includes('price') || lowerMsg.includes('dam') || lowerMsg.includes('koto')) && !hasSelectedPackage) {
-          dynamicButtons = [
-            { id: 'btn_60uc', title: '⚡ 60 UC (৳115)' },
-            { id: 'btn_385uc', title: '👑 385 UC (৳710)' },
-            { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' }
-          ];
-        }
+        const dynamicButtons = getContextualButtons({
+          rawText,
+          messageText,
+          sessionState
+        });
 
         return {
           text: rawText,
-          buttons: dynamicButtons
+          buttons: dynamicButtons.length > 0 ? dynamicButtons : undefined
         };
       } catch (err) {
         console.error('[LangChain Agent Exception, falling back to graph/rules]:', err);
@@ -328,4 +312,54 @@ export class LangChainAgentService {
 
 export const langchainAgent = new LangChainAgentService();
 export const langChainAgent = langchainAgent;
+
+function getContextualButtons(params: {
+  rawText: string;
+  messageText: string;
+  sessionState: ConversationSessionState;
+  createdOrderResult?: any;
+}): WhatsAppButton[] {
+  const { rawText, messageText, sessionState, createdOrderResult } = params;
+  const lowerMsg = messageText.toLowerCase();
+  const lowerText = rawText.toLowerCase();
+
+  // 1. If an order was placed, offer Track Order & Website buttons
+  const orderId = createdOrderResult?.order_id || sessionState.lastOrderId;
+  if (orderId && (createdOrderResult?.order_id || lowerText.includes('order id:') || lowerText.includes('অর্ডার গ্রহণ') || lowerText.includes('অর্ডার ক্রিয়েট'))) {
+    return [
+      { id: `track:${orderId}`, title: '📦 অর্ডার ট্র্যাক' },
+      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
+    ];
+  }
+
+  // 2. If the AI is asking for Player UID or payment TrxID / last 4 digits, DO NOT HOLD/SHOW BUTTONS (user needs keyboard)
+  const isAskingUid = lowerText.includes('player uid') || lowerText.includes('uid টি') || lowerText.includes('ইউআইডি') || lowerText.includes('আইডি দিন') || lowerText.includes('uid দিন');
+  const isAskingPayment = lowerText.includes('trxid') || lowerText.includes('ট্রানজেকশন') || lowerText.includes('লাস্ট ৪') || lowerText.includes('send money') || lowerText.includes('সেন্ড মানি') || lowerText.includes('টাকা সেন্ড');
+
+  if (isAskingUid || isAskingPayment || sessionState.step === 'COLLECTING_DETAILS' || sessionState.step === 'AWAITING_PAYMENT') {
+    return [];
+  }
+
+  // 3. If customer is asking for prices or exploring packages, offer package selection buttons
+  const hasSelectedPackage = Boolean(sessionState.draftOrder?.items && sessionState.draftOrder.items.length > 0);
+  if ((lowerMsg.includes('uc') || lowerMsg.includes('price') || lowerMsg.includes('dam') || lowerMsg.includes('koto') || lowerMsg.includes('প্যাকেজ') || lowerText.includes('কোন uc')) && !hasSelectedPackage) {
+    return [
+      { id: 'btn_60uc', title: '⚡ 60 UC (৳115)' },
+      { id: 'btn_385uc', title: '👑 385 UC (৳710)' },
+      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' }
+    ];
+  }
+
+  // 4. If greeting / general start, provide Catalog & Website buttons
+  const isGreeting = ['hi', 'hello', 'hlw', 'hey', 'vai', 'bhai', 'ভাই', 'হ্যালো'].some(g => lowerMsg.startsWith(g) || lowerMsg === g);
+  if (isGreeting && !hasSelectedPackage) {
+    return [
+      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
+      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
+    ];
+  }
+
+  // Otherwise, no buttons
+  return [];
+}
 
