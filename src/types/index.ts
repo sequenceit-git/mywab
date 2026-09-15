@@ -81,6 +81,9 @@ export interface Order {
   };
   delivery_phone: string;
   customer_notes?: string;
+  player_uid?: string;
+  trx_id?: string;
+  payment_method?: PaymentMethod | string;
   telegram_message_id?: number | null;
   created_at: string;
   updated_at?: string;
@@ -120,19 +123,16 @@ export interface OrderAssignment {
 export interface Payment {
   id: string;
   order_id: string;
-  payment_method: PaymentMethod;
-  trx_id: string | null;
   amount: number;
+  method: PaymentMethod;
   status: PaymentStatus;
-  verified_at?: string | null;
+  transaction_id: string | null;
+  screenshot_url?: string | null;
   created_at: string;
+  verified_at?: string | null;
 }
 
-export type ConversationStep =
-  | 'IDLE'
-  | 'COLLECTING_DETAILS'
-  | 'AWAITING_CONFIRMATION'
-  | 'ORDER_PLACED';
+export type ConversationStep = 'IDLE' | 'COLLECTING_DETAILS' | 'AWAITING_PAYMENT' | 'AWAITING_CONFIRMATION' | 'ORDER_PLACED';
 
 export interface DraftOrderItem {
   skuOrName: string;
@@ -146,6 +146,9 @@ export interface ConversationDraftOrder {
   customerName?: string;
   deliveryAddress?: string;
   customerPhone?: string;
+  playerUid?: string;
+  paymentMethod?: string;
+  trxId?: string;
   customerNotes?: string;
   totalAmount?: number;
 }

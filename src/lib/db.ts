@@ -15,6 +15,63 @@ import {
 
 const getDbClient = () => supabaseAdmin || supabase;
 
+// Initial Seed Catalog for DS Dukan (PUBG Mobile Top-Up)
+const DEFAULT_DS_DUKAN_PRODUCTS: Product[] = [
+  { id: 'prod-uc-60', sku: 'PUBG-UC-60', name_en: '60 UC', name_bn: '৬০ ইউসি (60 UC)', description_en: 'Direct In-Game Top-Up via Player UID', description_bn: 'শুধুমাত্র Player UID দিয়ে সরাসরি টপ-আপ', price: 115, stock_qty: 9999, category: 'PUBG UC', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-uc-120', sku: 'PUBG-UC-120', name_en: '120 UC', name_bn: '১২০ ইউসি (120 UC)', description_en: 'Direct In-Game Top-Up via Player UID', description_bn: 'শুধুমাত্র Player UID দিয়ে সরাসরি টপ-আপ', price: 230, stock_qty: 9999, category: 'PUBG UC', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-uc-180', sku: 'PUBG-UC-180', name_en: '180 UC', name_bn: '১৮০ ইউসি (180 UC)', description_en: 'Direct In-Game Top-Up via Player UID', description_bn: 'শুধুমাত্র Player UID দিয়ে সরাসরি টপ-আপ', price: 340, stock_qty: 9999, category: 'PUBG UC', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-uc-325', sku: 'PUBG-UC-325', name_en: '325 UC', name_bn: '৩২৫ ইউসি (325 UC)', description_en: 'Direct In-Game Top-Up via Player UID', description_bn: 'শুধুমাত্র Player UID দিয়ে সরাসরি টপ-আপ', price: 600, stock_qty: 9999, category: 'PUBG UC', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-uc-385', sku: 'PUBG-UC-385', name_en: '385 UC [50 RP]', name_bn: '৩৮৫ ইউসি [50 RP]', description_en: 'Royale Pass 50 RP Bundle via Player UID', description_bn: 'রয়্যাল পাস ৫০ আরপি বান্ডেল', price: 710, stock_qty: 9999, category: 'PUBG UC', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-uc-660', sku: 'PUBG-UC-660', name_en: '660 UC', name_bn: '৬৬০ ইউসি (660 UC)', description_en: 'Direct In-Game Top-Up via Player UID', description_bn: 'শুধুমাত্র Player UID দিয়ে সরাসরি টপ-আপ', price: 1150, stock_qty: 9999, category: 'PUBG UC', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-uc-720', sku: 'PUBG-UC-720', name_en: '720 UC [100 RP]', name_bn: '৭২০ ইউসি [100 RP]', description_en: 'Elite Royale Pass 100 RP Bundle via Player UID', description_bn: 'এলিট রয়্যাল পাস ১০০ আরপি বান্ডেল', price: 1250, stock_qty: 9999, category: 'PUBG UC', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-uc-1045', sku: 'PUBG-UC-1045', name_en: '1045 UC', name_bn: '১০৪৫ ইউসি (1045 UC)', description_en: 'Direct In-Game Top-Up via Player UID', description_bn: 'শুধুমাত্র Player UID দিয়ে সরাসরি টপ-আপ', price: 1850, stock_qty: 9999, category: 'PUBG UC', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-uc-1800', sku: 'PUBG-UC-1800', name_en: '1800 UC', name_bn: '১৮০০ ইউসি (1800 UC)', description_en: 'Contact Admin for custom rate', description_bn: 'দাম জানতে সরাসরি ইনবক্সে বলুন', price: 3150, stock_qty: 9999, category: 'PUBG UC', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-uc-3850', sku: 'PUBG-UC-3850', name_en: '3850 UC', name_bn: '৩৮৫০ ইউসি (3850 UC)', description_en: 'Contact Admin for custom rate', description_bn: 'দাম জানতে সরাসরি ইনবক্সে বলুন', price: 6500, stock_qty: 9999, category: 'PUBG UC', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-uc-8100', sku: 'PUBG-UC-8100', name_en: '8100 UC', name_bn: '৮১০০ ইউসি (8100 UC)', description_en: 'Contact Admin for custom rate', description_bn: 'দাম জানতে সরাসরি ইনবক্সে বলুন', price: 13500, stock_qty: 9999, category: 'PUBG UC', is_active: true, created_at: new Date().toISOString() },
+  
+  // Growth Packs
+  { id: 'prod-gp-1', sku: 'PUBG-GP-1', name_en: 'Growth Pack 1', name_bn: 'গ্রোথ প্যাক ১ (Growth Pack 1)', description_en: 'Only Player UID needed', description_bn: 'শুধুমাত্র Player UID প্রয়োজন', price: 150, stock_qty: 9999, category: 'Growth Pack', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-gp-2', sku: 'PUBG-GP-2', name_en: 'Growth Pack 2', name_bn: 'গ্রোথ প্যাক ২ (Growth Pack 2)', description_en: 'Only Player UID needed', description_bn: 'শুধুমাত্র Player UID প্রয়োজন', price: 390, stock_qty: 9999, category: 'Growth Pack', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-gp-3', sku: 'PUBG-GP-3', name_en: 'Growth Pack 3', name_bn: 'গ্রোথ প্যাক ৩ (Growth Pack 3)', description_en: 'Only Player UID needed', description_bn: 'শুধুমাত্র Player UID প্রয়োজন', price: 590, stock_qty: 9999, category: 'Growth Pack', is_active: true, created_at: new Date().toISOString() },
+
+  // Prime Subscriptions
+  { id: 'prod-prime-1m', sku: 'PUBG-PRIME-1M', name_en: 'Prime 1 Month', name_bn: 'প্রাইম ১ মাস (Prime 1 Month)', description_en: 'Only Player UID needed', description_bn: 'শুধুমাত্র Player UID প্রয়োজন', price: 150, stock_qty: 9999, category: 'Subscription', is_active: true, created_at: new Date().toISOString() },
+  { id: 'prod-primeplus-1m', sku: 'PUBG-PRIMEPLUS-1M', name_en: 'Prime Plus 1 Month', name_bn: 'প্রাইম প্লাস ১ মাস (Prime Plus 1 Month)', description_en: 'Only Player UID needed', description_bn: 'শুধুমাত্র Player UID প্রয়োজন', price: 1150, stock_qty: 9999, category: 'Subscription', is_active: true, created_at: new Date().toISOString() }
+];
+
+const DEFAULT_DS_DUKAN_FAQS: FAQ[] = [
+  {
+    id: 'faq-1',
+    question_en: 'What is the delivery time?',
+    question_bn: 'টপ-আপ ডেলিভারি সময় কতক্ষণ?',
+    answer_en: 'Delivery Time is 5-15 Minutes. Only Player UID is required.',
+    answer_bn: 'ডেলিভারি সময় ৫ থেকে ১৫ মিনিট (5-15 Minutes)। শুধুমাত্র Player UID প্রয়োজন, কোনো পাসওয়ার্ড বা একাউন্ট এক্সেস লাগবে না।',
+    category: 'Delivery',
+    is_active: true,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'faq-2',
+    question_en: 'What are the payment methods?',
+    question_bn: 'পেমেন্ট মেথড ও নাম্বার কি?',
+    answer_en: 'bKash (Send Money): 01872239597, Rocket (Send Money): 01872239597, Nagad (Send Money): 01330719250. Send TrxID / last 4 digits after payment.',
+    answer_bn: 'পেমেন্ট নাম্বার (Personal / Send Money / Cash In):\n• BKASH: 01872239597\n• ROCKET: 01872239597\n• NAGAD: 01330719250\n♨ পার্সোনাল নাম্বার, তাই Send Money / Cash In করুন। পেমেন্ট করার পর ট্রানজেকশন আইডি (TrxID) বা লাস্ট ৪ সংখ্যা দিন।',
+    category: 'Payment',
+    is_active: true,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'faq-3',
+    question_en: 'Is there any discount on the website?',
+    question_bn: 'ওয়েবসাইট থেকে কিনলে কি ডিসকাউন্ট আছে?',
+    answer_en: 'Yes, get a 2% auto discount on https://www.dsdukan.com/# plus an additional 2% with coupon codes!',
+    answer_bn: '🎉 ওয়েবসাইট থেকে ইউসি কিনলে পাচ্ছেন ২% ইনস্ট্যান্ট ডিসকাউন্ট (অটোমেটিক কমানো আছে)। কুপন থাকলে আরও অতিরিক্ত ২% ডিসকাউন্ট!\nওয়েবসাইট লিংক: https://www.dsdukan.com/#',
+    category: 'Discount',
+    is_active: true,
+    created_at: new Date().toISOString()
+  }
+];
+
 // Clean in-memory fallback store used only when Supabase is not configured
 class MockDatabaseStore {
   users: Map<string, UserProfile> = new Map();
@@ -27,6 +84,12 @@ class MockDatabaseStore {
   messages: Map<string, Message> = new Map();
   payments: Map<string, Payment> = new Map();
   sessionStates: Map<string, ConversationSessionState> = new Map();
+
+  constructor() {
+    // Seed default products & FAQs
+    DEFAULT_DS_DUKAN_PRODUCTS.forEach(p => this.products.set(p.id, p));
+    DEFAULT_DS_DUKAN_FAQS.forEach(f => this.faqs.set(f.id, f));
+  }
 }
 
 // Global Singleton for in-memory store in dev
@@ -44,9 +107,8 @@ export const db = {
         .from('products')
         .select('*')
         .order('created_at', { ascending: false });
-      if (!error && data) return data;
+      if (!error && data && data.length > 0) return data;
       if (error) console.error('Supabase getProducts error:', error);
-      return [];
     }
     return Array.from(mockStore.products.values());
   },
@@ -60,7 +122,6 @@ export const db = {
         .eq('sku', sku)
         .single();
       if (!error && data) return data;
-      return null;
     }
     for (const p of mockStore.products.values()) {
       if (p.sku.toLowerCase() === sku.toLowerCase()) return p;
@@ -102,9 +163,8 @@ export const db = {
         .from('faqs')
         .select('*')
         .eq('is_active', true);
-      if (!error && data) return data;
+      if (!error && data && data.length > 0) return data;
       if (error) console.error('Supabase getFAQs error:', error);
-      return [];
     }
     return Array.from(mockStore.faqs.values()).filter(f => f.is_active);
   },
@@ -185,18 +245,27 @@ export const db = {
   async createOrder(params: {
     userId: string;
     items: Array<{ product_id?: string; product_name: string; unit_price: number; quantity: number }>;
-    deliveryAddress: { name?: string; phone?: string; address: string; city?: string; area?: string; notes?: string };
+    deliveryAddress?: { name?: string; phone?: string; address: string; city?: string; area?: string; notes?: string };
     deliveryPhone: string;
     customerNotes?: string | null;
+    playerUid?: string;
+    trxId?: string;
+    paymentMethod?: string;
   }): Promise<Order> {
     const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const randomSeq = Math.floor(1000 + Math.random() * 9000);
-    const orderIdCode = `WAP-${todayStr}-${randomSeq}`;
+    const orderIdCode = `DS-${todayStr}-${randomSeq}`;
     const orderUuid = crypto.randomUUID();
 
     const totalAmount = params.items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
 
     const user = await this.getUserById(params.userId);
+
+    const defaultAddress = params.deliveryAddress || {
+      name: user?.name || 'Customer',
+      phone: params.deliveryPhone,
+      address: params.playerUid ? `Player UID: ${params.playerUid}` : 'Digital Delivery'
+    };
 
     const order: Order = {
       id: orderUuid,
@@ -204,9 +273,12 @@ export const db = {
       user_id: params.userId,
       total_amount: totalAmount,
       status: 'PENDING_CLAIM',
-      delivery_address: params.deliveryAddress,
+      delivery_address: defaultAddress,
       delivery_phone: params.deliveryPhone,
       customer_notes: params.customerNotes || undefined,
+      player_uid: params.playerUid || undefined,
+      trx_id: params.trxId || undefined,
+      payment_method: params.paymentMethod || 'BKASH',
       created_at: new Date().toISOString(),
       customer: user || undefined,
       items: params.items.map((item, idx) => ({

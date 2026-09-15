@@ -80,16 +80,18 @@ export default function OrdersPage() {
     const matchesSearch =
       o.order_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       o.delivery_phone.includes(searchQuery) ||
+      (o.player_uid && o.player_uid.includes(searchQuery)) ||
+      (o.trx_id && o.trx_id.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (o.customer?.name && o.customer.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      o.delivery_address.address.toLowerCase().includes(searchQuery.toLowerCase());
+      (o.delivery_address?.address && o.delivery_address.address.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesFilter && matchesSearch;
   });
 
   return (
     <div className="flex-1 flex flex-col">
       <Header
-        title="Order Management Center"
-        subtitle="Live tracking of orders, worker claims, and customer dispatch"
+        title="DS Dukan Top-Up Center"
+        subtitle="Live tracking of PUBG UC top-ups, worker claims, and customer dispatch"
       />
 
       <main className="p-6 max-w-7xl mx-auto w-full space-y-6">
@@ -99,7 +101,7 @@ export default function OrdersPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search by Order ID, Phone, Customer, Address..."
+              placeholder="Search by Order ID, Player UID, TrxID, Phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500/50"
@@ -135,6 +137,7 @@ export default function OrdersPage() {
             ) : (
               filteredOrders.map((order) => {
                 const isSelected = selectedOrder?.id === order.id;
+                const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
 
                 return (
                   <div
@@ -165,17 +168,15 @@ export default function OrdersPage() {
                     </div>
 
                     <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-400">
-                      <div className="flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{order.customer?.name || order.delivery_address.name || 'Customer'}</span>
+                      <div className="flex items-center gap-1.5 font-mono text-emerald-400">
+                        <span>🎮 UID: <b>{playerUid}</b></span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <Phone className="w-3.5 h-3.5 text-slate-400" />
                         <span>{order.delivery_phone}</span>
                       </div>
-                      <div className="sm:col-span-2 flex items-center gap-1.5 text-[11px] text-slate-400 truncate">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">{order.delivery_address.address}</span>
+                      <div className="sm:col-span-2 flex items-center gap-1.5 text-[11px] text-slate-300 truncate">
+                        <span>💳 {order.payment_method || 'bKash/Nagad/Rocket'} | TrxID: <b className="font-mono text-white">{order.trx_id || 'N/A'}</b></span>
                       </div>
                     </div>
 
@@ -195,7 +196,7 @@ export default function OrdersPage() {
               <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 sticky top-24">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Order Detail</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Top-Up Order</span>
                     <h3 className="text-sm font-bold text-white font-mono">{selectedOrder.order_id}</h3>
                   </div>
                   <span
@@ -211,9 +212,20 @@ export default function OrdersPage() {
                   </span>
                 </div>
 
+                {/* Player UID & Top-up details */}
+                <div className="p-3 rounded-xl bg-slate-950/80 border border-brand-500/30 space-y-1.5 text-xs">
+                  <div className="text-[10px] uppercase font-bold text-brand-400">PUBG Player UID</div>
+                  <div className="text-base font-mono font-black text-white tracking-wider">
+                    {selectedOrder.player_uid || selectedOrder.delivery_address?.name || 'N/A'}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Payment: <b className="text-slate-200">{selectedOrder.payment_method || 'bKash/Nagad/Rocket'}</b> | TrxID: <b className="font-mono text-emerald-400">{selectedOrder.trx_id || 'N/A'}</b>
+                  </div>
+                </div>
+
                 {/* Items */}
                 <div className="space-y-2">
-                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Ordered Items</h4>
+                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Top-Up Packages</h4>
                   <div className="space-y-1.5">
                     {selectedOrder.items?.map((item, i) => (
                       <div key={i} className="flex items-center justify-between text-xs p-2 rounded-lg bg-slate-950/60 border border-slate-800/50">
@@ -227,13 +239,11 @@ export default function OrdersPage() {
                   </div>
                 </div>
 
-                {/* Customer & Delivery */}
+                {/* Customer Info */}
                 <div className="space-y-2 pt-2 border-t border-slate-800 text-xs">
-                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Delivery & Customer</h4>
+                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Customer Details</h4>
                   <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/50 space-y-1.5 text-slate-300">
-                    <div><b>Name:</b> {selectedOrder.customer?.name || selectedOrder.delivery_address.name || 'Anonymous'}</div>
                     <div><b>Phone:</b> {selectedOrder.delivery_phone}</div>
-                    <div><b>Address:</b> {selectedOrder.delivery_address.address}</div>
                     {selectedOrder.customer_notes && (
                       <div className="text-amber-400 text-[11px]"><b>Notes:</b> {selectedOrder.customer_notes}</div>
                     )}
@@ -245,7 +255,7 @@ export default function OrdersPage() {
                   <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Telegram Dispatch</h4>
                   <div className="p-3 rounded-xl bg-telegram-500/10 border border-telegram-500/20 text-xs space-y-1">
                     <div className="text-telegram-500 font-semibold">
-                      {selectedOrder.current_worker ? `Claimed by: ${selectedOrder.current_worker.full_name}` : 'Dispatched to Worker Group (Pending Claim)'}
+                      {selectedOrder.current_worker ? `Claimed by: ${selectedOrder.current_worker.full_name}` : 'Dispatched to Telegram Worker Group (Pending Claim)'}
                     </div>
                     {selectedOrder.current_worker?.telegram_username && (
                       <div className="text-[11px] text-slate-400 font-mono">@{selectedOrder.current_worker.telegram_username}</div>

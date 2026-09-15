@@ -123,29 +123,31 @@ export const whatsappService = {
    */
   async sendOrderConfirmation(order: Order): Promise<SendMessageResult> {
     const itemsList = order.items?.map(i => `• ${i.product_name} x ${i.quantity} = ৳${i.subtotal}`).join('\n') || '';
+    const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
     
     const messageText = 
-`🎉 *অর্ডার নিশ্চিতকরণ / Order Confirmed!*
+`🎉 *টপ-আপ অর্ডার নিশ্চিতকরণ / Top-Up Confirmed!*
 
-প্রিয় গ্রাহক, আপনার অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে।
+প্রিয় গ্রাহক, আপনার টপ-আপ অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে।
 
 📦 *Order ID:* \`${order.order_id}\`
+🎮 *Player UID:* \`${playerUid}\`
 💰 *মোট মূল্য (Total):* ৳${order.total_amount}
-📍 *ডেলিভারি ঠিকানা:* ${order.delivery_address.address}
-📞 *ফোন নম্বর:* ${order.delivery_phone}
+💳 *পেমেন্ট:* ${order.payment_method || 'bKash/Nagad/Rocket'} (TrxID: \`${order.trx_id || 'N/A'}\`)
+⚡ *ডেলিভারি সময়:* ৫–১৫ মিনিট (5-15 Minutes)
 
-*অর্ডারকৃত পণ্যসমূহ (Items):*
+*প্যাকেজসমূহ (Packages):*
 ${itemsList}
 
-আমাদের ডেলিভারি টিম খুব দ্রুত আপনার সাথে যোগাযোগ করবে!`;
+আমাদের টপ-আপ টিম খুব দ্রুত আপনার আইডিতে ইউসি পাঠিয়ে দেবে! 🚀`;
 
     const buttons: WhatsAppButton[] = [
       { id: `track:${order.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
-      { id: 'btn_catalog', title: '🛍️ আরও পণ্য দেখুন' },
-      { id: 'btn_support', title: '👤 সহায়তা' }
+      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
+      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
     ];
 
-    return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'WapBusiness Confirmation');
+    return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Top-Up');
   },
 
   /**
@@ -153,16 +155,16 @@ ${itemsList}
    */
   async sendOrderClaimedNotification(order: Order, workerName: string): Promise<SendMessageResult> {
     const messageText = 
-`🚚 *অর্ডার আপডেট / Order Update!*
+`⚡ *টপ-আপ আপডেট / Processing Top-Up!*
 
-আপনার অর্ডার *#${order.order_id}* প্রস্তুত করার কাজ শুরু হয়েছে।
-আমাদের ডেলিভারি প্রতিনিধি *${workerName}* অর্ডারটি প্রসেস করছেন।`;
+আপনার টপ-আপ অর্ডার *#${order.order_id}* প্রসেসিং শুরু হয়েছে।
+আমাদের কর্মী *${workerName}* আপনার আইডিতে ইউসি টপ-আপ করছেন (সময় ৫–১৫ মিনিট)।`;
 
     const buttons: WhatsAppButton[] = [
       { id: `track:${order.order_id}`, title: '📦 লাইভ স্ট্যাটাস' }
     ];
 
-    return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons);
+    return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Update');
   },
 
   /**
@@ -170,16 +172,18 @@ ${itemsList}
    */
   async sendOrderDeliveredNotification(order: Order): Promise<SendMessageResult> {
     const messageText = 
-`✅ *অর্ডার ডেলিভারি সম্পন্ন / Order Delivered!*
+`✅ *টপ-আপ সফলভাবে সম্পন্ন হয়েছে / Top-Up Delivered!*
 
-প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* সফলভাবে ডেলিভারি সম্পন্ন হয়েছে।
-আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ! ❤️`;
+প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* সফলভাবে সম্পন্ন হয়েছে এবং ইউসি আপনার PUBG আইডিতে যুক্ত করা হয়েছে। 🎮✨
+
+DS Dukan থেকে কেনাকাটা করার জন্য ধন্যবাদ! ❤️
+ওয়েবসাইটে ২% ডিসকাউন্টে সরাসরি কিনতে ভিজিট করুন: https://www.dsdukan.com/#`;
 
     const buttons: WhatsAppButton[] = [
-      { id: 'btn_catalog', title: '🛍️ নতুন কালেকশন' },
-      { id: 'btn_feedback', title: '⭐ রিভিউ দিন' }
+      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
+      { id: 'btn_website', title: '🌐 ওয়েবসাইট' }
     ];
 
-    return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons);
+    return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Success');
   }
 };

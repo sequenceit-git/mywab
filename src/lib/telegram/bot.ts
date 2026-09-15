@@ -13,28 +13,31 @@ export const telegramBot = {
       .join('\n') || '  ▪️ No item details';
 
     const workerName = assignedWorkerName || order.current_worker?.full_name || 'Worker Assigned';
+    const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
+    const trxId = order.trx_id || 'N/A';
+    const paymentMethod = order.payment_method || 'bKash/Nagad/Rocket';
 
     if (order.status === 'CLAIMED' || order.status === 'PROCESSING') {
       return {
         cardHtml: 
-`✅ <b>ORDER CLAIMED / অর্ডার গ্রহণ করা হয়েছে</b>
+`✅ <b>TOP-UP CLAIMED / টপ-আপ গ্রহণ করা হয়েছে</b>
 
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+🎮 <b>Player UID:</b> <code>${playerUid}</code>
+💳 <b>Payment:</b> ${paymentMethod} (TrxID: <code>${trxId}</code>)
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-📍 <b>Delivery Address:</b> ${order.delivery_address?.address || 'N/A'}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 📝 <b>Notes:</b> ${order.customer_notes || 'None'}
 
-🛍 <b>Items:</b>
+💎 <b>Packages:</b>
 ${itemsText}
 
-<i>Worker actions:</i>`,
+<i>Worker: Process the top-up in PUBG and click below when complete:</i>`,
         replyMarkup: {
           inline_keyboard: [
             [
-              { text: '🚚 Out for Delivery', callback_data: `status_out:${order.order_id}` },
-              { text: '✅ Mark Delivered', callback_data: `status_delivered:${order.order_id}` }
+              { text: '✅ Top-Up Completed (ডেলিভারি সম্পন্ন)', callback_data: `status_delivered:${order.order_id}` }
             ]
           ]
         }
@@ -44,19 +47,20 @@ ${itemsText}
     if (order.status === 'OUT_FOR_DELIVERY') {
       return {
         cardHtml: 
-`🚚 <b>OUT FOR DELIVERY / ডেলিভারি চলছে</b>
+`⚡ <b>PROCESSING TOP-UP / প্রসেসিং চলছে</b>
 
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+🎮 <b>Player UID:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-📍 <b>Delivery Address:</b> ${order.delivery_address?.address || 'N/A'}
+💳 <b>TrxID:</b> <code>${trxId}</code>
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 
-<i>Click below once delivery is completed:</i>`,
+<i>Click below once top-up is completed:</i>`,
         replyMarkup: {
           inline_keyboard: [
             [
-              { text: '✅ Mark Delivered', callback_data: `status_delivered:${order.order_id}` }
+              { text: '✅ Top-Up Completed', callback_data: `status_delivered:${order.order_id}` }
             ]
           ]
         }
@@ -66,12 +70,13 @@ ${itemsText}
     if (order.status === 'DELIVERED') {
       return {
         cardHtml: 
-`🎉 <b>ORDER COMPLETED & DELIVERED / ডেলিভারি সম্পন্ন</b>
+`🎉 <b>TOP-UP COMPLETED & DELIVERED / সম্পন্ন হয়েছে</b>
 
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-👷 <b>Delivered by:</b> <b>${workerName}</b>
-💰 <b>Collected Amount:</b> ৳${order.total_amount}
-📍 <b>Delivered to:</b> ${order.delivery_address?.address || 'N/A'}
+🎮 <b>Player UID:</b> <code>${playerUid}</code>
+👷 <b>Processed by:</b> <b>${workerName}</b>
+💰 <b>Amount:</b> ৳${order.total_amount}
+💳 <b>TrxID:</b> <code>${trxId}</code>
 🕒 <b>Completed at:</b> ${new Date().toLocaleTimeString()}`,
         replyMarkup: {
           inline_keyboard: []
@@ -82,12 +87,12 @@ ${itemsText}
     if (order.status === 'CANCELLED') {
       return {
         cardHtml: 
-`❌ <b>ORDER CANCELLED / অর্ডার বাতিল করা হয়েছে</b>
+`❌ <b>TOP-UP CANCELLED / অর্ডার বাতিল করা হয়েছে</b>
 
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🎮 <b>Player UID:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-👤 <b>Customer:</b> ${order.customer?.name || order.delivery_address?.name || 'Anonymous'}
-📍 <b>Address:</b> ${order.delivery_address?.address || 'N/A'}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 
 <i>This order has been cancelled from the system.</i>`,
         replyMarkup: {
@@ -99,24 +104,25 @@ ${itemsText}
     // Default: PENDING_CLAIM / PENDING_PAYMENT
     return {
       cardHtml: 
-`🚨 <b>NEW ORDER AVAILABLE FOR CLAIM / নতুন অর্ডার</b>
+`🚨 <b>NEW TOP-UP ORDER / নতুন টপ-আপ অর্ডার</b>
 
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🎮 <b>Player UID:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-👤 <b>Customer:</b> ${order.customer?.name || order.delivery_address?.name || 'Anonymous'}
-📞 <b>Phone:</b> <code>${order.delivery_phone}</code>
-📍 <b>Delivery Address:</b> ${order.delivery_address?.address || 'N/A'}
+💳 <b>Payment:</b> ${paymentMethod}
+🔢 <b>TrxID / Sender:</b> <code>${trxId}</code>
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 📝 <b>Notes:</b> ${order.customer_notes || 'None'}
 
-🛍 <b>Items:</b>
+💎 <b>Packages:</b>
 ${itemsText}
 
-<i>Click below to claim and assign this order to yourself.</i>`,
+<i>Click below to claim and process this top-up order:</i>`,
       replyMarkup: {
         inline_keyboard: [
           [
             {
-              text: '⚡ Claim Order (গ্রহণ করুন)',
+              text: '⚡ Claim Top-Up (অর্ডার গ্রহণ করুন)',
               callback_data: `claim:${order.order_id}`
             }
           ]
@@ -262,27 +268,8 @@ ${itemsText}
         
         // Update Telegram Card UI in Group to show claimed status and operational buttons
         if (message && order) {
-          const updatedText = 
-`✅ <b>ORDER CLAIMED / অর্ডার গ্রহণ করা হয়েছে</b>
-
-📦 <b>Order ID:</b> <code>${order.order_id}</code>
-👷 <b>Claimed by:</b> <b>${workerName}</b> (@${from.username || 'NoUsername'})
-💰 <b>Total Amount:</b> ৳${order.total_amount}
-📍 <b>Delivery Address:</b> ${order.delivery_address?.address || 'N/A'}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
-
-<i>Worker actions:</i>`;
-
-          const claimedKeyboard = {
-            inline_keyboard: [
-              [
-                { text: '🚚 Out for Delivery', callback_data: `status_out:${order.order_id}` },
-                { text: '✅ Mark Delivered', callback_data: `status_delivered:${order.order_id}` }
-              ]
-            ]
-          };
-
-          await this.editMessageText(message.chat.id, message.message_id, updatedText, claimedKeyboard);
+          const { cardHtml, replyMarkup } = this.generateOrderCard(order, workerName);
+          await this.editMessageText(message.chat.id, message.message_id, cardHtml, replyMarkup);
         }
 
         // Notify customer on WhatsApp (non-blocking)
@@ -292,7 +279,7 @@ ${itemsText}
           });
         }
 
-        await this.answerCallbackQuery(id, `✅ You have successfully claimed order #${orderIdCode}!`, false);
+        await this.answerCallbackQuery(id, `✅ You have successfully claimed top-up #${orderIdCode}!`, false);
         return { success: true, message: `Claimed by ${workerName}` };
       } catch (claimErr) {
         console.error('[Telegram Claim Error]:', claimErr);
@@ -301,28 +288,18 @@ ${itemsText}
       }
     }
 
-    // 2. ACTION: OUT FOR DELIVERY
+    // 2. ACTION: OUT FOR DELIVERY / PROCESSING
     if (action === 'status_out') {
       try {
-        await db.updateOrderStatus(orderIdCode, 'OUT_FOR_DELIVERY', from.id);
+        const updateResult = await db.updateOrderStatus(orderIdCode, 'OUT_FOR_DELIVERY', from.id);
+        const order = updateResult.order;
         
-        if (message) {
-          const outKeyboard = {
-            inline_keyboard: [
-              [
-                { text: '✅ Mark Delivered', callback_data: `status_delivered:${orderIdCode}` }
-              ]
-            ]
-          };
-          await this.editMessageText(
-            message.chat.id,
-            message.message_id,
-            `🚚 <b>OUT FOR DELIVERY / ডেলিভারি চলছে</b>\n\n📦 <b>Order ID:</b> <code>${orderIdCode}</code>\n👷 <b>Assigned Worker:</b> <b>${workerName}</b>\n\n<i>Click below once delivered:</i>`,
-            outKeyboard
-          );
+        if (message && order) {
+          const { cardHtml, replyMarkup } = this.generateOrderCard(order, workerName);
+          await this.editMessageText(message.chat.id, message.message_id, cardHtml, replyMarkup);
         }
 
-        await this.answerCallbackQuery(id, `🚚 Order #${orderIdCode} is now out for delivery!`, false);
+        await this.answerCallbackQuery(id, `⚡ Top-up #${orderIdCode} is being processed!`, false);
         return { success: true, message: 'Status updated to OUT_FOR_DELIVERY' };
       } catch (err) {
         console.error('[Telegram Status Out Error]:', err);
@@ -331,23 +308,15 @@ ${itemsText}
       }
     }
 
-    // 3. ACTION: MARK DELIVERED
+    // 3. ACTION: MARK DELIVERED / COMPLETED
     if (action === 'status_delivered') {
       try {
         const updateResult = await db.updateOrderStatus(orderIdCode, 'DELIVERED', from.id);
         const order = updateResult.order;
 
         if (order && message) {
-          const completedText = 
-`🎉 <b>ORDER COMPLETED & DELIVERED</b>
-
-📦 <b>Order ID:</b> <code>${order.order_id}</code>
-👷 <b>Delivered by:</b> <b>${workerName}</b>
-💰 <b>Collected Amount:</b> ৳${order.total_amount}
-📍 <b>Delivered to:</b> ${order.delivery_address?.address || 'N/A'}
-🕒 <b>Delivered at:</b> ${new Date().toLocaleTimeString()}`;
-
-          await this.editMessageText(message.chat.id, message.message_id, completedText, { inline_keyboard: [] });
+          const { cardHtml, replyMarkup } = this.generateOrderCard(order, workerName);
+          await this.editMessageText(message.chat.id, message.message_id, cardHtml, replyMarkup);
 
           // Trigger automated WhatsApp delivery confirmation to customer (non-blocking)
           whatsappService.sendOrderDeliveredNotification(order).catch(err => {
@@ -355,7 +324,7 @@ ${itemsText}
           });
         }
 
-        await this.answerCallbackQuery(id, `🎉 Order #${orderIdCode} marked as Delivered!`, false);
+        await this.answerCallbackQuery(id, `🎉 Top-up #${orderIdCode} marked as Delivered!`, false);
         return { success: true, message: 'Delivered successfully' };
       } catch (err) {
         console.error('[Telegram Delivered Error]:', err);
