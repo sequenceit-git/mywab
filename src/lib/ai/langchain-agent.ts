@@ -14,6 +14,7 @@ import {
 import { buildSystemPrompt } from './prompts';
 import { extractSlotsFromMessage, isAffirmativePhrase } from './slot-extractor';
 import { fallbackEngineStructured, StructuredAgentResponse } from './fallback-engine';
+import { orderStateGraph } from './order-graph';
 
 export type { StructuredAgentResponse };
 export {
@@ -22,7 +23,8 @@ export {
   updateDraftOrderTool,
   createOrderTool,
   trackOrderTool,
-  getCustomerOrdersTool
+  getCustomerOrdersTool,
+  orderStateGraph
 };
 
 export class LangChainAgentService {
@@ -57,7 +59,7 @@ export class LangChainAgentService {
   }
 
   /**
-   * Process customer message returning structured text and interactive button options
+   * Process customer message using LangGraph StateGraph for multi-customer concurrency & parallel orders
    */
   async processStructuredMessage(params: {
     phone: string;
@@ -66,7 +68,28 @@ export class LangChainAgentService {
   }): Promise<StructuredAgentResponse> {
     const { phone, messageText, conversationId } = params;
 
-    // 1. Fetch current session state & conversation history
+    try {
+      // 1. Invoke LangGraph State Machine
+      const graphResult = await orderStateGraph.invoke({
+        phone,
+        messageText,
+        conversationId,
+        sessionState: db.getSessionState(conversationId),
+        messages: []
+      });
+
+      if (graphResult.finalResponseText) {
+        return {
+          text: graphResult.finalResponseText,
+          buttons: graphResult.buttons,
+          createdOrder: graphResult.createdOrders?.[0]
+        };
+      }
+    } catch (graphErr) {
+      console.error('[LangGraph Execution Error, falling back to LLM/Rules]:', graphErr);
+    }
+
+    // 2. Fetch current session state & conversation history
     let sessionState = db.getSessionState(conversationId);
     let draft = sessionState.draftOrder;
 

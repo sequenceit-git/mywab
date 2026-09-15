@@ -145,7 +145,13 @@ export interface Payment {
   verified_at?: string | null;
 }
 
-export type ConversationStep = 'IDLE' | 'COLLECTING_DETAILS' | 'AWAITING_PAYMENT' | 'AWAITING_CONFIRMATION' | 'ORDER_PLACED';
+export type ConversationStep = 
+  | 'IDLE' 
+  | 'COLLECTING_DETAILS' 
+  | 'AWAITING_PAYMENT' 
+  | 'AWAITING_CONFIRMATION' 
+  | 'PARALLEL_CONFIRMATION' 
+  | 'ORDER_PLACED';
 
 export interface DraftOrderItem {
   skuOrName: string;
@@ -169,7 +175,9 @@ export interface ConversationDraftOrder {
 export interface ConversationSessionState {
   step: ConversationStep;
   draftOrder: ConversationDraftOrder;
+  parallelDrafts?: ConversationDraftOrder[];
   lastOrderId?: string;
+  lastCreatedOrders?: string[];
   lastInteractionTimestamp: number;
 }
 
