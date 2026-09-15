@@ -3,6 +3,7 @@ import {
   UserProfile,
   Product,
   FAQ,
+  AIPolicy,
   Order,
   Worker,
   OrderAssignment,
@@ -132,11 +133,150 @@ const DEFAULT_DS_DUKAN_FAQS: FAQ[] = [
   }
 ];
 
+export const DEFAULT_AI_POLICIES: AIPolicy[] = [
+  // WHAT AI CAN DO (DO'S)
+  {
+    id: 'policy-do-1',
+    type: 'DO',
+    title: 'Provide Real-Time Live Catalog Prices',
+    rule_bn: 'সর্বদা লাইভ ডাটাবেজের ইউসি ও প্যাকেজের সঠিক মূল্য জানান।',
+    rule_en: 'Always provide accurate live prices for PUBG UC, Growth Packs, and Prime Subscriptions directly from the live database catalog.',
+    category: 'Pricing',
+    is_active: true,
+    priority: 1,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'policy-do-2',
+    type: 'DO',
+    title: 'Collect PUBG Player UID Only (No Passwords)',
+    rule_bn: 'টপ-আপের জন্য শুধুমাত্র গ্রাহকের PUBG Player UID সংগ্রহ করুন। কোনো পাসওয়ার্ড বা লগইন চাইবেন না।',
+    rule_en: 'Collect the customer PUBG Player UID for direct top-up. Never require or ask for passwords.',
+    category: 'Ordering & Safety',
+    is_active: true,
+    priority: 2,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'policy-do-3',
+    type: 'DO',
+    title: 'Promote 2% Website Purchase Discount',
+    rule_bn: 'গ্রাহককে জানান যে https://www.dsdukan.com/# থেকে কিনলে ২% ইনস্ট্যান্ট ডিসকাউন্ট পাবেন।',
+    rule_en: 'Inform customers that purchasing via website (https://www.dsdukan.com/#) provides an automatic 2% discount with no coupon needed.',
+    category: 'Discounts',
+    is_active: true,
+    priority: 3,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'policy-do-4',
+    type: 'DO',
+    title: 'Fast Delivery Time Estimate (5-15 Mins)',
+    rule_bn: 'ডেলিভারির সময় সর্বদা ৫ থেকে ১৫ মিনিট উল্লেখ করুন।',
+    rule_en: 'State top-up delivery time as 5-15 minutes once payment TrxID is received.',
+    category: 'Delivery',
+    is_active: true,
+    priority: 4,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'policy-do-5',
+    type: 'DO',
+    title: 'Auto-Dispatch to Telegram Worker Team',
+    rule_bn: 'Player UID এবং পেমেন্ট TrxID পাওয়া মাত্রই সাথে সাথে অর্ডার ক্রিয়েট করে টেলিগ্রাম কর্মী গ্রুপে পাঠিয়ে দিন।',
+    rule_en: 'As soon as Player UID and Payment TrxID are received, immediately create the order and dispatch to Telegram workers.',
+    category: 'Workflow',
+    is_active: true,
+    priority: 5,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'policy-do-6',
+    type: 'DO',
+    title: 'Polite & Professional Bengali Communication',
+    rule_bn: 'সম্মানজনক ও সাবলীল বাংলায় কথা বলুন এবং গেমিং ইমোজি (🎮, 💎, ⚡) ব্যবহার করুন।',
+    rule_en: 'Communicate respectfully in natural Bengali or Banglish with friendly gaming emojis.',
+    category: 'Customer Service',
+    is_active: true,
+    priority: 6,
+    created_at: new Date().toISOString()
+  },
+
+  // WHAT AI MUST NOT DO (DONT'S)
+  {
+    id: 'policy-dont-1',
+    type: 'DONT',
+    title: 'NEVER Ask for Account Passwords or Logins',
+    rule_bn: 'কখনোই গ্রাহকের গেম পাসওয়ার্ড, ফেসবুক/জিমেইল/টুইটার লগইন বা ওটিপি চাইবেন না।',
+    rule_en: 'NEVER ask for or accept customer PUBG passwords, social media logins (Facebook/Gmail/Twitter), or OTP codes under any circumstances.',
+    category: 'Security',
+    is_active: true,
+    priority: 1,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'policy-dont-2',
+    type: 'DONT',
+    title: 'NEVER Promise Unapproved Custom Discounts',
+    rule_bn: 'লাইভ রেটের চেয়ে কম দামে বা অনুমোদনহীন ডিসকাউন্ট অফার করবেন না (শুধুমাত্র ওয়েবসাইট ২% ছাড় ছাড়া)।',
+    rule_en: 'NEVER promise rates below the live catalog price or invent unauthorized custom discount coupons.',
+    category: 'Pricing',
+    is_active: true,
+    priority: 2,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'policy-dont-3',
+    type: 'DONT',
+    title: 'NEVER Create Order Without Player UID',
+    rule_bn: 'Player UID ছাড়া ভুয়া বা অসম্পূর্ণ অর্ডার তৈরি করবেন না।',
+    rule_en: 'NEVER invoke create_order without at least the Player UID and package name specified by the customer.',
+    category: 'Ordering',
+    is_active: true,
+    priority: 3,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'policy-dont-4',
+    type: 'DONT',
+    title: 'NEVER Quote Fixed Rates for Bulk Unlisted Packs',
+    rule_bn: '১৮০০, ৩৮৫০ বা ৮১০০ ইউসির জন্য নির্দিষ্ট রেট না বলে এডমিনের সাথে যোগাযোগ করতে বলুন।',
+    rule_en: 'NEVER guess rates for large bulk packs (1800, 3850, 8100 UC marked as Ask For Rate); instruct customer to contact Admin for live bulk quotes.',
+    category: 'Pricing',
+    is_active: true,
+    priority: 4,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'policy-dont-5',
+    type: 'DONT',
+    title: 'NEVER Re-ask for Info Already Provided',
+    rule_bn: 'গ্রাহক একবার Player UID বা TrxID দিয়ে দিলে দ্বিতীয়বার তা আবার চাইবেন না।',
+    rule_en: 'NEVER ask the customer to re-enter information (such as Player UID or TrxID) that is already recorded in active session state.',
+    category: 'State Management',
+    is_active: true,
+    priority: 5,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'policy-dont-6',
+    type: 'DONT',
+    title: 'NEVER Send Fake or Unverified Payment Accounts',
+    rule_bn: 'অনুমোদিত বিকাশ (01872239597), রকেট (01872239597) ও নগদ (01330719250) ছাড়া অন্য কোনো নাম্বার দেবেন না।',
+    rule_en: 'NEVER provide payment numbers other than the official bKash/Rocket (01872239597) and Nagad (01330719250) accounts.',
+    category: 'Payment Safety',
+    is_active: true,
+    priority: 6,
+    created_at: new Date().toISOString()
+  }
+];
+
 // Clean in-memory fallback store used only when Supabase is not configured
 class MockDatabaseStore {
   users: Map<string, UserProfile> = new Map();
   products: Map<string, Product> = new Map();
   faqs: Map<string, FAQ> = new Map();
+  aiPolicies: Map<string, AIPolicy> = new Map();
   orders: Map<string, Order> = new Map();
   workers: Map<string, Worker> = new Map();
   assignments: Map<string, OrderAssignment> = new Map();
@@ -146,9 +286,10 @@ class MockDatabaseStore {
   sessionStates: Map<string, ConversationSessionState> = new Map();
 
   constructor() {
-    // Seed default products & FAQs
+    // Seed default products, FAQs, and AI policies
     DEFAULT_DS_DUKAN_PRODUCTS.forEach(p => this.products.set(p.id, p));
     DEFAULT_DS_DUKAN_FAQS.forEach(f => this.faqs.set(f.id, f));
+    DEFAULT_AI_POLICIES.forEach(pol => this.aiPolicies.set(pol.id, pol));
   }
 }
 
@@ -294,6 +435,67 @@ export const db = {
       if (error) console.error('Supabase deleteFAQ error:', error);
     }
     mockStore.faqs.delete(id);
+    return true;
+  },
+
+  // AI POLICIES & BOUNDARIES (WHAT AI CAN DO / WHAT NOT TO DO)
+  async getAIPolicies(includeInactive = false): Promise<AIPolicy[]> {
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      try {
+        let query = client.from('ai_policies').select('*').order('priority', { ascending: true });
+        if (!includeInactive) {
+          query = query.eq('is_active', true);
+        }
+        const { data, error } = await query;
+        if (!error && data && data.length > 0) return data;
+        if (error) {
+          // Table may not exist yet in Supabase, smoothly use store
+        }
+      } catch (err) {
+        // Fallback
+      }
+    }
+    const all = Array.from(mockStore.aiPolicies.values()).sort((a, b) => (a.priority || 0) - (b.priority || 0));
+    return includeInactive ? all : all.filter(p => p.is_active);
+  },
+
+  async saveAIPolicy(policy: Partial<AIPolicy>): Promise<AIPolicy> {
+    const id = policy.id || `policy-${Date.now()}`;
+    const newPolicy: AIPolicy = {
+      id,
+      type: policy.type || 'DO',
+      title: policy.title || '',
+      rule_bn: policy.rule_bn || '',
+      rule_en: policy.rule_en || '',
+      category: policy.category || 'General',
+      is_active: policy.is_active !== undefined ? policy.is_active : true,
+      priority: policy.priority !== undefined ? policy.priority : 1,
+      created_at: policy.created_at || new Date().toISOString()
+    };
+
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      try {
+        await client.from('ai_policies').upsert(newPolicy);
+      } catch (err) {
+        console.error('Supabase saveAIPolicy error:', err);
+      }
+    }
+    mockStore.aiPolicies.set(id, newPolicy);
+    return newPolicy;
+  },
+
+  async deleteAIPolicy(id: string): Promise<boolean> {
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      try {
+        await client.from('ai_policies').delete().eq('id', id);
+      } catch (err) {
+        console.error('Supabase deleteAIPolicy error:', err);
+      }
+    }
+    mockStore.aiPolicies.delete(id);
     return true;
   },
 
@@ -794,8 +996,10 @@ export const db = {
     }
 
     // 2. Admin Override Actions
-    if (isAdminOverride && (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT')) {
-      order.current_worker = undefined;
+    if (isAdminOverride && (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT' || status === 'CANCELLED')) {
+      if (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT') {
+        order.current_worker = undefined;
+      }
     }
 
     order.status = status;
@@ -817,7 +1021,7 @@ export const db = {
           .from('order_assignments')
           .update({ status: 'DELIVERED', completed_at: new Date().toISOString() })
           .eq('order_id', order.id);
-      } else if (isAdminOverride && (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT')) {
+      } else if (isAdminOverride && (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT' || status === 'CANCELLED')) {
         await client
           .from('order_assignments')
           .update({ status: 'CANCELLED', completed_at: new Date().toISOString() })

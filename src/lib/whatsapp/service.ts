@@ -185,5 +185,28 @@ DS Dukan থেকে কেনাকাটা করার জন্য ধন�
     ];
 
     return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Success');
+  },
+
+  /**
+   * Send Order Cancelled notification to customer
+   */
+  async sendOrderCancelledNotification(order: Order, reason?: string): Promise<SendMessageResult> {
+    const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
+    const messageText = 
+`❌ *টপ-আপ অর্ডার বাতিল করা হয়েছে / Top-Up Order Cancelled*
+
+প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* (${playerUid}) বাতিল করা হয়েছে।
+${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
+💰 *মোট মূল্য:* ৳${order.total_amount}
+
+কোনো জিজ্ঞাসা বা সহায়তার জন্য আমাদের ইনবক্সে মেসেজ দিন অথবা ভিজিট করুন: https://www.dsdukan.com/#`;
+
+    const buttons: WhatsAppButton[] = [
+      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
+      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
+    ];
+
+    return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Support');
   }
 };
+

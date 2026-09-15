@@ -429,8 +429,9 @@ export class LangChainAgentService {
     customerPhone: string;
     sessionState: ConversationSessionState;
     products?: any[];
+    policies?: any[];
   }): string {
-    const { customerPhone, sessionState, products = [] } = params;
+    const { customerPhone, sessionState, products = [], policies = [] } = params;
     const draft = sessionState.draftOrder;
 
     const draftInfo = `
@@ -470,6 +471,17 @@ ACTIVE SESSION STATE & CART MEMORY:
       ? `\nADDITIONAL PACKAGES & SPECIALS:\n` + otherProducts.map(p => `- ${p.name_en || p.name_bn} (${p.category}) : ${p.price} Tk`).join('\n')
       : '';
 
+    const doPolicies = policies.filter(p => p.type === 'DO' && p.is_active);
+    const dontPolicies = policies.filter(p => p.type === 'DONT' && p.is_active);
+
+    const doPolicyText = doPolicies.length > 0
+      ? doPolicies.map(p => `• [DO - ${p.title}]: ${p.rule_bn} (${p.rule_en})`).join('\n')
+      : `• Provide real-time prices from database.\n• Collect PUBG Player UID only.\n• Inform customer about 2% website discount.\n• Delivery time 5-15 mins.`;
+
+    const dontPolicyText = dontPolicies.length > 0
+      ? dontPolicies.map(p => `• [STRICT PROHIBITION - ${p.title}]: ${p.rule_bn} (${p.rule_en})`).join('\n')
+      : `• NEVER ask for passwords, logins, or social account access.\n• NEVER give unapproved custom discounts.\n• NEVER create order without Player UID.`;
+
     return `You are "DS Dukan Assistant", the fast, friendly, and expert WhatsApp AI assistant for **DS Dukan** (https://www.dsdukan.com/#) - the leading digital top-up shop for PUBG Mobile UC, Growth Packs, and Prime Subscriptions in Bangladesh.
 Current Customer Phone: ${customerPhone}
 
@@ -495,6 +507,13 @@ PAYMENT METHODS & NUMBERS (Personal / Send Money / Cash In):
 - bKash : 01872239597 (Personal)
 - Rocket : 01872239597 (Personal)
 - Nagad : 01330719250 (Personal)
+
+=== ADMIN AI POLICY & BOUNDARIES (STRICT SYSTEM RULES) ===
+WHAT AI CAN AND MUST DO (DO'S):
+${doPolicyText}
+
+WHAT AI MUST NEVER DO (STRICT DONT'S & PROHIBITIONS):
+${dontPolicyText}
 
 ORDERING LIFECYCLE & STATE RULES:
 1. When customer inquires about packages or rates:
@@ -660,6 +679,7 @@ CONVERSATIONAL RULES:
     }
 
     const activeProducts = await db.getProducts();
+    const activePolicies = await db.getAIPolicies();
 
     const llm = this.getLLM();
 
@@ -679,7 +699,7 @@ CONVERSATIONAL RULES:
           : historyMessages;
 
         const formattedHistory: Array<['system' | 'human' | 'ai', string]> = [
-          ['system', this.getSystemPrompt({ customerPhone: phone, sessionState, products: activeProducts })]
+          ['system', this.getSystemPrompt({ customerPhone: phone, sessionState, products: activeProducts, policies: activePolicies })]
         ];
 
         pastMessages.slice(-8).forEach(m => {

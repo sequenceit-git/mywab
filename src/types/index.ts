@@ -55,6 +55,19 @@ export interface FAQ {
   created_at: string;
 }
 
+export interface AIPolicy {
+  id: string;
+  type: 'DO' | 'DONT';
+  title: string;
+  rule_bn: string;
+  rule_en: string;
+  category: string;
+  is_active: boolean;
+  priority: number;
+  created_at: string;
+}
+
+
 export interface OrderItem {
   id?: string;
   order_id?: string;

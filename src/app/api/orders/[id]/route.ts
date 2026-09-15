@@ -64,6 +64,11 @@ export async function PATCH(
           whatsappService.sendOrderDeliveredNotification(updateResult.order).catch(err => {
             console.error('[API Order Status] WhatsApp delivery notify error:', err);
           });
+        } else if (status === 'CANCELLED') {
+          const reason = body.reason || body.cancellationReason;
+          whatsappService.sendOrderCancelledNotification(updateResult.order, reason).catch(err => {
+            console.error('[API Order Status] WhatsApp cancellation notify error:', err);
+          });
         }
       }
       return NextResponse.json(updateResult);
