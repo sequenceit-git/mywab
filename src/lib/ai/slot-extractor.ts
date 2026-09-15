@@ -5,6 +5,7 @@ export interface ExtractedSlots {
   extractedUids?: string[];
   extractedTrx: string | null;
   extractedPaymentMethod: string | null;
+  hasPaidIntent?: boolean;
   extractedItems: Array<{ skuOrName: string; quantity: number }> | null;
   parallelOrders?: Array<{
     playerUid: string;
@@ -17,7 +18,7 @@ export interface ExtractedSlots {
  */
 export function extractAllUids(messageText: string): string[] {
   const uids: string[] = [];
-  const regex = /(?:uid|id|আইডি)[:\s]*(\d{5,12})|\b(5\d{7,10})\b|\b(\d{8,11})\b/gi;
+  const regex = /(?:uid|id|আইডি|player\s*uid|account)[:\s]*(\d{5,12})|\b(5\d{7,10})\b|\b(\d{7,11})\b/gi;
   let match;
   while ((match = regex.exec(messageText)) !== null) {
     const val = match[1] || match[2] || match[3];
@@ -35,20 +36,37 @@ export function extractSlotsFromMessage(messageText: string): ExtractedSlots {
   const allUids = extractAllUids(messageText);
   const extractedUid = allUids.length > 0 ? allUids[0] : null;
 
-  // 2. Extract Payment Transaction ID (TrxID / 6-12 alphanumeric characters / last 4 digits)
-  const trxMatch = messageText.match(/(?:trx|trxid|trnx|txid|id)[:\s]*([a-z0-9]{6,12})/i) ||
-                   messageText.match(/\b([A-Z0-9]{8,10})\b/) ||
-                   messageText.match(/(?:last|লাস্ট)[:\s]*(\d{4})/i);
-  
-  // Ensure extractedTrx does not match any extracted UIDs
-  const matchedTrxVal = trxMatch ? trxMatch[1].toUpperCase() : null;
-  const extractedTrx = (matchedTrxVal && !allUids.includes(matchedTrxVal)) ? matchedTrxVal : null;
+  // 2. Extract Payment Transaction ID (TrxID / 4-16 alphanumeric characters / last 4 digits)
+  const explicitTrxMatch = 
+    messageText.match(/(?:trx|trxid|trnx|txid|tx\s*id|transaction|tr\s*id|আইডি|ট্রানজেকশন|ট্রানস্যাকশন)[:\s]*([a-zA-Z0-9]{4,16})/i) ||
+    messageText.match(/(?:last|লাস্ট|শেষ)[:\s]*(\d{4,8})/i);
 
-  // 3. Extract Payment Method
+  let extractedTrx: string | null = explicitTrxMatch ? explicitTrxMatch[1].trim() : null;
+
+  // Fallback standalone token: If a single word token (4-16 chars) is sent and not a UID or common word
+  if (!extractedTrx) {
+    const trimmed = messageText.trim();
+    if (/^[a-zA-Z0-9]{4,16}$/.test(trimmed) && !allUids.includes(trimmed)) {
+      const lowerToken = trimmed.toLowerCase();
+      const ignoredWords = ['hello', 'bhai', 'acen', 'vaiya', 'koto', 'nibo', 'taka', 'send', 'koreci', 'korechi', 'dam', 'rate', 'price'];
+      if (!ignoredWords.includes(lowerToken)) {
+        extractedTrx = trimmed;
+      }
+    }
+  }
+
+  // Ensure extractedTrx does not match any extracted UIDs
+  if (extractedTrx && allUids.includes(extractedTrx)) {
+    extractedTrx = null;
+  }
+
+  // 3. Extract Payment Method & Paid Intent
   let extractedPaymentMethod: string | null = null;
-  if (lower.includes('bkash') || lower.includes('বিকাশ')) extractedPaymentMethod = 'BKASH';
-  else if (lower.includes('nagad') || lower.includes('নগদ')) extractedPaymentMethod = 'NAGAD';
-  else if (lower.includes('rocket') || lower.includes('রকেট')) extractedPaymentMethod = 'ROCKET';
+  if (/(?:bkash|baksh|bikash|b-kash|বিকাশ)/i.test(lower)) extractedPaymentMethod = 'BKASH';
+  else if (/(?:nagad|nogod|নগদ)/i.test(lower)) extractedPaymentMethod = 'NAGAD';
+  else if (/(?:rocket|roket|রকেট)/i.test(lower)) extractedPaymentMethod = 'ROCKET';
+
+  const hasPaidIntent = /(?:send\s*kore|send\s*kori|taka\s*di|taka\s*path|paid|pay\s*kore|টাকা\s*দিয়েছি|টাকা\s*পাঠিয়েছি|টাকা\s*দিছি|সেন্ড\s*করেছি|পাঠাইছি)/i.test(lower);
 
   // 4. Extract Package Intent
   let extractedItems: Array<{ skuOrName: string; quantity: number }> | null = null;
@@ -84,6 +102,7 @@ export function extractSlotsFromMessage(messageText: string): ExtractedSlots {
     extractedUids: allUids,
     extractedTrx,
     extractedPaymentMethod,
+    hasPaidIntent,
     extractedItems,
     parallelOrders
   };

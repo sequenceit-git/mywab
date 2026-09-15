@@ -72,9 +72,17 @@ async function extractAndSyncSlotsNode(state: OrderGraphState): Promise<Partial<
 
   // Single draft updates
   const updatedUid = slots.extractedUid || draft.playerUid;
-  const updatedTrx = slots.extractedTrx || draft.trxId;
+  let updatedTrx = slots.extractedTrx || draft.trxId;
   const updatedPayment = slots.extractedPaymentMethod || draft.paymentMethod || 'BKASH';
   const updatedItems = slots.extractedItems && slots.extractedItems.length > 0 ? slots.extractedItems : draft.items;
+
+  // If in AWAITING_PAYMENT and user sent a standalone token (e.g., "5djsvsb" or "3dhhs6js"), treat it as TrxID
+  if (!updatedTrx && currentSession.step === 'AWAITING_PAYMENT' && updatedUid) {
+    const cleanToken = messageText.trim().replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '');
+    if (/^[a-zA-Z0-9]{4,16}$/.test(cleanToken) && !['hi', 'hello', 'vai', 'bhai', 'ok', 'okey', 'yes', 'taka', 'koto', 'nibo'].includes(cleanToken.toLowerCase())) {
+      updatedTrx = cleanToken;
+    }
+  }
 
   let nextStep = currentSession.step;
   if (parallelDrafts.length > 1) {
@@ -107,7 +115,10 @@ async function extractAndSyncSlotsNode(state: OrderGraphState): Promise<Partial<
   });
 
   return {
-    extractedSlots: slots,
+    extractedSlots: {
+      ...slots,
+      extractedTrx: updatedTrx || null
+    },
     sessionState: updatedSession
   };
 }
@@ -120,7 +131,7 @@ async function classifyIntentNode(state: OrderGraphState): Promise<Partial<Order
   const lower = messageText.toLowerCase().trim();
   const isAffirmative = isAffirmativePhrase(messageText);
 
-  // Check Affirmation / Fast-Path
+  // 1. Check Affirmation / Fast-Path
   if (isAffirmative) {
     if (sessionState.parallelDrafts && sessionState.parallelDrafts.length > 1) {
       return { intent: 'PARALLEL_ORDER' };
@@ -130,41 +141,50 @@ async function classifyIntentNode(state: OrderGraphState): Promise<Partial<Order
     }
   }
 
-  // Check Multi-UID Parallel Orders
+  // 2. Check Multi-UID Parallel Orders
   if (extractedSlots.parallelOrders && extractedSlots.parallelOrders.length > 1) {
     return { intent: 'PARALLEL_ORDER' };
   }
 
-  // Greetings
-  if (['hi', 'hello', 'hlw', 'hey', 'bhai acen', 'vai', 'line a acen', 'ভাই আছেন', 'হ্যালো', 'হাই'].some(g => lower === g || lower.startsWith(g))) {
+  // 3. Greetings (Only if NOT in an active order flow)
+  const isGreeting = ['hi', 'hello', 'hlw', 'hey', 'bhai acen', 'vai', 'line a acen', 'ভাই আছেন', 'হ্যালো', 'হাই'].some(g => lower === g || lower.startsWith(g));
+  if (isGreeting && (!sessionState.draftOrder?.items || sessionState.draftOrder.items.length === 0 || sessionState.step === 'IDLE' || sessionState.step === 'ORDER_PLACED')) {
     return { intent: 'GREETING' };
   }
 
-  // Order Tracking
+  // 4. Order Tracking
   if (lower.includes('track') || lower.includes('status') || lower.includes('ট্র্যাক') || lower.includes('order status') || /wap-\d+/i.test(lower)) {
     return { intent: 'TRACK_ORDER' };
   }
 
-  // Pricing & Catalog
-  if (lower.includes('uc list') || lower.includes('price') || lower.includes('dam koto') || lower.includes('rate') || lower.includes('দাম') || lower.includes('প্রাইস') || lower.includes('কত টাকা')) {
+  // 5. Pricing & Catalog
+  if (lower.includes('uc list') || lower.includes('price list') || lower.includes('দাম কত') || lower.includes('প্রাইস লিস্ট')) {
     return { intent: 'CATALOG' };
   }
 
-  // FAQs
+  // 6. FAQs Lookup
   const allFaqs = await db.getFAQs();
   const activeFaqs = allFaqs.filter(f => f.is_active);
   const isFaqMatch = activeFaqs.some(faq => {
     const qEnTokens = faq.question_en.toLowerCase().split(/[\/,\n|]+/).map(t => t.trim()).filter(Boolean);
     const qBnTokens = (faq.question_bn || '').toLowerCase().split(/[\/,\n|?？!！]+/).map(t => t.trim()).filter(Boolean);
     const patterns = [...qEnTokens, ...qBnTokens];
-    return patterns.some(pat => (pat.length <= 2 ? lower === pat : lower.includes(pat) || (lower.length > 5 && pat.includes(lower))));
+    return patterns.some(pat => (pat.length <= 3 ? lower === pat : lower.includes(pat)));
   });
 
-  if (isFaqMatch) {
+  if (isFaqMatch && (!sessionState.draftOrder?.playerUid || sessionState.step === 'IDLE')) {
     return { intent: 'FAQ' };
   }
 
-  // Single Order Intent
+  // 7. Active Order Continuation (Preserve Order State!)
+  if (sessionState.draftOrder?.items && sessionState.draftOrder.items.length > 0 && sessionState.step !== 'IDLE' && sessionState.step !== 'ORDER_PLACED') {
+    if (sessionState.parallelDrafts && sessionState.parallelDrafts.length > 1) {
+      return { intent: 'PARALLEL_ORDER' };
+    }
+    return { intent: 'SINGLE_ORDER' };
+  }
+
+  // 8. New Single Order Intent
   if (extractedSlots.extractedUid || extractedSlots.extractedItems || extractedSlots.extractedTrx) {
     return { intent: 'SINGLE_ORDER' };
   }
@@ -292,6 +312,15 @@ async function handleSingleOrderNode(state: OrderGraphState): Promise<Partial<Or
 
   // 2. Missing Payment
   if (!hasPayment) {
+    if (state.extractedSlots?.hasPaidIntent || messageText.toLowerCase().includes('send') || messageText.toLowerCase().includes('পাঠিয়ে') || messageText.toLowerCase().includes('দিছি')) {
+      const text = 
+`ধন্যবাদ! আপনার পেমেন্টটি ভেরিফাই করতে অনুগ্রহ করে আপনার বিকাশ/নগদ/রকেটের **TrxID** (যেমন: \`3dhhs6js\`) অথবা যে নাম্বার থেকে টাকা পাঠিয়েছেন তার শেষ ৪ সংখ্যা লিখে পাঠান। ⚡`;
+      return {
+        finalResponseText: text,
+        buttons: [{ id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }]
+      };
+    }
+
     const text = 
 `💳 *পেমেন্ট নির্দেশিকা (DS Dukan Top-Up)*
 
