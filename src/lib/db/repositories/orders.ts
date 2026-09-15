@@ -46,16 +46,19 @@ export function hydrateOrder(data: any): Order {
     paymentMethod = data.payments[0].payment_method || data.payments[0].method;
   }
 
-  const activeAssignment = data.assignments?.find(
-    (a: any) => a.status === 'CLAIMED' || a.status === 'IN_PROGRESS' || a.status === 'PROCESSING'
-  );
+  const assignments = Array.isArray(data.assignments) ? data.assignments : [];
+  const assignedWorker = 
+    data.current_worker || 
+    assignments.find((a: any) => ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY', 'IN_PROGRESS', 'DELIVERED'].includes(a.status))?.worker ||
+    assignments[0]?.worker ||
+    null;
 
   return {
     ...data,
     player_uid: playerUid || undefined,
     trx_id: trxId || undefined,
     payment_method: paymentMethod || 'bKash/Nagad/Rocket',
-    current_worker: data.current_worker || activeAssignment?.worker || null
+    current_worker: assignedWorker
   };
 }
 
