@@ -72,12 +72,90 @@ export const analyticsRepository = {
     const cancelledOrders = orders.filter(o => o.status === 'CANCELLED').length;
 
     const totalRevenue = orders
+      .filter(o => o.status !== 'CANCELLED')
+      .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+
+    const deliveredRevenue = orders
       .filter(o => o.status === 'DELIVERED')
-      .reduce((sum, o) => sum + (o.total_amount || 0), 0);
+      .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
 
     const pendingRevenue = orders
       .filter(o => o.status === 'PENDING_CLAIM' || o.status === 'CLAIMED' || o.status === 'PROCESSING')
-      .reduce((sum, o) => sum + (o.total_amount || 0), 0);
+      .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+
+    // Today & This Month Calculations
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const thisMonthStr = now.toISOString().slice(0, 7);
+
+    const todayOrders = orders.filter(o => o.status !== 'CANCELLED' && o.created_at && o.created_at.slice(0, 10) === todayStr);
+    const todaySales = todayOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+
+    const thisMonthOrders = orders.filter(o => o.status !== 'CANCELLED' && o.created_at && o.created_at.slice(0, 7) === thisMonthStr);
+    const thisMonthSales = thisMonthOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+
+    // Daily Trend (Last 7 Days)
+    const dailyMap = new Map<string, { date: string; displayDate: string; revenue: number; orders: number; delivered: number }>();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      dailyMap.set(key, { date: key, displayDate, revenue: 0, orders: 0, delivered: 0 });
+    }
+
+    // Monthly Trend (Last 6 Months)
+    const monthlyMap = new Map<string, { monthKey: string; displayMonth: string; revenue: number; orders: number }>();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = d.toISOString().slice(0, 7);
+      const displayMonth = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      monthlyMap.set(key, { monthKey: key, displayMonth, revenue: 0, orders: 0 });
+    }
+
+    // Package Popularity & Payment Breakdown
+    const packageCountMap = new Map<string, { name: string; count: number; revenue: number }>();
+    const paymentMap = new Map<string, { name: string; count: number; value: number }>();
+
+    for (const o of orders) {
+      if (o.status === 'CANCELLED') continue;
+      const orderDate = o.created_at ? o.created_at.slice(0, 10) : '';
+      const orderMonth = o.created_at ? o.created_at.slice(0, 7) : '';
+      const amt = Number(o.total_amount) || 0;
+
+      // Populate Daily
+      if (dailyMap.has(orderDate)) {
+        const item = dailyMap.get(orderDate)!;
+        item.revenue += amt;
+        item.orders += 1;
+        if (o.status === 'DELIVERED') item.delivered += 1;
+      }
+
+      // Populate Monthly
+      if (monthlyMap.has(orderMonth)) {
+        const item = monthlyMap.get(orderMonth)!;
+        item.revenue += amt;
+        item.orders += 1;
+      }
+
+      // Populate Items
+      if (Array.isArray(o.items)) {
+        for (const it of o.items) {
+          const pName = it.product_name || 'Top-Up';
+          const prev = packageCountMap.get(pName) || { name: pName, count: 0, revenue: 0 };
+          prev.count += (it.quantity || 1);
+          prev.revenue += (it.subtotal || (it.unit_price * (it.quantity || 1)) || 0);
+          packageCountMap.set(pName, prev);
+        }
+      }
+
+      // Populate Payment
+      const method = o.payment_method || 'bKash';
+      const prevPay = paymentMap.get(method) || { name: method, count: 0, value: 0 };
+      prevPay.count += 1;
+      prevPay.value += amt;
+      paymentMap.set(method, prevPay);
+    }
 
     const workers = await workersRepository.getWorkers();
     const activeWorkers = workers.filter(w => w.is_active).length;
@@ -88,7 +166,16 @@ export const analyticsRepository = {
       pendingOrders,
       cancelledOrders,
       totalRevenue,
+      deliveredRevenue,
       pendingRevenue,
+      todaySales,
+      todayOrdersCount: todayOrders.length,
+      thisMonthSales,
+      thisMonthOrdersCount: thisMonthOrders.length,
+      dailyTrend: Array.from(dailyMap.values()),
+      monthlyTrend: Array.from(monthlyMap.values()),
+      topPackages: Array.from(packageCountMap.values()).sort((a, b) => b.count - a.count).slice(0, 5),
+      paymentBreakdown: Array.from(paymentMap.values()),
       activeWorkers,
       totalWorkers: workers.length
     };
