@@ -210,7 +210,8 @@ export const createOrderTool = tool(
       const allProducts = await db.getProducts();
       const resolvedItems: Array<{ product_id?: string; product_name: string; unit_price: number; quantity: number }> = [];
 
-      const rateMap: Record<string, number> = {
+      // Dynamic rate resolution from live database products
+      const dynamicRateMap: Record<string, number> = {
         '60': 115,
         '120': 230,
         '180': 340,
@@ -223,24 +224,36 @@ export const createOrderTool = tool(
         '3850': 6500,
         '8100': 13500,
         'growth pack 1': 150,
-        'gp 1': 150,
         'growth pack 2': 390,
-        'gp 2': 390,
         'growth pack 3': 590,
-        'gp 3': 590,
         'prime plus': 1150,
-        'prime 1 month': 150,
         'prime': 150
       };
 
+      // Populate live products into dynamic rate map
+      for (const p of allProducts) {
+        if (p.price > 0) {
+          dynamicRateMap[p.sku.toLowerCase()] = p.price;
+          dynamicRateMap[p.name_en.toLowerCase()] = p.price;
+          const numMatch = p.name_en.match(/\d+/);
+          if (numMatch) {
+            dynamicRateMap[numMatch[0]] = p.price;
+          }
+        }
+      }
+
       for (const item of params.items) {
         const itemLower = item.skuOrName.toLowerCase();
+        const numMatch = itemLower.match(/\d+/)?.[0];
+        
         const found = allProducts.find(
           p =>
             p.sku.toLowerCase() === itemLower ||
+            p.name_en.toLowerCase() === itemLower ||
             p.name_en.toLowerCase().includes(itemLower) ||
             itemLower.includes(p.name_en.toLowerCase()) ||
-            p.name_bn.includes(item.skuOrName)
+            p.name_bn.includes(item.skuOrName) ||
+            (numMatch && p.name_en.toLowerCase().includes(numMatch))
         );
 
         if (found) {
@@ -252,9 +265,9 @@ export const createOrderTool = tool(
           });
         } else {
           let resolvedPrice = 115;
-          const sortedEntries = Object.entries(rateMap).sort((a, b) => b[0].length - a[0].length);
+          const sortedEntries = Object.entries(dynamicRateMap).sort((a, b) => b[0].length - a[0].length);
           for (const [key, price] of sortedEntries) {
-            if (itemLower.includes(key)) {
+            if (itemLower.includes(key) || key === itemLower) {
               resolvedPrice = price;
               break;
             }
@@ -412,8 +425,12 @@ export class LangChainAgentService {
     });
   }
 
-  getSystemPrompt(params: { customerPhone: string; sessionState: ConversationSessionState }): string {
-    const { customerPhone, sessionState } = params;
+  getSystemPrompt(params: {
+    customerPhone: string;
+    sessionState: ConversationSessionState;
+    products?: any[];
+  }): string {
+    const { customerPhone, sessionState, products = [] } = params;
     const draft = sessionState.draftOrder;
 
     const draftInfo = `
@@ -432,6 +449,27 @@ ACTIVE SESSION STATE & CART MEMORY:
       ? `\nIMPORTANT NOTICE ON RECENT TOP-UP ORDER:\nTop-Up Order #${sessionState.lastOrderId} was ALREADY PLACED AND SENT TO DISPATCH. If customer asks "Confirm hoyese?", "Is it confirmed?", "Koto time lagbe?", confirm that Order #${sessionState.lastOrderId} is confirmed and being processed (Delivery: 5-15 mins). DO NOT re-ask for details and DO NOT say it is not confirmed.\n`
       : '';
 
+    const ucProducts = products.filter(p => p.category === 'PUBG UC' || p.category?.toLowerCase().includes('uc'));
+    const growthProducts = products.filter(p => p.category?.toLowerCase().includes('growth'));
+    const primeProducts = products.filter(p => p.category?.toLowerCase().includes('sub') || p.category?.toLowerCase().includes('prime'));
+    const otherProducts = products.filter(p => !ucProducts.includes(p) && !growthProducts.includes(p) && !primeProducts.includes(p));
+
+    const ucListText = ucProducts.length > 0
+      ? ucProducts.map(p => `- ${p.name_en || p.name_bn} : ${p.price > 0 ? `${p.price} Tk BDT` : '[ASK FOR LIVE RATE]'}`).join('\n')
+      : `- 60 UC : 115 Tk BDT\n- 120 UC : 230 Tk BDT\n- 180 UC : 340 Tk BDT\n- 325 UC : 600 Tk BDT\n- 385 UC [50 RP] : 710 Tk BDT\n- 660 UC : 1150 Tk BDT\n- 720 UC [100 RP] : 1250 Tk BDT\n- 1045 UC : 1850 Tk BDT`;
+
+    const growthListText = growthProducts.length > 0
+      ? growthProducts.map(p => `- ${p.name_en || p.name_bn} : ${p.price} Tk`).join('\n')
+      : `- Growth Pack 1 : 150 Tk\n- Growth Pack 2 : 390 Tk\n- Growth Pack 3 : 590 Tk`;
+
+    const primeListText = primeProducts.length > 0
+      ? primeProducts.map(p => `- ${p.name_en || p.name_bn} : ${p.price} Tk`).join('\n')
+      : `- Prime 1 Month : 150 Tk\n- Prime Plus 1 Month : 1150 Tk`;
+
+    const otherListText = otherProducts.length > 0
+      ? `\nADDITIONAL PACKAGES & SPECIALS:\n` + otherProducts.map(p => `- ${p.name_en || p.name_bn} (${p.category}) : ${p.price} Tk`).join('\n')
+      : '';
+
     return `You are "DS Dukan Assistant", the fast, friendly, and expert WhatsApp AI assistant for **DS Dukan** (https://www.dsdukan.com/#) - the leading digital top-up shop for PUBG Mobile UC, Growth Packs, and Prime Subscriptions in Bangladesh.
 Current Customer Phone: ${customerPhone}
 
@@ -444,27 +482,14 @@ ABOUT DS DUKAN:
 - Delivery Speed: Super fast delivery within 5 to 15 Minutes!
 - Account Safety: Only PUBG Player UID is needed. No account password, login, or access is EVER required.
 
-CURRENT PRICE LIST (REGULAR UC):
-- 60 UC : 115 Tk BDT
-- 120 UC : 230 Tk BDT
-- 180 UC : 340 Tk BDT
-- 325 UC : 600 Tk BDT
-- 385 UC [50 RP] : 710 Tk BDT
-- 660 UC : 1150 Tk BDT
-- 720 UC [100 RP] : 1250 Tk BDT
-- 1045 UC : 1850 Tk BDT
-- 1800 UC : [ASK FOR LIVE RATE]
-- 3850 UC : [ASK FOR LIVE RATE]
-- 8100 UC : [ASK FOR LIVE RATE]
+CURRENT LIVE PRICE LIST (DYNAMIC CATALOG):
+${ucListText}
 
 PUBG MOBILE GROWTH PACKS:
-- Growth Pack 1 : 150 Tk
-- Growth Pack 2 : 390 Tk
-- Growth Pack 3 : 590 Tk
+${growthListText}
 
 PUBG MOBILE PRIME SUBSCRIPTION:
-- Prime 1 Month : 150 Tk
-- Prime Plus 1 Month : 1150 Tk
+${primeListText}${otherListText}
 
 PAYMENT METHODS & NUMBERS (Personal / Send Money / Cash In):
 - bKash : 01872239597 (Personal)
@@ -634,6 +659,8 @@ CONVERSATIONAL RULES:
       }
     }
 
+    const activeProducts = await db.getProducts();
+
     const llm = this.getLLM();
 
     // 3. If OpenAI API Key is configured, use LangChain Agent
@@ -652,7 +679,7 @@ CONVERSATIONAL RULES:
           : historyMessages;
 
         const formattedHistory: Array<['system' | 'human' | 'ai', string]> = [
-          ['system', this.getSystemPrompt({ customerPhone: phone, sessionState })]
+          ['system', this.getSystemPrompt({ customerPhone: phone, sessionState, products: activeProducts })]
         ];
 
         pastMessages.slice(-8).forEach(m => {
@@ -707,7 +734,7 @@ CONVERSATIONAL RULES:
     }
 
     // 4. High-quality rule-based heuristic fallback engine with rich interactive buttons
-    return this.fallbackEngineStructured(phone, messageText, conversationId);
+    return this.fallbackEngineStructured(phone, messageText, conversationId, activeProducts);
   }
 
   /**
@@ -775,7 +802,12 @@ CONVERSATIONAL RULES:
   /**
    * Fast rule-based heuristic fallback engine with rich buttons for DS Dukan
    */
-  private async fallbackEngineStructured(phone: string, text: string, conversationId: string): Promise<StructuredAgentResponse> {
+  private async fallbackEngineStructured(
+    phone: string,
+    text: string,
+    conversationId: string,
+    products?: any[]
+  ): Promise<StructuredAgentResponse> {
     const lower = text.toLowerCase().trim();
     const sessionState = db.getSessionState(conversationId);
 
@@ -835,10 +867,19 @@ CONVERSATIONAL RULES:
       };
     }
 
+    const productsList = products && products.length > 0 ? products : await db.getProducts();
+    const ucProducts = productsList.filter(p => p.category === 'PUBG UC' || p.category?.toLowerCase().includes('uc'));
+    const growthProducts = productsList.filter(p => p.category?.toLowerCase().includes('growth'));
+    const primeProducts = productsList.filter(p => p.category?.toLowerCase().includes('sub') || p.category?.toLowerCase().includes('prime'));
+
     // 3. Growth Pack Inquiry
     if (lower.includes('growth') || lower.includes('গ্রোথ') || lower.includes('pack')) {
+      const growthLines = growthProducts.length > 0
+        ? growthProducts.map(p => `▪️ ${p.name_en || p.name_bn} — *${p.price} Tk*`).join('\n')
+        : `▪️ Growth Pack 1 — *150 Tk*\n▪️ Growth Pack 2 — *390 Tk*\n▪️ Growth Pack 3 — *590 Tk*`;
+
       return {
-        text: `📦 *AVAILABLE PUBG MOBILE GROWTH PACK* ✅\n\n▪️ Growth Pack 1 — *150 Tk*\n▪️ Growth Pack 2 — *390 Tk*\n▪️ Growth Pack 3 — *590 Tk*\n\n📌 *Only UID Need, no need any access!*\nডেলিভারি টাইম: ৫–১৫ মিনিট।\n\n🌐 ওয়েবসাইট থেকে কিনলে পাচ্ছেন ২% ডিসকাউন্ট: https://www.dsdukan.com/#`,
+        text: `📦 *AVAILABLE PUBG MOBILE GROWTH PACK* ✅\n\n${growthLines}\n\n📌 *Only UID Need, no need any access!*\nডেলিভারি টাইম: ৫–১৫ মিনিট।\n\n🌐 ওয়েবসাইট থেকে কিনলে পাচ্ছেন ২% ডিসকাউন্ট: https://www.dsdukan.com/#`,
         buttons: [
           { id: 'btn_payment', title: '💳 পেমেন্ট নাম্বার' },
           { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
@@ -849,8 +890,12 @@ CONVERSATIONAL RULES:
 
     // 4. Prime / Prime Plus Inquiry
     if (lower.includes('prime') || lower.includes('প্রাইম')) {
+      const primeLines = primeProducts.length > 0
+        ? primeProducts.map(p => `▪️ ${p.name_en || p.name_bn} — *${p.price} Tk*`).join('\n')
+        : `▪️ Prime (1 Month) — *150 Tk*\n▪️ Prime Plus (1 Month) — *1150 Tk*`;
+
       return {
-        text: `👑 *PUBG MOBILE PRIME SUBSCRIPTION* ✅\n\n▪️ Prime (1 Month) — *150 Tk*\n▪️ Prime Plus (1 Month) — *1150 Tk*\n\n📌 *Only UID Need, no password required!*\nডেলিভারি টাইম: ৫–১৫ মিনিট।\n\n🌐 ওয়েবসাইট লিংক: https://www.dsdukan.com/#`,
+        text: `👑 *PUBG MOBILE PRIME SUBSCRIPTION* ✅\n\n${primeLines}\n\n📌 *Only UID Need, no password required!*\nডেলিভারি টাইম: ৫–১৫ মিনিট।\n\n🌐 ওয়েবসাইট লিংক: https://www.dsdukan.com/#`,
         buttons: [
           { id: 'btn_payment', title: '💳 পেমেন্ট নাম্বার' },
           { id: 'btn_catalog', title: '💎 UC প্রাইস' },
@@ -870,8 +915,12 @@ CONVERSATIONAL RULES:
       lower.includes('catalog') ||
       lower.includes('rp')
     ) {
+      const ucLines = ucProducts.length > 0
+        ? ucProducts.map(p => `〽️ ${p.name_en || p.name_bn} : *${p.price > 0 ? `${p.price} TK BDT` : '[ ASK FOR LIVE RATE ]'}*`).join('\n')
+        : `〽️ 60 UC : *115 TK BDT*\n〽️ 120 UC : *230 TK BDT*\n〽️ 180 UC : *340 TK BDT*\n〽️ 325 UC : *600 TK BDT*\n〽️ 385 UC : *710 TK BDT* [ 50 RP ]\n〽️ 660 UC : *1150 TK BDT*\n〽️ 720 UC : *1250 TK BDT* [100 RP]\n〽️ 1045 UC : *1850 TK BDT*\n〽️ 1800 UC : [ ASK FOR LIVE RATE ]\n〽️ 3850 UC : [ ASK FOR LIVE RATE ]\n〽️ 8100 UC : [ ASK FOR LIVE RATE ]`;
+
       return {
-        text: `✅ *NEW UPDATED REGULAR UC LIST* ✅\n🔽🔽🔽\n〽️ 60 UC : *115 TK BDT*\n〽️ 120 UC : *230 TK BDT*\n〽️ 180 UC : *340 TK BDT*\n〽️ 325 UC : *600 TK BDT*\n〽️ 385 UC : *710 TK BDT* [ 50 RP ]\n〽️ 660 UC : *1150 TK BDT*\n〽️ 720 UC : *1250 TK BDT* [100 RP]\n〽️ 1045 UC : *1850 TK BDT*\n〽️ 1800 UC : [ ASK FOR LIVE RATE ]\n〽️ 3850 UC : [ ASK FOR LIVE RATE ]\n〽️ 8100 UC : [ ASK FOR LIVE RATE ]\n\n🎁 [ *NOTE:* ওয়েবসাইট থেকে ইউসি কিনলে পাচ্ছেন ২% ডিসকাউন্ট, কোন কুপন প্রয়োজন নাই অটোমেটিক দাম কমানো আছে, আর কুপন থাকলে আরো ২% ডিসকাউন্ট পাবেন!]\n🎉 BEST DISCOUNT FOR WEBSITE PURCHASE ❤️\n🌐 Website Link : https://www.dsdukan.com/#\n\n📌 *Only UID Need, no password or account access required!*\n⚡ ডেলিভারি টাইম: ৫–১৫ মিনিট।`,
+        text: `✅ *NEW UPDATED REGULAR UC LIST* ✅\n🔽🔽🔽\n${ucLines}\n\n🎁 [ *NOTE:* ওয়েবসাইট থেকে ইউসি কিনলে পাচ্ছেন ২% ডিসকাউন্ট, কোন কুপন প্রয়োজন নাই অটোমেটিক দাম কমানো আছে, আর কুপন থাকলে আরো ২% ডিসকাউন্ট পাবেন!]\n🎉 BEST DISCOUNT FOR WEBSITE PURCHASE ❤️\n🌐 Website Link : https://www.dsdukan.com/#\n\n📌 *Only UID Need, no password or account access required!*\n⚡ ডেলিভারি টাইম: ৫–১৫ মিনিট।`,
         buttons: [
           { id: 'btn_growth', title: '📦 Growth Pack' },
           { id: 'btn_payment', title: '💳 পেমেন্ট নাম্বার' },

@@ -160,17 +160,28 @@ if (process.env.NODE_ENV !== 'production') globalForStore.mockStore = mockStore;
 // Central Database Service Facade
 export const db = {
   // PRODUCTS
-  async getProducts(): Promise<Product[]> {
+  async getProducts(includeInactive = false): Promise<Product[]> {
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
-      const { data, error } = await client
-        .from('products')
-        .select('*')
-        .order('created_at', { ascending: false });
+      let query = client.from('products').select('*').order('created_at', { ascending: false });
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+      const { data, error } = await query;
       if (!error && data && data.length > 0) return data;
       if (error) console.error('Supabase getProducts error:', error);
     }
-    return Array.from(mockStore.products.values());
+    const all = Array.from(mockStore.products.values());
+    return includeInactive ? all : all.filter(p => p.is_active);
+  },
+
+  async getProductById(id: string): Promise<Product | null> {
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      const { data, error } = await client.from('products').select('*').eq('id', id).single();
+      if (!error && data) return data;
+    }
+    return mockStore.products.get(id) || null;
   },
 
   async getProductBySku(sku: string): Promise<Product | null> {
@@ -190,19 +201,21 @@ export const db = {
   },
 
   async saveProduct(product: Partial<Product>): Promise<Product> {
-    const id = product.id || crypto.randomUUID();
+    const isUuid = (val?: string) => Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+    const existing = product.id ? await this.getProductById(product.id) : null;
+    const id = isUuid(product.id) ? product.id! : (isUuid(existing?.id) ? existing!.id : crypto.randomUUID());
     const newProd: Product = {
       id,
-      sku: product.sku || `SKU-${Date.now()}`,
-      name_en: product.name_en || '',
-      name_bn: product.name_bn || '',
-      description_en: product.description_en || null,
-      description_bn: product.description_bn || null,
-      price: Number(product.price) || 0,
-      stock_qty: Number(product.stock_qty) || 0,
-      category: product.category || 'General',
-      is_active: product.is_active !== undefined ? product.is_active : true,
-      created_at: new Date().toISOString()
+      sku: product.sku || existing?.sku || `SKU-${Date.now()}`,
+      name_en: product.name_en !== undefined ? product.name_en : (existing?.name_en || ''),
+      name_bn: product.name_bn !== undefined ? product.name_bn : (existing?.name_bn || product.name_en || ''),
+      description_en: product.description_en !== undefined ? product.description_en : (existing?.description_en || null),
+      description_bn: product.description_bn !== undefined ? product.description_bn : (existing?.description_bn || null),
+      price: product.price !== undefined ? Number(product.price) : (existing?.price || 0),
+      stock_qty: product.stock_qty !== undefined ? Number(product.stock_qty) : (existing?.stock_qty || 9999),
+      category: product.category || existing?.category || 'PUBG UC',
+      is_active: product.is_active !== undefined ? product.is_active : (existing?.is_active ?? true),
+      created_at: existing?.created_at || new Date().toISOString()
     };
 
     const client = getDbClient();
@@ -213,6 +226,18 @@ export const db = {
       mockStore.products.set(id, newProd);
     }
     return newProd;
+  },
+
+  async deleteProduct(id: string): Promise<boolean> {
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      const { error } = await client.from('products').delete().eq('id', id);
+      if (error) {
+        console.error('Supabase deleteProduct error:', error);
+        return false;
+      }
+    }
+    return mockStore.products.delete(id);
   },
 
   // FAQS
