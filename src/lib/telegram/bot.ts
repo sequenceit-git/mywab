@@ -13,9 +13,31 @@ export const telegramBot = {
       .join('\n') || '  ▪️ No item details';
 
     const workerName = assignedWorkerName || order.current_worker?.full_name || 'Worker Assigned';
-    const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
-    const trxId = order.trx_id || 'N/A';
-    const paymentMethod = order.payment_method || 'bKash/Nagad/Rocket';
+
+    const playerUid = 
+      order.player_uid || 
+      (order.delivery_address as any)?.player_uid || 
+      (order.delivery_address as any)?.name ||
+      order.delivery_address?.address?.match(/(?:UID|Player UID|ID):\s*([0-9a-zA-Z]+)/i)?.[1] ||
+      order.customer_notes?.match(/(?:PUBG UID|UID|Player UID):\s*([0-9a-zA-Z]+)/i)?.[1] ||
+      'N/A';
+
+    const trxId = 
+      order.trx_id || 
+      (order.delivery_address as any)?.trx_id ||
+      (order.delivery_address as any)?.notes ||
+      order.customer_notes?.match(/Trx:\s*([^|\n]+)/i)?.[1]?.trim() ||
+      order.payments?.[0]?.transaction_id ||
+      (order.payments?.[0] as any)?.trx_id ||
+      'N/A';
+
+    const paymentMethod = 
+      order.payment_method || 
+      (order.delivery_address as any)?.payment_method || 
+      order.customer_notes?.match(/Pay:\s*([^|\n]+)/i)?.[1]?.trim() ||
+      (order.payments?.[0] as any)?.payment_method ||
+      order.payments?.[0]?.method ||
+      'bKash/Nagad/Rocket';
 
     if (order.status === 'CLAIMED' || order.status === 'PROCESSING') {
       return {
@@ -56,7 +78,8 @@ ${itemsText}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
 🎮 <b>Player UID:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>TrxID:</b> <code>${trxId}</code>
+💳 <b>Payment:</b> ${paymentMethod}
+🔢 <b>TrxID:</b> <code>${trxId}</code>
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 
 <i>Click below once top-up is completed or cancel if invalid:</i>`,
@@ -82,7 +105,9 @@ ${itemsText}
 🎮 <b>Player UID:</b> <code>${playerUid}</code>
 👷 <b>Processed by:</b> <b>${workerName}</b>
 💰 <b>Amount:</b> ৳${order.total_amount}
-💳 <b>TrxID:</b> <code>${trxId}</code>
+💳 <b>Payment:</b> ${paymentMethod}
+🔢 <b>TrxID:</b> <code>${trxId}</code>
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 🕒 <b>Completed at:</b> ${new Date().toLocaleTimeString()}`,
         replyMarkup: {
           inline_keyboard: []
@@ -91,7 +116,10 @@ ${itemsText}
     }
 
     if (order.status === 'CANCELLED') {
-      const cancelReason = order.customer_notes || 'No reason provided';
+      let cancelReason = 'No reason provided';
+      if (order.customer_notes && !order.customer_notes.startsWith('PUBG UID:')) {
+        cancelReason = order.customer_notes;
+      }
       return {
         cardHtml: 
 `❌ <b>TOP-UP CANCELLED / অর্ডার বাতিল করা হয়েছে</b>
@@ -101,6 +129,7 @@ ${itemsText}
 👷 <b>Handled by:</b> <b>${workerName}</b>
 ⚠️ <b>Reason / কারণ:</b> ${cancelReason}
 💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> ${paymentMethod} (TrxID: <code>${trxId}</code>)
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 🕒 <b>Cancelled at:</b> ${new Date().toLocaleTimeString()}
 

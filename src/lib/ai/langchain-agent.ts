@@ -186,8 +186,8 @@ export class LangChainAgentService {
           new SystemMessage(systemPromptStr)
         ];
 
-        // Maintain full multi-turn conversational memory (last 16 messages)
-        pastMessages.slice(-16).forEach(m => {
+        // Maintain fresh multi-turn conversational memory (last 8 messages)
+        pastMessages.slice(-8).forEach(m => {
           if (m.sender === 'CUSTOMER') {
             formattedHistory.push(new HumanMessage(m.content));
           } else {

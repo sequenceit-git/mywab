@@ -182,10 +182,10 @@ export const workersRepository = {
             });
         }
 
-        const populatedOrder: Order = {
+        const populatedOrder = ordersRepository.hydrateOrder({
           ...updatedOrder,
           current_worker: worker || undefined
-        };
+        });
 
         return {
           success: true,

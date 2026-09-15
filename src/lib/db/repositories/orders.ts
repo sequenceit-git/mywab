@@ -3,7 +3,65 @@ import { getDbClient, isSupabaseConfigured } from '../client';
 import { mockStore } from '../mock-store';
 import { usersRepository } from './users';
 
+export function hydrateOrder(data: any): Order {
+  if (!data) return data;
+
+  // Extract player_uid with multi-layer fallback
+  let playerUid = data.player_uid;
+  if (!playerUid && data.delivery_address && typeof data.delivery_address === 'object') {
+    playerUid = data.delivery_address.player_uid || data.delivery_address.name;
+    if (!playerUid && typeof data.delivery_address.address === 'string') {
+      const match = data.delivery_address.address.match(/(?:UID|Player UID|ID):\s*([0-9a-zA-Z]+)/i);
+      if (match) playerUid = match[1];
+    }
+  }
+  if (!playerUid && typeof data.customer_notes === 'string') {
+    const match = data.customer_notes.match(/(?:PUBG UID|UID|Player UID):\s*([0-9a-zA-Z]+)/i);
+    if (match) playerUid = match[1];
+  }
+
+  // Extract trx_id with multi-layer fallback
+  let trxId = data.trx_id;
+  if (!trxId && data.delivery_address && typeof data.delivery_address === 'object') {
+    trxId = data.delivery_address.trx_id || data.delivery_address.notes;
+  }
+  if (!trxId && typeof data.customer_notes === 'string') {
+    const match = data.customer_notes.match(/Trx:\s*([^|\n]+)/i);
+    if (match) trxId = match[1].trim();
+  }
+  if (!trxId && Array.isArray(data.payments) && data.payments.length > 0) {
+    trxId = data.payments[0].transaction_id || data.payments[0].trx_id;
+  }
+
+  // Extract payment_method with multi-layer fallback
+  let paymentMethod = data.payment_method;
+  if (!paymentMethod && data.delivery_address && typeof data.delivery_address === 'object') {
+    paymentMethod = data.delivery_address.payment_method;
+  }
+  if (!paymentMethod && typeof data.customer_notes === 'string') {
+    const match = data.customer_notes.match(/Pay:\s*([^|\n]+)/i);
+    if (match) paymentMethod = match[1].trim();
+  }
+  if (!paymentMethod && Array.isArray(data.payments) && data.payments.length > 0) {
+    paymentMethod = data.payments[0].payment_method || data.payments[0].method;
+  }
+
+  const activeAssignment = data.assignments?.find(
+    (a: any) => a.status === 'CLAIMED' || a.status === 'IN_PROGRESS' || a.status === 'PROCESSING'
+  );
+
+  return {
+    ...data,
+    player_uid: playerUid || undefined,
+    trx_id: trxId || undefined,
+    payment_method: paymentMethod || 'bKash/Nagad/Rocket',
+    current_worker: data.current_worker || activeAssignment?.worker || null
+  };
+}
+
 export const ordersRepository = {
+  hydrateOrder,
+
   async createOrder(params: {
     userId: string;
     items: Array<{
@@ -19,6 +77,9 @@ export const ordersRepository = {
       city?: string;
       area?: string;
       notes?: string;
+      player_uid?: string;
+      trx_id?: string;
+      payment_method?: string;
     };
     deliveryPhone: string;
     customerNotes?: string;
@@ -32,16 +93,19 @@ export const ordersRepository = {
     const orderIdCode = `WAP-${dateStr}-${randomSuffix}`;
     const orderUuid = crypto.randomUUID();
 
+    const deliveryAddressObj = {
+      address: `PUBG Player UID: ${params.playerUid || 'N/A'}`,
+      player_uid: params.playerUid || null,
+      trx_id: params.trxId || null,
+      payment_method: params.paymentMethod || 'BKASH',
+      name: params.playerUid || null,
+      phone: params.deliveryPhone,
+      ...(params.deliveryAddress || {})
+    };
+
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
       // 1. Insert order record
-      const deliveryAddressObj = params.deliveryAddress || {
-        address: `PUBG Player UID: ${params.playerUid || 'N/A'}`,
-        player_uid: params.playerUid || null,
-        trx_id: params.trxId || null,
-        payment_method: params.paymentMethod || 'BKASH'
-      };
-
       const orderPayload = {
         id: orderUuid,
         order_id: orderIdCode,
@@ -85,19 +149,33 @@ export const ordersRepository = {
         await client.from('order_items').insert(orderItems);
       }
 
-      // 3. Return full order with user profile
+      // 3. Insert payment record
+      if (params.trxId) {
+        try {
+          await client.from('payments').insert({
+            id: crypto.randomUUID(),
+            order_id: orderUuid,
+            payment_method: params.paymentMethod || 'BKASH',
+            trx_id: params.trxId,
+            amount: totalAmount,
+            status: 'VERIFYING',
+            created_at: new Date().toISOString()
+          });
+        } catch (payErr) {
+          console.warn('Payment record insert non-fatal error:', payErr);
+        }
+      }
+
+      // 4. Return fully hydrated order with user profile
       const user = await usersRepository.getUserById(params.userId);
-      return {
+      return hydrateOrder({
         ...createdOrder,
-        player_uid: params.playerUid || (deliveryAddressObj as any).player_uid,
-        trx_id: params.trxId || (deliveryAddressObj as any).trx_id,
-        payment_method: params.paymentMethod || (deliveryAddressObj as any).payment_method || 'BKASH',
         customer: user || undefined,
         items: params.items.map(i => ({
           ...i,
           subtotal: i.unit_price * i.quantity
         }))
-      };
+      });
     }
 
     // In-memory fallback
@@ -136,6 +214,7 @@ export const ordersRepository = {
             *,
             customer:users(*),
             items:order_items(*),
+            payments:payments(*),
             assignments:order_assignments(
               id,
               status,
@@ -154,15 +233,7 @@ export const ordersRepository = {
 
         const { data, error } = await query;
         if (!error && data) {
-          return data.map((order: any) => {
-            const activeAssignment = order.assignments?.find(
-              (a: any) => a.status === 'CLAIMED' || a.status === 'IN_PROGRESS'
-            );
-            return {
-              ...order,
-              current_worker: activeAssignment?.worker || null
-            };
-          });
+          return data.map((order: any) => hydrateOrder(order));
         }
         if (error) console.error('Supabase getOrders error:', error);
       } catch (err) {
@@ -170,7 +241,7 @@ export const ordersRepository = {
       }
     }
 
-    let all = Array.from(mockStore.orders.values());
+    let all = Array.from(mockStore.orders.values()).map(o => hydrateOrder(o));
     if (filter?.status) {
       all = all.filter(o => o.status === filter.status);
     }
@@ -194,6 +265,7 @@ export const ordersRepository = {
             *,
             customer:users(*),
             items:order_items(*),
+            payments:payments(*),
             assignments:order_assignments(
               id,
               status,
@@ -211,13 +283,7 @@ export const ordersRepository = {
         const { data, error } = await query.maybeSingle();
 
         if (!error && data) {
-          const activeAssignment = data.assignments?.find(
-            (a: any) => a.status === 'CLAIMED' || a.status === 'IN_PROGRESS'
-          );
-          return {
-            ...data,
-            current_worker: activeAssignment?.worker || null
-          };
+          return hydrateOrder(data);
         }
         if (error) {
           console.error('Supabase getOrderByCode error:', error);
@@ -230,7 +296,7 @@ export const ordersRepository = {
     const cleanUpper = clean.toUpperCase();
     for (const o of mockStore.orders.values()) {
       if (o.order_id.toUpperCase() === cleanUpper || o.id === clean) {
-        return o;
+        return hydrateOrder(o);
       }
     }
     return null;
@@ -250,6 +316,7 @@ export const ordersRepository = {
           *,
           customer:users(*),
           items:order_items(*),
+          payments:payments(*),
           assignments:order_assignments(
             id,
             status,
@@ -261,20 +328,13 @@ export const ordersRepository = {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        return data.map((order: any) => {
-          const activeAssignment = order.assignments?.find(
-            (a: any) => a.status === 'CLAIMED' || a.status === 'IN_PROGRESS'
-          );
-          return {
-            ...order,
-            current_worker: activeAssignment?.worker || null
-          };
-        });
+        return data.map((order: any) => hydrateOrder(order));
       }
     }
 
     return Array.from(mockStore.orders.values())
       .filter(o => o.delivery_phone === cleanPhone)
+      .map(o => hydrateOrder(o))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   },
 
@@ -350,7 +410,7 @@ export const ordersRepository = {
       }
     }
 
-    return { success: true, message: `Status updated to ${status}`, order };
+    return { success: true, message: `Status updated to ${status}`, order: hydrateOrder(order) };
   },
 
   async updateOrderTelegramMessageId(orderIdCodeOrId: string, messageId: number | null): Promise<void> {
