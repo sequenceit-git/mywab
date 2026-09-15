@@ -28,7 +28,8 @@ export const faqsRepository = {
   },
 
   async saveFAQ(faq: Partial<FAQ>): Promise<FAQ> {
-    const id = faq.id || `faq-${Date.now()}`;
+    const isUuid = faq.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(faq.id);
+    const id = isUuid ? faq.id! : (faq.id ? faq.id : crypto.randomUUID());
     const newFaq: FAQ = {
       id,
       question_en: faq.question_en || '',
