@@ -304,7 +304,7 @@ export default function ConfigPage() {
             <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-2 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-slate-400">Active Model:</span>
-                <span className="font-mono text-indigo-300 font-bold">{status?.openai.model || 'gpt-5-mini'}</span>
+                <span className="font-mono text-indigo-300 font-bold">{status?.openai.model || 'gpt-5-nano'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-400">OpenAI API Key:</span>

@@ -74,7 +74,14 @@ export async function POST(request: NextRequest) {
             messageText = message.button?.text || message.button?.payload || '';
           }
 
-          console.log(`💬 [WhatsApp Inbound Message] From: ${formattedPhone} (${customerName}) | Text: "${messageText}" | Type: ${message.type}`);
+          console.log(`💬 [WhatsApp Inbound Message] From: ${formattedPhone} (${customerName}) | Text: "${messageText}" | Type: ${message.type} | MessageID: ${message.id}`);
+
+          // 0. Trigger Seen (Blue Ticks) & Typing Effect on WhatsApp immediately
+          if (message.id) {
+            whatsappService.markAsReadAndType(message.id).catch(err => {
+              console.warn(`⚠️ [WhatsApp Seen/Typing Indicator Error for ${message.id}]:`, err);
+            });
+          }
 
           if (!messageText) {
             console.log(`⚠️ [WhatsApp Inbound] Non-text message type received: ${message.type}`);

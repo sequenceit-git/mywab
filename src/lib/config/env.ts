@@ -25,7 +25,7 @@ export const env = {
       return process.env.OPENAI_API_KEY || '';
     },
     get model() {
-      return process.env.OPENAI_MODEL || 'gpt-4o-mini';
+      return process.env.OPENAI_MODEL || 'gpt-5-nano';
     },
     get isConfigured() {
       const key = process.env.OPENAI_API_KEY || '';

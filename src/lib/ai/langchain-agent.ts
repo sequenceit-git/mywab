@@ -42,7 +42,7 @@ export class LangChainAgentService {
     if (!env.openai.apiKey) {
       return null;
     }
-    const model = env.openai.model || 'gpt-4o-mini';
+    const model = env.openai.model || 'gpt-5-nano';
     const isSpecialModel = model.includes('gpt-5') || model.includes('o1') || model.includes('o3') || model.includes('nano');
     return new ChatOpenAI({
       openAIApiKey: env.openai.apiKey,
@@ -167,7 +167,7 @@ export class LangChainAgentService {
     // 3. Primary Path: Intelligent OpenAI LLM with Tools
     if (llm && env.openai.apiKey) {
       try {
-        console.log(`[AI Agent] Processing message from ${phone}: "${messageText}" using model ${env.openai.model || 'gpt-4o-mini'}`);
+        console.log(`[AI Agent] Processing message from ${phone}: "${messageText}" using model ${env.openai.model || 'gpt-5-nano'}`);
         const modelWithTools = llm.bindTools(this.tools);
 
         const conversations = await db.getConversations();

@@ -207,6 +207,74 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
     ];
 
     return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Support');
+  },
+
+  /**
+   * Mark incoming message as seen (blue ticks) via WhatsApp Cloud API
+   */
+  async markAsRead(messageId: string): Promise<boolean> {
+    if (!env.whatsapp.isConfigured || !messageId) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          status: 'read',
+          message_id: messageId,
+        }),
+      });
+
+      const data = await response.json();
+      return response.ok && Boolean(data.success);
+    } catch (err) {
+      console.warn('[WhatsApp markAsRead Error]:', err);
+      return false;
+    }
+  },
+
+  /**
+   * Send typing indicator and mark as read (shows "typing..." to customer in WhatsApp chat)
+   */
+  async markAsReadAndType(messageId: string): Promise<boolean> {
+    if (!env.whatsapp.isConfigured || !messageId) {
+      return false;
+    }
+
+    try {
+      // First attempt: Cloud API typing indicator combined with read status
+      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          status: 'read',
+          message_id: messageId,
+          typing_indicator: {
+            type: 'text'
+          }
+        }),
+      });
+
+      if (response.ok) {
+        return true;
+      }
+
+      // Fallback to standard mark as read if typing indicator is not supported
+      return await this.markAsRead(messageId);
+    } catch (err) {
+      console.warn('[WhatsApp markAsReadAndType Error]:', err);
+      return await this.markAsRead(messageId);
+    }
   }
 };
 
