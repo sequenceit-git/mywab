@@ -12,12 +12,14 @@ import {
   Package,
   Database,
   Bot,
+  HelpCircle,
   LogOut
 } from 'lucide-react';
 
 const navigation = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
   { name: 'Live Orders', href: '/orders', icon: ShoppingBag, badge: 'Live' },
+  { name: 'Q&A & AI Knowledge', href: '/qna', icon: HelpCircle },
   { name: 'Telegram Workers', href: '/workers', icon: Users },
   { name: 'Products & Pricing', href: '/products', icon: Package },
   { name: 'Supabase & Config', href: '/config', icon: Database },

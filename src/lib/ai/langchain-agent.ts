@@ -77,9 +77,9 @@ export const getFaqTool = tool(
   },
   {
     name: 'get_faq',
-    description: 'Get answers to store policies: delivery time (5-15 mins), payment accounts (bKash/Nagad/Rocket), and website 2% discount.',
+    description: 'Look up answered Q&As: greetings ("bhai acen", "hlw"), pricing queries, delivery times (5-15 mins for website/chat orders), ordering instructions ("uc nibo vaiya"), login UC safety policy, payment accounts, and website discounts.',
     schema: z.object({
-      topic: z.string().describe('Topic keyword (e.g. "payment", "delivery time", "বিকাশ", "নগদ", "discount", "website")')
+      topic: z.string().describe('Topic keyword or user query (e.g. "bhai acen", "delivery time", "login uc", "uc nibo", "payment", "discount")')
     })
   }
 );
