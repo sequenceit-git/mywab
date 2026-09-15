@@ -26,7 +26,10 @@ export {
 
 export class LangChainAgentService {
   private tools = [
-    getFaqTool
+    getFaqTool,
+    createOrderTool,
+    trackOrderTool,
+    updateDraftOrderTool
   ];
 
   private getLLM() {
