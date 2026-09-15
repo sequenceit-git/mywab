@@ -38,7 +38,7 @@ export function extractSlotsFromMessage(messageText: string): ExtractedSlots {
 
   // 2. Extract Payment Transaction ID (TrxID / 4-16 alphanumeric characters / last 4 digits)
   const explicitTrxMatch = 
-    messageText.match(/(?:trx|trxid|trnx|txid|tx\s*id|transaction|tr\s*id|আইডি|ট্রানজেকশন|ট্রানস্যাকশন)[:\s]*([a-zA-Z0-9]{4,16})/i) ||
+    messageText.match(/(?:trxid|trnx|txid|tx\s*id|transaction|tr\s*id|ট্রানজেকশন|ট্রানস্যাকশন|trx)[:\s]*([a-zA-Z0-9]{4,16})/i) ||
     messageText.match(/(?:last|লাস্ট|শেষ)[:\s]*(\d{4,8})/i);
 
   let extractedTrx: string | null = explicitTrxMatch ? explicitTrxMatch[1].trim() : null;

@@ -110,12 +110,13 @@ export class LangChainAgentService {
       draft = sessionState.draftOrder;
     }
 
-    // 2. Check Affirmation Fast-Path (When all slots are already complete and user sends confirmation)
+    // 2. Check Affirmation / Complete Slot Fast-Path (When all slots are already complete or user confirms)
     const isAffirmative = isAffirmativePhrase(messageText);
     const hasTopUpSlots = Boolean(draft.items && draft.items.length > 0 && draft.playerUid);
+    const hasCompleteOrder = Boolean(hasTopUpSlots && draft.trxId);
 
-    if ((sessionState.step === 'AWAITING_CONFIRMATION' || (hasTopUpSlots && draft.trxId)) && isAffirmative) {
-      console.log(`[AI Fast-Path] Affirmative top-up response received in state ${sessionState.step}. Placing top-up order directly...`);
+    if (hasCompleteOrder || ((sessionState.step === 'AWAITING_CONFIRMATION' || hasTopUpSlots) && isAffirmative)) {
+      console.log(`[AI Fast-Path] Complete top-up slots / affirmative response received. Placing top-up order directly...`);
       const targetPhone = draft.customerPhone || phone;
       const targetName = draft.customerName || 'PUBG Player';
       const targetUid = draft.playerUid || 'N/A';

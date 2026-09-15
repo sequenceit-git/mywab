@@ -187,15 +187,34 @@ export const createOrderTool = tool(
         const itemLower = item.skuOrName.toLowerCase();
         const numMatch = itemLower.match(/\d+/)?.[0];
         
-        const found = allProducts.find(
+        // 1. Strict exact match
+        let found = allProducts.find(
           p =>
             p.sku.toLowerCase() === itemLower ||
             p.name_en.toLowerCase() === itemLower ||
-            p.name_en.toLowerCase().includes(itemLower) ||
-            itemLower.includes(p.name_en.toLowerCase()) ||
-            p.name_bn.includes(item.skuOrName) ||
-            (numMatch && p.name_en.toLowerCase().includes(numMatch))
+            p.name_bn === item.skuOrName
         );
+
+        // 2. Word boundary match on numeric UC (e.g. \b385\b so 385 doesn't match 3850)
+        if (!found && numMatch) {
+          const numRegex = new RegExp(`\\b${numMatch}\\b`);
+          found = allProducts.find(
+            p =>
+              (numRegex.test(p.sku.toLowerCase()) ||
+               numRegex.test(p.name_en.toLowerCase()) ||
+               numRegex.test(p.name_bn)) &&
+              p.price > 0
+          );
+        }
+
+        // 3. Fallback substring match
+        if (!found) {
+          found = allProducts.find(
+            p =>
+              p.name_en.toLowerCase().includes(itemLower) ||
+              itemLower.includes(p.name_en.toLowerCase())
+          );
+        }
 
         if (found) {
           resolvedItems.push({
