@@ -15,16 +15,16 @@ export function buildSystemPrompt(params: {
   const primeProducts = products.filter(p => p.category?.toLowerCase().includes('sub') || p.category?.toLowerCase().includes('prime'));
 
   const ucListText = ucProducts.length > 0
-    ? ucProducts.map(p => `${p.name_en || p.name_bn}: ৳${p.price}`).join(', ')
-    : `60 UC: ৳115, 120 UC: ৳230, 180 UC: ৳340, 325 UC: ৳600, 385 UC: ৳710, 660 UC: ৳1150, 720 UC: ৳1250, 1045 UC: ৳1850`;
+    ? ucProducts.map(p => `  • ${p.name_en || p.name_bn}: ৳${p.price}`).join('\n')
+    : `  • 60 UC: ৳115\n  • 120 UC: ৳230\n  • 180 UC: ৳340\n  • 325 UC: ৳600\n  • 385 UC [50 RP]: ৳710\n  • 660 UC: ৳1150\n  • 720 UC [100 RP]: ৳1250\n  • 1045 UC: ৳1850`;
 
   const growthListText = growthProducts.length > 0
-    ? growthProducts.map(p => `${p.name_en || p.name_bn}: ৳${p.price}`).join(', ')
-    : `GP 1: ৳150, GP 2: ৳390, GP 3: ৳590`;
+    ? growthProducts.map(p => `  • ${p.name_en || p.name_bn}: ৳${p.price}`).join('\n')
+    : `  • Growth Pack 1: ৳150\n  • Growth Pack 2: ৳390\n  • Growth Pack 3: ৳590`;
 
   const primeListText = primeProducts.length > 0
-    ? primeProducts.map(p => `${p.name_en || p.name_bn}: ৳${p.price}`).join(', ')
-    : `Prime (1M): ৳150, Prime Plus (1M): ৳1150`;
+    ? primeProducts.map(p => `  • ${p.name_en || p.name_bn}: ৳${p.price}`).join('\n')
+    : `  • Prime (1 Month): ৳150\n  • Prime Plus (1 Month): ৳1150`;
 
   const activeFaqs = faqs.filter(f => f.is_active);
   const faqText = activeFaqs.length > 0
@@ -42,11 +42,11 @@ CURRENT SESSION STATE:
 - Payment: ${draft.paymentMethod || 'None'}
 - Last Placed Order ID: ${sessionState.lastOrderId || 'None'}
 
-PRICES:
-- UC: ${ucListText}
-- Growth Pack: ${growthListText}
-- Prime: ${primeListText}
-- bKash/Rocket: 01872239597 (Personal) | Nagad: 01330719250 (Personal)
+EXACT PRICES (LOOKUP CAREFULLY):
+${ucListText}
+${growthListText}
+${primeListText}
+- Payment: bKash/Rocket 01872239597 (Personal) | Nagad 01330719250 (Personal)
 - Website: https://www.dsdukan.com/# (2% instant discount)
 - Delivery: 5-15 mins via Player UID (no password needed).
 
