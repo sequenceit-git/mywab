@@ -69,14 +69,21 @@ export class LangChainAgentService {
     const { phone, messageText, conversationId } = params;
 
     try {
-      // 1. Invoke LangGraph State Machine
-      const graphResult = await orderStateGraph.invoke({
-        phone,
-        messageText,
-        conversationId,
-        sessionState: db.getSessionState(conversationId),
-        messages: []
-      });
+      // 1. Invoke LangGraph State Machine with thread_id session checkpointing
+      const graphResult = await orderStateGraph.invoke(
+        {
+          phone,
+          messageText,
+          conversationId,
+          sessionState: db.getSessionState(conversationId),
+          messages: []
+        },
+        {
+          configurable: {
+            thread_id: conversationId
+          }
+        }
+      );
 
       if (graphResult.finalResponseText) {
         return {

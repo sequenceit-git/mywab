@@ -37,6 +37,8 @@ export const chatRepository = {
         ...current.draftOrder,
         ...(updates.draftOrder || {})
       },
+      parallelDrafts: updates.parallelDrafts !== undefined ? updates.parallelDrafts : current.parallelDrafts,
+      lastCreatedOrders: updates.lastCreatedOrders !== undefined ? updates.lastCreatedOrders : current.lastCreatedOrders,
       lastInteractionTimestamp: Date.now()
     };
     mockStore.sessionStates.set(conversationId, updated);
@@ -48,7 +50,9 @@ export const chatRepository = {
     mockStore.sessionStates.set(conversationId, {
       step: 'IDLE',
       draftOrder: { items: [] },
+      parallelDrafts: undefined,
       lastOrderId: lastOrderId || existing.lastOrderId,
+      lastCreatedOrders: existing.lastCreatedOrders,
       lastInteractionTimestamp: Date.now()
     });
   },

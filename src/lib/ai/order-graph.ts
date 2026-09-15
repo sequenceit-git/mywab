@@ -1,10 +1,12 @@
-import { StateGraph, Annotation, END, START } from '@langchain/langgraph';
+import { StateGraph, Annotation, END, START, MemorySaver } from '@langchain/langgraph';
 import { BaseMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
 import { db } from '@/lib/db';
 import { WhatsAppButton } from '@/lib/whatsapp/service';
 import { ConversationSessionState, ConversationDraftOrder } from '@/types';
 import { extractSlotsFromMessage, isAffirmativePhrase, ExtractedSlots } from './slot-extractor';
 import { createOrderTool, trackOrderTool, getCustomerOrdersTool } from './tools';
+
+export const orderGraphCheckpointer = new MemorySaver();
 
 export type AgentIntent = 
   | 'GREETING'
@@ -574,7 +576,7 @@ export function createOrderStateGraph() {
     .addEdge('trackOrder', END)
     .addEdge('generalGuide', END);
 
-  return workflow.compile();
+  return workflow.compile({ checkpointer: orderGraphCheckpointer });
 }
 
 export const orderStateGraph = createOrderStateGraph();
