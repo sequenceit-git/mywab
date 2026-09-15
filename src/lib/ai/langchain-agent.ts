@@ -17,7 +17,7 @@ import { extractSlotsFromMessage, isAffirmativePhrase } from './slot-extractor';
 import { fallbackEngineStructured, StructuredAgentResponse } from './fallback-engine';
 import { orderStateGraph } from './order-graph';
 
-export type { StructuredAgentResponse };
+export type { StructuredAgentResponse, WhatsAppButton };
 export {
   searchCatalogTool,
   getFaqTool,
@@ -110,12 +110,12 @@ export class LangChainAgentService {
       draft = sessionState.draftOrder;
     }
 
-    // 2. Check Affirmation / Complete Slot Fast-Path (When all slots are already complete or user confirms)
+    // 2. Check Affirmation / Complete Slot Fast-Path (When all slots including payment are already complete or user confirms after payment)
     const isAffirmative = isAffirmativePhrase(messageText);
     const hasTopUpSlots = Boolean(draft.items && draft.items.length > 0 && draft.playerUid);
     const hasCompleteOrder = Boolean(hasTopUpSlots && draft.trxId);
 
-    if (hasCompleteOrder || ((sessionState.step === 'AWAITING_CONFIRMATION' || hasTopUpSlots) && isAffirmative)) {
+    if (hasCompleteOrder || (sessionState.step === 'AWAITING_CONFIRMATION' && isAffirmative && draft.trxId)) {
       console.log(`[AI Fast-Path] Complete top-up slots / affirmative response received. Placing top-up order directly...`);
       const targetPhone = draft.customerPhone || phone;
       const targetName = draft.customerName || 'PUBG Player';

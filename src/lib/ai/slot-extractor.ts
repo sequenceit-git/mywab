@@ -13,14 +13,20 @@ export interface ExtractedSlots {
   }>;
 }
 
+export function normalizeBengaliDigits(str: string): string {
+  const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return str.replace(/[০-৯]/g, d => String(bengaliDigits.indexOf(d)));
+}
+
 /**
  * Extract all potential PUBG Player UIDs from text (5 to 12 digits)
  */
 export function extractAllUids(messageText: string): string[] {
+  const normalizedText = normalizeBengaliDigits(messageText);
   const uids: string[] = [];
   const regex = /(?:uid|id|আইডি|player\s*uid|account)[:\s]*(\d{5,12})|\b(5\d{7,10})\b|\b(\d{7,11})\b/gi;
   let match;
-  while ((match = regex.exec(messageText)) !== null) {
+  while ((match = regex.exec(normalizedText)) !== null) {
     const val = match[1] || match[2] || match[3];
     if (val && !uids.includes(val)) {
       uids.push(val);
@@ -30,10 +36,11 @@ export function extractAllUids(messageText: string): string[] {
 }
 
 export function extractSlotsFromMessage(messageText: string): ExtractedSlots {
-  const lower = messageText.toLowerCase().trim();
+  const normalizedText = normalizeBengaliDigits(messageText);
+  const lower = normalizedText.toLowerCase().trim();
 
   // 1. Extract Player UIDs
-  const allUids = extractAllUids(messageText);
+  const allUids = extractAllUids(normalizedText);
   const extractedUid = allUids.length > 0 ? allUids[0] : null;
 
   // 2. Extract Payment Transaction ID (TrxID / 4-16 alphanumeric characters / last 4 digits)
@@ -71,7 +78,7 @@ export function extractSlotsFromMessage(messageText: string): ExtractedSlots {
   // 4. Extract Package Intent
   let extractedItems: Array<{ skuOrName: string; quantity: number }> | null = null;
   const validUcAmounts = [60, 120, 180, 325, 385, 660, 720, 1045, 1800, 3850, 8100];
-  const ucMatches = Array.from(messageText.matchAll(/(\d{2,4})\s*(?:uc|ইউসি)/gi));
+  const ucMatches = Array.from(normalizedText.matchAll(/(\d{2,4})\s*(?:uc|ইউসি)/gi));
   const filteredUc = ucMatches.filter(m => {
     const num = parseInt(m[1], 10);
     return validUcAmounts.includes(num);
@@ -116,11 +123,10 @@ export function extractSlotsFromMessage(messageText: string): ExtractedSlots {
 
 export function isAffirmativePhrase(messageText: string): boolean {
   const lower = messageText.toLowerCase().trim();
-  const affirmativePhrases = [
-    'yes', 'all okey', 'all ok', 'okey', 'ok', 'okay',
-    'confirm', 'confirmed', 'plz confirm', 'please confirm', 'proceed', 'done', 'paid',
-    'thik ase', 'thik ache', 'thik', 'yes please', 'yes go ahead', 'all order confirm', 'duto e confirm',
-    'হ্যাঁ', 'হ্যা', 'ঠিক আছে', 'কনফার্ম', 'কনফার্ম করুন', 'টাকা পাঠিয়েছি', 'টাকা দিছি', 'অর্ডার করুন', 'অর্ডার দিন', 'এগিয়ে যান', 'অর্ডার কনফার্ম', 'সবগুলো কনফার্ম'
+  const affirmativeExactOrRegex = [
+    /^(?:yes|all\s*ok(?:ey)?|ok(?:ey|ay)?|confirm(?:ed)?|plz\s*confirm|please\s*confirm|proceed|done|paid)$/i,
+    /^(?:thik\s*ase|thik\s*ache|thik|yes\s*please|yes\s*go\s*ahead|all\s*order\s*confirm|duto\s*e\s*confirm)$/i,
+    /(?:^|\s)(?:হ্যাঁ|হ্যা|ঠিক আছে|কনফার্ম|কনফার্ম করুন|টাকা পাঠিয়েছি|টাকা দিছি|অর্ডার করুন|অর্ডার দিন|এগিয়ে যান|অর্ডার কনফার্ম|সবগুলো কনফার্ম)(?:$|\s)/i
   ];
-  return affirmativePhrases.some(phrase => lower === phrase || lower.includes(phrase));
+  return affirmativeExactOrRegex.some(regex => regex.test(lower));
 }

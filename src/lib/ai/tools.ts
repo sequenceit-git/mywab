@@ -49,7 +49,9 @@ export const getFaqTool = tool(
     const matched = faqs.filter(
       f =>
         f.question_en.toLowerCase().includes(cleanTopic) ||
-        f.question_bn.includes(cleanTopic) ||
+        f.question_bn.toLowerCase().includes(cleanTopic) ||
+        f.answer_en.toLowerCase().includes(cleanTopic) ||
+        f.answer_bn.toLowerCase().includes(cleanTopic) ||
         f.category.toLowerCase().includes(cleanTopic)
     );
 
@@ -244,15 +246,28 @@ export const createOrderTool = tool(
         return JSON.stringify({ success: false, error: 'No valid products could be resolved.' });
       }
 
-      // 3. Create the Order in Central Database
+      // 3. Create the Order in Central Database (Fallback to draft session state if parameter was omitted by LLM)
+      const draft = params.conversationId ? db.getSessionState(params.conversationId).draftOrder : null;
+      const effectiveUid = (params.playerUid && params.playerUid.trim()) || draft?.playerUid || undefined;
+      const effectiveTrx = (params.trxId && params.trxId.trim()) || draft?.trxId || undefined;
+      const effectivePayment = (params.paymentMethod && params.paymentMethod.trim()) || draft?.paymentMethod || undefined;
+      const effectiveNotes = (params.customerNotes && params.customerNotes.trim()) || draft?.customerNotes || undefined;
+
+      if (!effectiveTrx) {
+        return JSON.stringify({
+          success: false,
+          error: 'Payment TrxID or confirmation is required before creating a confirmed top-up order. Use update_draft_order to store the UID/package and request payment from the customer.'
+        });
+      }
+
       const order = await db.createOrder({
         userId: user.id,
         items: resolvedItems,
         deliveryPhone: params.customerPhone,
-        playerUid: params.playerUid || undefined,
-        trxId: params.trxId || undefined,
-        paymentMethod: params.paymentMethod || undefined,
-        customerNotes: params.customerNotes || undefined
+        playerUid: effectiveUid,
+        trxId: effectiveTrx,
+        paymentMethod: effectivePayment,
+        customerNotes: effectiveNotes
       });
 
       // 4. Automatically Forward to Telegram Worker Group

@@ -66,6 +66,7 @@ PRICES:
      -> Example: "আপনার PUBG Player UID টি লিখে পাঠান ভাইয়া। 🎮"
 
    - Step C: Customer provides Player UID (e.g. "5123456789"):
+     -> Call \`update_draft_order\` to save the Player UID (do NOT call \`create_order\` yet!).
      -> Give payment numbers and total amount in 2 lines.
      -> Example: "UID পেয়েছি! ৬০ ইউসি = ১১৫ টাকা।\nবিকাশ/রকেট: 01872239597 | নগদ: 01330719250 (Personal)\nটাকা সেন্ড মানি করে TrxID বা লাস্ট ৪ ডিজিট দিন। ⚡"
 
@@ -76,5 +77,7 @@ PRICES:
 3. GREETINGS & FAQ:
    - "hi" / "vai" / "bhai acen": "জি ভাইয়া, আছেন। কীভাবে সাহায্য করতে পারি?"
    - "delivery time": "আমাদের ডেলিভারি সময় ৫ থেকে ১৫ মিনিট ভাইয়া।"
+   - "payment number" / "number den": "বিকাশ/রকেট: 01872239597 | নগদ: 01330719250 (Personal)"
+   - "trusted" / "safe": "জি ভাইয়া, আমরা ১০০% ট্রাস্টেড ও নিরাপদ। কোনো পাসওয়ার্ড প্রয়োজন নেই, শুধু Player UID দিয়েই ডেলিভারি হয়।"
    - Speak in natural, friendly Bengali (বাংলা).`;
 }

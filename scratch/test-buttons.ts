@@ -1,5 +1,5 @@
-import { langchainAgent } from './src/lib/ai/langchain-agent';
-import { db } from './src/lib/db/mock-db';
+import { langchainAgent, WhatsAppButton } from '../src/lib/ai/langchain-agent';
+import { db } from '../src/lib/db';
 
 async function testButtons() {
   const phone = '+8801705785272';
@@ -12,7 +12,7 @@ async function testButtons() {
     conversationId: conv.id
   });
   console.log('Response:', res1.text);
-  console.log('Buttons:', res1.buttons?.map(b => b.title).join(' | '));
+  console.log('Buttons:', res1.buttons?.map((b: WhatsAppButton) => b.title).join(' | '));
 
   console.log('\n--- 2. Testing Button: btn_60uc (⚡ 60 UC) ---');
   const res2 = await langchainAgent.processStructuredMessage({
@@ -21,7 +21,7 @@ async function testButtons() {
     conversationId: conv.id
   });
   console.log('Response:', res2.text);
-  console.log('Buttons:', res2.buttons?.map(b => b.title).join(' | ') || 'None (correct - typing UID)');
+  console.log('Buttons:', res2.buttons?.map((b: WhatsAppButton) => b.title).join(' | ') || 'None (correct - typing UID)');
 
   console.log('\n--- 3. Testing Button: btn_website (🌐 ওয়েবসাইট) ---');
   const res3 = await langchainAgent.processStructuredMessage({

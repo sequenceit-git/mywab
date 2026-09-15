@@ -126,7 +126,7 @@ async function runFullConversationOrderTest() {
     console.log('✅ Found Order in DB:');
     console.log({
       id: foundOrder.id,
-      customer_phone: foundOrder.customer_phone,
+      delivery_phone: foundOrder.delivery_phone,
       total_amount: foundOrder.total_amount,
       status: foundOrder.status,
       items: foundOrder.items,
