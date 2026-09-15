@@ -92,7 +92,9 @@ export const chatRepository = {
           return data.map((c: any) => ({
             ...c,
             user: c.customer,
-            messages: c.messages || []
+            messages: (c.messages || []).sort(
+              (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            )
           }));
         }
       } catch (err) {
@@ -111,6 +113,46 @@ export const chatRepository = {
     });
   },
 
+  async getConversationById(conversationId: string): Promise<Conversation | null> {
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      try {
+        const { data, error } = await client
+          .from('conversations')
+          .select(`
+            *,
+            customer:users(*),
+            messages(*)
+          `)
+          .eq('id', conversationId)
+          .single();
+
+        if (!error && data) {
+          const sortedMessages = (data.messages || []).sort(
+            (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          return {
+            ...data,
+            user: data.customer,
+            messages: sortedMessages
+          };
+        }
+      } catch (err) {
+        console.error('Supabase getConversationById error:', err);
+      }
+    }
+
+    const conv = mockStore.conversations.get(conversationId);
+    if (!conv) return null;
+    const messages = Array.from(mockStore.messages.values())
+      .filter(m => m.conversation_id === conversationId)
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    return {
+      ...conv,
+      messages
+    };
+  },
+
   async getOrCreateConversation(phone: string, userName?: string): Promise<Conversation> {
     const user = await usersRepository.getOrCreateUser(phone, userName);
     const client = getDbClient();
@@ -123,10 +165,13 @@ export const chatRepository = {
         .single();
 
       if (data) {
+        const sortedMessages = (data.messages || []).sort(
+          (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
         return {
           ...data,
           user,
-          messages: data.messages || []
+          messages: sortedMessages
         };
       }
 

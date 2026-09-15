@@ -91,12 +91,12 @@ export async function POST(request: NextRequest) {
           // 1. Get or create customer profile
           const user = await db.getOrCreateUser(formattedPhone, customerName);
 
-          // 2. Get or create conversation
-          const conversation = await db.getOrCreateConversation(user.id);
+          // 2. Get or create persistent conversation for this customer phone
+          const conversation = await db.getOrCreateConversation(formattedPhone, customerName);
 
           // 3. Save incoming customer message to database
           await db.addMessage(conversation.id, 'CUSTOMER', messageText);
-          console.log(`💾 [WhatsApp Saved to DB] Conversation ID: ${conversation.id} | User ID: ${user.id}`);
+          console.log(`💾 [WhatsApp Saved to DB] Conversation ID: ${conversation.id} | User ID: ${user.id} | Phone: ${formattedPhone}`);
 
           // 4. If AI is active for this conversation, process via LangChain
           const isAiActive = conversation.is_ai_active !== false;

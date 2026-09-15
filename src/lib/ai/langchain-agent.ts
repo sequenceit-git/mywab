@@ -170,8 +170,7 @@ export class LangChainAgentService {
         console.log(`[AI Agent] Processing message from ${phone}: "${messageText}" using model ${env.openai.model || 'gpt-5-nano'}`);
         const modelWithTools = llm.bindTools(this.tools);
 
-        const conversations = await db.getConversations();
-        const conv = conversations.find(c => c.id === conversationId);
+        const conv = await db.getConversationById(conversationId);
         const historyMessages = conv?.messages || [];
 
         // Exclude the very last message if it matches messageText to avoid duplication
@@ -242,8 +241,8 @@ export class LangChainAgentService {
                 { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
               ]
             : [
-                { id: 'btn_60uc', title: '⚡ 60 UC (৳115)' },
                 { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
+                { id: 'btn_track', title: '📦 অর্ডার ট্র্যাক' },
                 { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
               ];
 
@@ -263,7 +262,8 @@ export class LangChainAgentService {
           { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
         ];
 
-        if (lowerMsg.includes('uc') || lowerMsg.includes('price') || lowerMsg.includes('dam') || lowerMsg.includes('koto')) {
+        const hasSelectedPackage = Boolean(sessionState.draftOrder?.items && sessionState.draftOrder.items.length > 0);
+        if ((lowerMsg.includes('uc') || lowerMsg.includes('price') || lowerMsg.includes('dam') || lowerMsg.includes('koto')) && !hasSelectedPackage) {
           dynamicButtons = [
             { id: 'btn_60uc', title: '⚡ 60 UC (৳115)' },
             { id: 'btn_385uc', title: '👑 385 UC (৳710)' },
