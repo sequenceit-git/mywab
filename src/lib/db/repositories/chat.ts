@@ -14,14 +14,24 @@ export const chatRepository = {
     };
 
     const existing = mockStore.sessionStates.get(conversationId);
-    if (!existing) {
-      mockStore.sessionStates.set(conversationId, defaultState);
-      return defaultState;
+    if (!existing || !existing.draftOrder) {
+      const merged: ConversationSessionState = {
+        step: existing?.step || 'IDLE',
+        draftOrder: (existing?.draftOrder && Array.isArray(existing.draftOrder.items))
+          ? existing.draftOrder
+          : { items: [] },
+        parallelDrafts: existing?.parallelDrafts,
+        lastOrderId: existing?.lastOrderId,
+        lastCreatedOrders: existing?.lastCreatedOrders,
+        lastInteractionTimestamp: existing?.lastInteractionTimestamp || Date.now()
+      };
+      mockStore.sessionStates.set(conversationId, merged);
+      return merged;
     }
 
     // TTL check: 30 minutes of inactivity resets draft
     const thirtyMinutes = 30 * 60 * 1000;
-    if (Date.now() - existing.lastInteractionTimestamp > thirtyMinutes) {
+    if (Date.now() - (existing.lastInteractionTimestamp || 0) > thirtyMinutes) {
       mockStore.sessionStates.set(conversationId, defaultState);
       return defaultState;
     }
@@ -172,7 +182,7 @@ export const chatRepository = {
           .single();
 
         if (!error && data) {
-          if (data.draft_state && !mockStore.sessionStates.has(data.id)) {
+          if (data.draft_state && data.draft_state.draftOrder && !mockStore.sessionStates.has(data.id)) {
             mockStore.sessionStates.set(data.id, data.draft_state);
           }
           const sortedMessages = (data.messages || []).sort(
@@ -212,7 +222,7 @@ export const chatRepository = {
         .single();
 
       if (data) {
-        if (data.draft_state && !mockStore.sessionStates.has(data.id)) {
+        if (data.draft_state && data.draft_state.draftOrder && !mockStore.sessionStates.has(data.id)) {
           mockStore.sessionStates.set(data.id, data.draft_state);
         }
         const sortedMessages = (data.messages || []).sort(
