@@ -252,12 +252,13 @@ ${itemsText}
       return { success: false, message: 'No callback data' };
     }
 
-    const colonIndex = data.indexOf(':');
-    const action = colonIndex !== -1 ? data.slice(0, colonIndex) : data;
-    const orderIdCode = (colonIndex !== -1 ? data.slice(colonIndex + 1) : '').trim();
+    const parts = data.split(':');
+    const action = parts[0];
+    const orderIdCode = (parts[1] || '').trim();
+    const extraParam = parts.slice(2).join(':');
     const workerName = [from.first_name, from.last_name].filter(Boolean).join(' ') || from.username || `Worker-${from.id}`;
 
-    console.log(`[Telegram Callback] Action: "${action}" | OrderCode: "${orderIdCode}" | Worker: "${workerName}" (ID: ${from.id})`);
+    console.log(`[Telegram Callback] Action: "${action}" | OrderCode: "${orderIdCode}" | Extra: "${extraParam}" | Worker: "${workerName}" (ID: ${from.id})`);
 
     const existingOrder = await db.getOrderByCode(orderIdCode);
     if (!existingOrder) {
