@@ -268,6 +268,8 @@ export const ordersRepository = {
       telegramUserId?: number;
       workerTelegramId?: number;
       isAdminOverride?: boolean;
+      notes?: string;
+      customerNotes?: string;
     }
   ): Promise<{ success: boolean; message: string; order?: Order }> {
     const order = await this.getOrderByCode(orderIdCode);
@@ -275,8 +277,9 @@ export const ordersRepository = {
       return { success: false, message: 'অর্ডারটি খুঁজে পাওয়া যায়নি।' };
     }
 
-    const { isAdminOverride = false } = options || {};
+    const { isAdminOverride = false, notes, customerNotes } = options || {};
     const telegramUserId = options?.telegramUserId ?? options?.workerTelegramId;
+    const finalNotes = notes || customerNotes;
 
     // 1. Worker Lock Check: If not an admin override, verify that this worker owns the order
     if (!isAdminOverride && telegramUserId) {
@@ -298,6 +301,9 @@ export const ordersRepository = {
     }
 
     order.status = status;
+    if (finalNotes) {
+      order.customer_notes = finalNotes;
+    }
     order.updated_at = new Date().toISOString();
 
     const client = getDbClient();
@@ -306,6 +312,9 @@ export const ordersRepository = {
         status,
         updated_at: new Date().toISOString()
       };
+      if (finalNotes) {
+        updatePayload.customer_notes = finalNotes;
+      }
       await client
         .from('orders')
         .update(updatePayload)
@@ -316,7 +325,7 @@ export const ordersRepository = {
           .from('order_assignments')
           .update({ status: 'DELIVERED', completed_at: new Date().toISOString() })
           .eq('order_id', order.id);
-      } else if (isAdminOverride && (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT' || status === 'CANCELLED')) {
+      } else if (status === 'CANCELLED') {
         await client
           .from('order_assignments')
           .update({ status: 'CANCELLED', completed_at: new Date().toISOString() })
