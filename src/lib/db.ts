@@ -367,7 +367,10 @@ export const db = {
     const defaultAddress = params.deliveryAddress || {
       name: user?.name || 'Customer',
       phone: params.deliveryPhone,
-      address: params.playerUid ? `Player UID: ${params.playerUid}` : 'Digital Delivery'
+      address: params.playerUid ? `Player UID: ${params.playerUid}` : 'Digital Delivery',
+      player_uid: params.playerUid,
+      trx_id: params.trxId,
+      payment_method: params.paymentMethod
     };
 
     const order: Order = {
@@ -403,7 +406,12 @@ export const db = {
         user_id: order.user_id,
         total_amount: order.total_amount,
         status: order.status,
-        delivery_address: order.delivery_address,
+        delivery_address: {
+          ...order.delivery_address,
+          player_uid: order.player_uid,
+          trx_id: order.trx_id,
+          payment_method: order.payment_method
+        },
         delivery_phone: order.delivery_phone,
         customer_notes: order.customer_notes
       });
@@ -433,11 +441,15 @@ export const db = {
         `)
         .order('created_at', { ascending: false });
       if (!error && data) {
-        // Map assignments to current_worker
-        return data.map((o: Order) => {
+        // Map assignments to current_worker and extract player_uid/trx_id
+        return data.map((o: any) => {
           const lastAssignment = o.assignments && o.assignments.length > 0 ? o.assignments[o.assignments.length - 1] : null;
+          const uidFromAddress = o.delivery_address?.address?.match(/(?:Player UID|UID)[:\s]+(\d+)/i)?.[1];
           return {
             ...o,
+            player_uid: o.player_uid || o.delivery_address?.player_uid || uidFromAddress || undefined,
+            trx_id: o.trx_id || o.delivery_address?.trx_id || undefined,
+            payment_method: o.payment_method || o.delivery_address?.payment_method || 'bKash/Nagad/Rocket',
             current_worker: lastAssignment?.worker || undefined
           };
         });
@@ -465,8 +477,12 @@ export const db = {
         .single();
       if (!error && data) {
         const lastAssignment = data.assignments && data.assignments.length > 0 ? data.assignments[data.assignments.length - 1] : null;
+        const uidFromAddress = data.delivery_address?.address?.match(/(?:Player UID|UID)[:\s]+(\d+)/i)?.[1];
         return {
           ...data,
+          player_uid: data.player_uid || data.delivery_address?.player_uid || uidFromAddress || undefined,
+          trx_id: data.trx_id || data.delivery_address?.trx_id || undefined,
+          payment_method: data.payment_method || data.delivery_address?.payment_method || 'bKash/Nagad/Rocket',
           current_worker: lastAssignment?.worker || undefined
         };
       }
@@ -495,10 +511,14 @@ export const db = {
         .order('created_at', { ascending: false })
         .limit(5);
       if (!error && data) {
-        return data.map((o: Order) => {
+        return data.map((o: any) => {
           const lastAssignment = o.assignments && o.assignments.length > 0 ? o.assignments[o.assignments.length - 1] : null;
+          const uidFromAddress = o.delivery_address?.address?.match(/(?:Player UID|UID)[:\s]+(\d+)/i)?.[1];
           return {
             ...o,
+            player_uid: o.player_uid || o.delivery_address?.player_uid || uidFromAddress || undefined,
+            trx_id: o.trx_id || o.delivery_address?.trx_id || undefined,
+            payment_method: o.payment_method || o.delivery_address?.payment_method || 'bKash/Nagad/Rocket',
             current_worker: lastAssignment?.worker || undefined
           };
         });
