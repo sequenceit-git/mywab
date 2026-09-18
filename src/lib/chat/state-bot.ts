@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { whatsappService } from '@/lib/whatsapp/service';
 import { telegramBot } from '@/lib/telegram/bot';
 import { GAME_CATEGORIES, GameCategory, GamePackage, PAYMENT_ACCOUNTS, findGameCategory, findPackage } from './game-catalog';
+import { extractCleanUid, extractPaymentProof, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu } from './input-parser';
 import { ConversationSessionState, OrderItem } from '@/types';
 
 export interface IncomingEvent {
@@ -26,37 +27,53 @@ export const stateBot = {
 
     const session = db.getSessionState(conversationId);
 
-    // 1. Global Command: Reset / Main Menu / Greetings
+    // 1. Gratitude, Acknowledgements & Pleasantries (e.g. "Thank you", "Nice", "Ok", "Done", "Peyechi", etc.)
+    if (triggerId === 'btn_thank_you' || isGratitudeOrPleasantry(rawText)) {
+      // If user is in AWAITING_PAYMENT and provided a TrxID/Digits with their thank you (e.g. "Thanks 7647"), process payment
+      if (session.step === 'AWAITING_PAYMENT' && (/\d{4,}/.test(rawText) || /trx/i.test(rawText))) {
+        await this.handleTrxIdInput(phone, conversationId, userId, rawText, session);
+        return;
+      }
+      await this.handleGratitude(phone, conversationId, customerName);
+      return;
+    }
+
+    // 2. Global Command: Reset / Main Menu / Greetings
     if (
       triggerId === 'btn_main_menu' ||
       triggerId === 'btn_cancel' ||
       triggerId === 'btn_game_list' ||
-      ['hi', 'hello', 'hey', 'start', 'menu', 'help', 'shuru', 'kemon achen', 'assalamu alaikum', 'salam'].includes(normalizedText)
+      isGreetingOrMenu(rawText)
     ) {
       await this.sendWelcomeAndGameList(phone, conversationId, customerName);
       return;
     }
 
-    // 2. Global Command: Track Order
+    // 3. Global Command: Track Order / Status Inquiry
     if (triggerId === 'btn_track_order' || normalizedText.startsWith('track') || triggerId.startsWith('track:')) {
       await this.handleTrackOrder(phone, conversationId, triggerId, rawText);
       return;
     }
 
-    // 3. Global Command: Website info
+    if (isStatusInquiry(rawText)) {
+      await this.handleStatusInquiry(phone, conversationId);
+      return;
+    }
+
+    // 4. Global Command: Website info
     if (triggerId === 'btn_website' || normalizedText.includes('website') || normalizedText.includes('site')) {
       await this.sendWebsiteInfo(phone, conversationId);
       return;
     }
 
-    // 4. Check if trigger or text is selecting one of the 9 game categories
+    // 5. Check if trigger or text is selecting one of the 9 game categories
     const matchedGame = findGameCategory(triggerId) || (session.step === 'SELECTING_GAME' ? findGameCategory(rawText) : undefined);
     if (matchedGame) {
       await this.handleGameSelection(phone, conversationId, matchedGame);
       return;
     }
 
-    // 5. Check if trigger or text is selecting a package for the currently selected game
+    // 6. Check if trigger or text is selecting a package for the currently selected game
     if (session.step === 'SELECTING_PACKAGE' || triggerId.startsWith('pkg_')) {
       const currentGame = session.draftOrder.selectedGame ? findGameCategory(session.draftOrder.selectedGame) : undefined;
       if (currentGame) {
@@ -68,7 +85,7 @@ export const stateBot = {
       }
     }
 
-    // 6. Step-specific text input routing
+    // 7. Step-specific text input routing
     switch (session.step) {
       case 'COLLECTING_UID':
         await this.handleUidInput(phone, conversationId, rawText, session);
@@ -76,6 +93,11 @@ export const stateBot = {
 
       case 'AWAITING_PAYMENT':
         await this.handleTrxIdInput(phone, conversationId, userId, rawText, session);
+        break;
+
+      case 'ORDER_PLACED':
+        // Order completed previously, customer sent generic text
+        await this.handleGratitude(phone, conversationId, customerName);
         break;
 
       case 'SELECTING_GAME':
@@ -308,7 +330,7 @@ ${game.inputPrompt}`;
     rawText: string,
     session: ConversationSessionState
   ): Promise<void> {
-    const cleanUid = rawText.trim();
+    const cleanUid = extractCleanUid(rawText);
 
     if (!cleanUid || cleanUid.length < 3) {
       await whatsappService.sendMessage(
@@ -374,7 +396,7 @@ ${game.inputPrompt}`;
     rawText: string,
     session: ConversationSessionState
   ): Promise<void> {
-    const cleanTrx = rawText.trim();
+    const { paymentMethod, trxId: cleanTrx } = extractPaymentProof(rawText);
     const item = session.draftOrder.items?.[0];
     const unitPrice = item?.unitPrice || session.draftOrder.totalAmount || 0;
     const productName = item?.productName || `${session.draftOrder.selectedGameLabel || 'Game'} (${item?.skuOrName || 'Top-Up'})`;
@@ -387,7 +409,7 @@ ${game.inputPrompt}`;
         deliveryPhone: phone,
         playerUid,
         trxId: cleanTrx,
-        paymentMethod: 'BKASH/NAGAD/ROCKET',
+        paymentMethod,
         items: [
           {
             product_name: productName,
@@ -395,7 +417,7 @@ ${game.inputPrompt}`;
             quantity: 1
           }
         ],
-        customerNotes: `State Bot Order | Game: ${session.draftOrder.selectedGameLabel || 'N/A'} | UID: ${playerUid} | Trx: ${cleanTrx}`
+        customerNotes: `State Bot Order | Game: ${session.draftOrder.selectedGameLabel || 'N/A'} | UID: ${playerUid} | Trx: ${cleanTrx} | Pay: ${paymentMethod}`
       });
 
       // 2. Clear draft and update session state
@@ -504,5 +526,65 @@ https://www.dsdukan.com/#
     ];
 
     await whatsappService.sendInteractiveButtons(phone, text, buttons, 'DS Dukan Website');
+  },
+
+  /**
+   * Handle Customer Gratitude, Appreciation, Pleasantries or Acknowledgements
+   */
+  async handleGratitude(phone: string, conversationId: string, customerName?: string): Promise<void> {
+    db.setSessionState(conversationId, {
+      step: 'IDLE'
+    });
+
+    const nameGreeting = customerName ? ` *${customerName}*` : '';
+    const text = 
+`❤️ *আপনাকে অসংখ্য ধন্যবাদ${nameGreeting}!*
+
+DS Dukan এর সাথে থাকার জন্য কৃতজ্ঞ। আপনার যেকোনো গেম টপ-আপ, সাবস্ক্রিপশন বা প্রয়োজনে আমরা সবসময় পাশে আছি। ✨
+
+🌐 আমাদের ওয়েবসাইটে সরাসরি অর্ডারে পাবেন *২% ইনস্ট্যান্ট ছাড়*!
+🎮 নতুন অর্ডার করতে নিচের বাটনে চাপ দিন:`;
+
+    const buttons = [
+      { id: 'btn_game_list', title: '🎮 নতুন অর্ডার' },
+      { id: 'btn_website', title: '🌐 ওয়েবসাইট (২% ছাড়)' },
+      { id: 'btn_track_order', title: '📦 অর্ডার ট্র্যাক' }
+    ];
+
+    await whatsappService.sendInteractiveButtons(phone, text, buttons, 'DS Dukan Assistant');
+
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: text,
+      metadata: { type: 'GRATITUDE_REPLY' }
+    });
+  },
+
+  /**
+   * Reassure customer about delivery time / processing queue
+   */
+  async handleStatusInquiry(phone: string, conversationId: string): Promise<void> {
+    const text = 
+`⚡ *আপনার অর্ডারটি প্রসেসিং কিউতে রয়েছে!*
+
+আমাদের টপ-আপ টিম দ্রুততম সময়ে (সাধারণত ৫–১৫ মিনিটের মধ্যে) টপ-আপ সম্পন্ন করে আপনার অ্যাকাউন্টে পাঠিয়ে দেবে। 🚀
+
+ডেলিভারি সম্পন্ন হওয়ামাত্র আপনি হোয়াটসঅ্যাপে নিশ্চিতকরণ মেসেজ পাবেন।`;
+
+    const buttons = [
+      { id: 'btn_track_order', title: '📦 অর্ডার ট্র্যাক' },
+      { id: 'btn_game_list', title: '🎮 নতুন অর্ডার' }
+    ];
+
+    await whatsappService.sendInteractiveButtons(phone, text, buttons, 'DS Dukan Support');
+
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: text,
+      metadata: { type: 'STATUS_INQUIRY_REPLY' }
+    });
   }
 };
+
