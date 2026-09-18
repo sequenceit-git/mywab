@@ -184,24 +184,222 @@ export const PAYMENT_ACCOUNTS = {
 
 export function findGameCategory(identifier?: string | null): GameCategory | undefined {
   if (!identifier) return undefined;
-  const clean = identifier.toLowerCase().trim();
+  const raw = identifier.toLowerCase().trim();
+  const clean = raw.replace(/[^\w\s\u0980-\u09FF]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!clean || clean.length < 2) return undefined;
-  return GAME_CATEGORIES.find(
-    g => g.id.toLowerCase() === clean || 
-         g.code.toLowerCase() === clean || 
-         g.fullName.toLowerCase() === clean || 
-         g.title.toLowerCase() === clean ||
-         g.fullName.toLowerCase().includes(clean)
+
+  // 1. Direct code/ID exact match
+  const direct = GAME_CATEGORIES.find(
+    g => g.id.toLowerCase() === raw || 
+         g.code.toLowerCase() === raw || 
+         g.fullName.toLowerCase() === raw || 
+         g.title.toLowerCase() === raw
   );
+  if (direct) return direct;
+
+  // 2. Keyword matching for specific services
+  if (clean.includes('netflix') || clean.includes('নেটফ্লিক্স') || 
+      clean.includes('crunchyroll') || clean.includes('ক্রাঞ্চিরোল') ||
+      clean.includes('spotify') || clean.includes('স্পটিফাই') ||
+      clean.includes('anime') || clean.includes('movie') || clean.includes('মুভি') ||
+      clean.includes('streaming') || clean.includes('subscription') || clean.includes('সাবস্ক্রিপশন') ||
+      clean.includes('prime video') || clean.includes('youtube premium')) {
+    return GAME_CATEGORIES.find(g => g.id === 'game_movie');
+  }
+
+  if (clean.includes('kr') || clean.includes('korean') || clean.includes('কোরিয়ান') || clean.includes('কোরিয়ান')) {
+    return GAME_CATEGORIES.find(g => g.id === 'game_pubg_kr');
+  }
+
+  if (clean.includes('special') || clean.includes('স্পেশাল')) {
+    return GAME_CATEGORIES.find(g => g.id === 'game_pubg_special');
+  }
+
+  if (clean.includes('login') || clean.includes('লগইন') || clean.includes('qr') || clean.includes('কিউআর')) {
+    return GAME_CATEGORIES.find(g => g.id === 'game_pubg_login');
+  }
+
+  if (clean.includes('free fire') || clean.includes('freefire') || clean.includes('ff') || 
+      clean.includes('ফ্রি ফায়ার') || clean.includes('ফ্রি ফায়ার') || clean.includes('ডায়মন্ড') || clean.includes('ডায়মন্ড')) {
+    return GAME_CATEGORIES.find(g => g.id === 'game_ff');
+  }
+
+  if (clean.includes('ios') || clean.includes('apple') || clean.includes('আইওএস') || clean.includes('অ্যাপল')) {
+    if (clean.includes('efootball') || clean.includes('efb') || clean.includes('coin') || clean.includes('কয়েন') || clean.includes('কয়েন')) {
+      return GAME_CATEGORIES.find(g => g.id === 'game_efb_ios');
+    }
+  }
+
+  if (clean.includes('efootball') || clean.includes('efb') || clean.includes('pes') || 
+      clean.includes('ইফুটবল') || clean.includes('কয়েন') || clean.includes('কয়েন') || clean.includes('football')) {
+    return GAME_CATEGORIES.find(g => g.id === 'game_efb_android');
+  }
+
+  if (clean.includes('pubg') || clean.includes('পাবজি') || clean.includes('uc') || clean.includes('ইউসি')) {
+    return GAME_CATEGORIES.find(g => g.id === 'game_pubg_uid');
+  }
+
+  // 3. Fallback partial title match
+  return GAME_CATEGORIES.find(
+    g => g.fullName.toLowerCase().includes(clean) || 
+         clean.includes(g.title.toLowerCase())
+  );
+}
+
+/**
+ * Convert Bengali digits (০-৯) to English digits (0-9)
+ */
+function toEnDigits(str: string): string {
+  const map: Record<string, string> = {
+    '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+    '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'
+  };
+  return str.replace(/[০-৯]/g, d => map[d] || d);
 }
 
 export function findPackage(game: GameCategory, identifier?: string | null): GamePackage | undefined {
   if (!identifier) return undefined;
-  const clean = identifier.toLowerCase().trim();
-  if (!clean || clean.length < 2) return undefined;
-  return game.packages.find(
-    p => p.id.toLowerCase() === clean || 
-         p.name.toLowerCase() === clean || 
-         (clean.startsWith('pkg_') && p.id.toLowerCase().includes(clean))
-  );
+  const raw = identifier.toLowerCase().trim();
+  const normalized = toEnDigits(raw);
+  const clean = normalized.replace(/[^\w\s\u0980-\u09FF\[\]\(\)\+\-]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!clean) return undefined;
+
+  // 1. Direct ID match
+  const directId = game.packages.find(p => p.id.toLowerCase() === raw || (raw.startsWith('pkg_') && p.id.toLowerCase().includes(raw)));
+  if (directId) return directId;
+
+  // 2. Direct Name exact match (case insensitive)
+  const exactName = game.packages.find(p => p.name.toLowerCase() === normalized || p.name.toLowerCase() === clean);
+  if (exactName) return exactName;
+
+  // 3. Game-specific intelligent intent mapping:
+
+  // A. Movie / Streaming subscriptions
+  if (game.id === 'game_movie') {
+    if (clean.includes('netflix') || clean.includes('নেটফ্লিক্স')) {
+      return game.packages.find(p => p.id === 'pkg_sub_netflix');
+    }
+    if (clean.includes('crunchyroll') || clean.includes('ক্রাঞ্চিরোল') || clean.includes('anime') || clean.includes('এনিমে')) {
+      return game.packages.find(p => p.id === 'pkg_sub_crunchyroll');
+    }
+    if (clean.includes('prime') || clean.includes('amazon') || clean.includes('প্রাইম')) {
+      return game.packages.find(p => p.id === 'pkg_sub_prime_vid');
+    }
+    if (clean.includes('spotify') || clean.includes('স্পটিফাই') || clean.includes('music')) {
+      return game.packages.find(p => p.id === 'pkg_sub_spotify');
+    }
+    if (clean.includes('youtube') || clean.includes('yt') || clean.includes('ইউটিউব')) {
+      return game.packages.find(p => p.id === 'pkg_sub_youtube');
+    }
+  }
+
+  // B. PUBG Subscriptions
+  if (game.id === 'game_pubg_sub') {
+    if (clean.includes('plus') || clean.includes('প্লাস')) {
+      return game.packages.find(p => p.id === 'pkg_sub_prime_plus');
+    }
+    if (clean.includes('prime') || clean.includes('প্রাইম')) {
+      return game.packages.find(p => p.id === 'pkg_sub_prime');
+    }
+  }
+
+  // C. Free Fire Memberships
+  if (game.id === 'game_ff') {
+    if (clean.includes('weekly') || clean.includes('উইকলি') || clean.includes('সাপ্তাহিক')) {
+      return game.packages.find(p => p.id === 'pkg_ff_weekly');
+    }
+    if (clean.includes('monthly') || clean.includes('মান্থলি') || clean.includes('মাসিক')) {
+      return game.packages.find(p => p.id === 'pkg_ff_monthly');
+    }
+  }
+
+  // D. Number matching across packages (e.g. "60", "385", "115", "130")
+  const numbersFound = normalized.match(/\b\d+\b/g);
+  if (numbersFound && numbersFound.length > 0) {
+    for (const numStr of numbersFound) {
+      const num = parseInt(numStr, 10);
+      // Match against package name containing this number (e.g. '60 UC', '385 UC [50 RP]')
+      const matchedByNum = game.packages.find(p => {
+        const pNumbers = p.name.match(/\b\d+\b/g);
+        return pNumbers && pNumbers.some(pn => parseInt(pn, 10) === num);
+      });
+      if (matchedByNum) return matchedByNum;
+    }
+  }
+
+  // E. RP matching for PUBG (e.g. "50 rp", "100 rp", "rp")
+  if (clean.includes('50 rp') || clean.includes('50rp')) {
+    const p50 = game.packages.find(p => p.name.includes('50 RP'));
+    if (p50) return p50;
+  }
+  if (clean.includes('100 rp') || clean.includes('100rp')) {
+    const p100 = game.packages.find(p => p.name.includes('100 RP'));
+    if (p100) return p100;
+  }
+
+  // F. Fuzzy substring matching
+  return game.packages.find(p => {
+    const pNameLow = p.name.toLowerCase();
+    return clean.includes(pNameLow) || pNameLow.includes(clean);
+  });
 }
+
+/**
+ * Format a package into a WhatsApp Interactive List row (Meta 24-char title limit, 72-char desc limit)
+ * Guarantees that the price is NEVER truncated and always 100% visible!
+ */
+export function formatWhatsAppRow(pkg: GamePackage): { id: string; title: string; description: string } {
+  const priceTag = ` • ৳${pkg.price}`; // e.g. " • ৳320" (7-8 chars)
+  const maxNameLen = Math.max(8, 24 - priceTag.length); // 16-17 chars
+
+  let name = pkg.name;
+  if (name.length > maxNameLen) {
+    // 1. Strip parenthetical information e.g. "Netflix 1M (1 Screen)" -> "Netflix 1M"
+    const cleaned = name.replace(/\s*\([^)]*\)/g, '').trim();
+    if (cleaned.length <= maxNameLen) {
+      name = cleaned;
+    } else {
+      // 2. Remove words like "Premium", "Membership", "Diamonds", "Coins"
+      const simplified = cleaned.replace(/\s*(?:Premium|Membership|Diamonds|Coins|Pass)\b/gi, '').trim();
+      if (simplified.length <= maxNameLen) {
+        name = simplified;
+      } else {
+        name = name.slice(0, maxNameLen - 2) + '..';
+      }
+    }
+  }
+
+  const title = `${name}${priceTag}`;
+  const description = `${pkg.name} | ৳${pkg.price} Tk (${pkg.description || 'Instant Top-Up'})`.slice(0, 72);
+
+  return {
+    id: pkg.id,
+    title: title.slice(0, 24),
+    description
+  };
+}
+
+/**
+ * Format a package into a WhatsApp Quick Reply Button (Meta 20-char button title limit)
+ * Guarantees price is NEVER truncated!
+ */
+export function formatWhatsAppButton(pkg: GamePackage): { id: string; title: string } {
+  const priceTag = ` ৳${pkg.price}`; // e.g. " ৳1150" (6 chars)
+  const maxNameLen = Math.max(6, 20 - priceTag.length); // 14 chars
+
+  let name = pkg.name;
+  if (name.length > maxNameLen) {
+    const cleaned = name.replace(/\s*\([^)]*\)/g, '').trim();
+    if (cleaned.length <= maxNameLen) {
+      name = cleaned;
+    } else {
+      name = name.slice(0, maxNameLen - 2) + '..';
+    }
+  }
+
+  return {
+    id: pkg.id,
+    title: `${name}${priceTag}`.slice(0, 20)
+  };
+}
+

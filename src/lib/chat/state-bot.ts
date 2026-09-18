@@ -1,7 +1,7 @@
 import { db } from '@/lib/db';
 import { whatsappService } from '@/lib/whatsapp/service';
 import { telegramBot } from '@/lib/telegram/bot';
-import { GAME_CATEGORIES, GameCategory, GamePackage, PAYMENT_ACCOUNTS, findGameCategory, findPackage } from './game-catalog';
+import { GAME_CATEGORIES, GameCategory, GamePackage, PAYMENT_ACCOUNTS, findGameCategory, findPackage, formatWhatsAppRow, formatWhatsAppButton } from './game-catalog';
 import { extractCleanUid, extractPaymentProof, getAccountFieldInfo, getGameDeliveryConfig, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu } from './input-parser';
 import { ConversationSessionState, OrderItem } from '@/types';
 
@@ -28,45 +28,30 @@ export const stateBot = {
     const session = db.getSessionState(conversationId);
 
     // 1. Gratitude, Acknowledgements & Pleasantries (e.g. "Thank you", "Nice", "Ok", "Done", "Peyechi", etc.)
-    if (triggerId === 'btn_thank_you' || isGratitudeOrPleasantry(rawText)) {
-      // If user is in AWAITING_PAYMENT and provided a TrxID/Digits with their thank you (e.g. "Thanks 7647"), process payment
-      if (session.step === 'AWAITING_PAYMENT' && (/\d{4,}/.test(rawText) || /trx/i.test(rawText))) {
-        await this.handleTrxIdInput(phone, conversationId, userId, rawText, session);
-        return;
-      }
+    if (isGratitudeOrPleasantry(rawText)) {
       await this.handleGratitude(phone, conversationId, customerName);
       return;
     }
 
-    // 2. Global Command: Reset / Main Menu / Greetings
-    if (
-      triggerId === 'btn_main_menu' ||
-      triggerId === 'btn_cancel' ||
-      triggerId === 'btn_game_list' ||
-      isGreetingOrMenu(rawText)
-    ) {
-      await this.sendWelcomeAndGameList(phone, conversationId, customerName);
-      return;
-    }
-
-    // 3. Global Command: Track Order / Status Inquiry
-    if (triggerId === 'btn_track_order' || normalizedText.startsWith('track') || triggerId.startsWith('track:')) {
-      await this.handleTrackOrder(phone, conversationId, triggerId, rawText);
-      return;
-    }
-
+    // 2. Status inquiries ("order status", "status", "delivery status")
     if (isStatusInquiry(rawText)) {
       await this.handleStatusInquiry(phone, conversationId);
       return;
     }
 
-    // 4. Global Command: Website info
-    if (triggerId === 'btn_website' || normalizedText.includes('website') || normalizedText.includes('site')) {
-      await this.sendWebsiteInfo(phone, conversationId);
+    // 3. Greeting or Menu reset request ("Hi", "Hello", "Start", "Menu", "Restart")
+    if (isGreetingOrMenu(rawText)) {
+      await this.sendWelcomeAndGameList(phone, conversationId, customerName);
       return;
     }
 
-    // 5. Check if selecting a Payment Method button or text (bKash / Nagad / Rocket)
+    // 4. Quick-restart / Menu button clicked
+    if (triggerId === 'btn_menu' || triggerId === 'btn_restart' || triggerId === 'btn_change_game') {
+      await this.sendWelcomeAndGameList(phone, conversationId, customerName);
+      return;
+    }
+
+    // 5. Payment method buttons / selection
     if (
       triggerId.startsWith('pay_') ||
       (session.step === 'AWAITING_PAYMENT' && ['bkash', 'nagad', 'rocket', 'বিকাশ', 'নগদ', 'রকেট'].includes(normalizedText))
@@ -75,9 +60,15 @@ export const stateBot = {
       return;
     }
 
-    // 6. Check if trigger or text is selecting one of the 9 game categories
-    const matchedGame = findGameCategory(triggerId) || (session.step === 'SELECTING_GAME' ? findGameCategory(rawText) : undefined);
+    // 6. Check if trigger or text is selecting one of the game categories
+    const matchedGame = findGameCategory(triggerId) || (session.step === 'SELECTING_GAME' || session.step === 'IDLE' ? findGameCategory(rawText) : undefined);
     if (matchedGame) {
+      // Check if user also directly specified a package in the same message (e.g. "Netflix 1 month", "PUBG 60 UC")
+      const directPackage = findPackage(matchedGame, rawText);
+      if (directPackage) {
+        await this.handlePackageSelection(phone, conversationId, matchedGame, directPackage);
+        return;
+      }
       await this.handleGameSelection(phone, conversationId, matchedGame);
       return;
     }
@@ -238,10 +229,7 @@ export const stateBot = {
 
     // If game has 3 or fewer packages, send interactive quick-reply buttons
     if (game.packages.length <= 3) {
-      const buttons = game.packages.map(p => ({
-        id: p.id,
-        title: `${p.name} ৳${p.price}`.slice(0, 20)
-      }));
+      const buttons = game.packages.map(p => formatWhatsAppButton(p));
 
       await whatsappService.sendInteractiveButtons(
         phone,
@@ -255,11 +243,7 @@ export const stateBot = {
       const sections = [
         {
           title: `${game.title} Packages`.slice(0, 24),
-          rows: game.packages.slice(0, 10).map(pkg => ({
-            id: pkg.id,
-            title: `${pkg.name} — ৳${pkg.price}`.slice(0, 24),
-            description: pkg.description || `${pkg.name} for ৳${pkg.price} Tk`
-          }))
+          rows: game.packages.slice(0, 10).map(pkg => formatWhatsAppRow(pkg))
         }
       ];
 
