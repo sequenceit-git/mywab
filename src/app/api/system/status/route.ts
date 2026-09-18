@@ -86,11 +86,6 @@ export async function GET(request: NextRequest) {
         serviceRoleKeyMasked: mask(env.supabase.serviceRoleKey),
         stats
       },
-      openai: {
-        isConfigured: env.openai.isConfigured,
-        model: env.openai.model,
-        apiKeyMasked: mask(env.openai.apiKey)
-      },
       whatsapp: {
         isConfigured: env.whatsapp.isConfigured,
         phoneNumberId: env.whatsapp.phoneNumberId || 'Not configured',

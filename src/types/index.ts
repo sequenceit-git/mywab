@@ -40,6 +40,22 @@ export interface UserProfile {
   updated_at?: string;
 }
 
+export interface UserLeaderboardEntry {
+  id: string;
+  phone_number: string;
+  name: string | null;
+  status_tag: 'VIP' | 'REGULAR' | 'FLAGGED';
+  total_spent: number;
+  total_orders: number;
+  delivered_orders: number;
+  last_order_at: string | null;
+  latest_uid: string | null;
+  saved_uids: string[];
+  favorite_game?: string;
+  rank: number;
+  created_at: string;
+}
+
 export interface FAQ {
   id: string;
   question_en: string;
@@ -129,14 +145,13 @@ export interface Payment {
   verified_at?: string | null;
 }
 
-export type ConversationStep = 
-  | 'IDLE'
-  | 'BROWSING'          // Customer is exploring products, not yet committed to buying
-  | 'COLLECTING_DETAILS' 
-  | 'AWAITING_PAYMENT' 
-  | 'AWAITING_CONFIRMATION' 
-  | 'PARALLEL_CONFIRMATION' 
-  | 'ORDER_PLACED';
+export type ConversationStep =
+  | 'IDLE'              // No active flow - show welcome menu on next message
+  | 'SELECTING_GAME'    // Game list shown, waiting for game choice
+  | 'SELECTING_PACKAGE' // Game chosen, price list shown, waiting for package tap
+  | 'COLLECTING_UID'    // Package chosen, waiting for UID / account info text
+  | 'AWAITING_PAYMENT'  // UID saved, payment info shown, waiting for TrxID text
+  | 'ORDER_PLACED';     // Order created, confirmation sent
 
 export interface DraftOrderItem {
   skuOrName: string;
@@ -148,21 +163,22 @@ export interface DraftOrderItem {
 export interface ConversationDraftOrder {
   items: DraftOrderItem[];
   customerName?: string;
-  deliveryAddress?: string;
   customerPhone?: string;
   playerUid?: string;
   paymentMethod?: string;
   trxId?: string;
   customerNotes?: string;
   totalAmount?: number;
+  // State-bot specific
+  selectedGame?: string;       // e.g. 'pubg_uid', 'ff', 'efb_android'
+  selectedGameLabel?: string;  // e.g. 'PUBG Mobile UID Top-Up'
+  packagePage?: number;        // Current package pagination page (0-indexed)
 }
 
 export interface ConversationSessionState {
   step: ConversationStep;
   draftOrder: ConversationDraftOrder;
-  parallelDrafts?: ConversationDraftOrder[];
   lastOrderId?: string;
-  lastCreatedOrders?: string[];
   lastInteractionTimestamp: number;
 }
 

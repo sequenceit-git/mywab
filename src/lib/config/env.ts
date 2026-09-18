@@ -20,18 +20,6 @@ export const env = {
       return Boolean(url && key && url.startsWith('http'));
     },
   },
-  openai: {
-    get apiKey() {
-      return process.env.OPENAI_API_KEY || '';
-    },
-    get model() {
-      return process.env.OPENAI_MODEL || 'gpt-5-nano';
-    },
-    get isConfigured() {
-      const key = process.env.OPENAI_API_KEY || '';
-      return Boolean(key && key.startsWith('sk-'));
-    },
-  },
   whatsapp: {
     get phoneNumberId() {
       return process.env.WHATSAPP_PHONE_NUMBER_ID || '';

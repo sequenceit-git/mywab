@@ -1,203 +1,149 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { langChainAgent } from '@/lib/ai/langchain-agent';
 import { whatsappService } from '@/lib/whatsapp/service';
 import { env } from '@/lib/config/env';
+import { stateBot } from '@/lib/chat/state-bot';
 
 export const dynamic = 'force-dynamic';
 
-// In-memory TTL deduplication cache for Meta WhatsApp webhook events
+// ---------------------------------------------------------------------------
+// In-memory TTL deduplication — prevents Meta duplicate webhook deliveries
+// ---------------------------------------------------------------------------
 const processedMessageMap = new Map<string, number>();
 const inFlightMessages = new Set<string>();
-const MESSAGE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const MESSAGE_CACHE_TTL_MS = 10 * 60 * 1000;
 
 function isDuplicateOrInFlight(messageId: string): boolean {
   if (!messageId) return false;
   const now = Date.now();
-
-  // Clean expired entries
   for (const [id, time] of processedMessageMap.entries()) {
-    if (now - time > MESSAGE_CACHE_TTL_MS) {
-      processedMessageMap.delete(id);
-    }
+    if (now - time > MESSAGE_CACHE_TTL_MS) processedMessageMap.delete(id);
   }
-
-  if (processedMessageMap.has(messageId) || inFlightMessages.has(messageId)) {
-    return true;
-  }
-
+  if (processedMessageMap.has(messageId) || inFlightMessages.has(messageId)) return true;
   inFlightMessages.add(messageId);
   processedMessageMap.set(messageId, now);
   return false;
 }
 
 function releaseInFlight(messageId: string): void {
-  if (messageId) {
-    inFlightMessages.delete(messageId);
-  }
+  if (messageId) inFlightMessages.delete(messageId);
 }
 
-/**
- * WhatsApp Cloud API Webhook Verification (GET)
- */
+// ---------------------------------------------------------------------------
+// Resolve raw WhatsApp message payload -> { text, buttonId }
+// ---------------------------------------------------------------------------
+function resolveIncoming(message: any): { text: string; buttonId: string | null } {
+  let text = '';
+  let buttonId: string | null = null;
+
+  if (message.type === 'text') {
+    text = message.text?.body?.trim() || '';
+  } else if (message.type === 'interactive') {
+    const btnReply  = message.interactive?.button_reply;
+    const listReply = message.interactive?.list_reply;
+    buttonId = btnReply?.id || listReply?.id || null;
+    text     = btnReply?.title || listReply?.title || buttonId || '';
+  } else if (message.type === 'button') {
+    buttonId = message.button?.payload || null;
+    text     = message.button?.text || buttonId || '';
+  }
+
+  return { text, buttonId };
+}
+
+// ---------------------------------------------------------------------------
+// GET - Meta webhook verification handshake
+// ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const mode = searchParams.get('hub.mode');
-  const token = searchParams.get('hub.verify_token');
+  const mode      = searchParams.get('hub.mode');
+  const token     = searchParams.get('hub.verify_token');
   const challenge = searchParams.get('hub.challenge');
 
-  console.log(`[WhatsApp Webhook Handshake] mode=${mode}, token=${token}, challenge=${challenge}`);
+  console.log(`[Webhook Handshake] mode=${mode} token=${token}`);
 
   if (mode === 'subscribe' && token === env.whatsapp.verifyToken) {
-    console.log('✅ [WhatsApp Webhook Handshake] Verified successfully with Meta!');
+    console.log('OK [Webhook] Verified with Meta');
     return new NextResponse(challenge, { status: 200 });
   }
 
-  console.warn('❌ [WhatsApp Webhook Handshake] Token mismatch. Received:', token, 'Expected:', env.whatsapp.verifyToken);
+  console.warn('FAIL [Webhook] Token mismatch. Got:', token, 'Expected:', env.whatsapp.verifyToken);
   return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 }
 
-/**
- * WhatsApp Cloud API Ingestion Webhook (POST)
- */
+// ---------------------------------------------------------------------------
+// POST - Inbound message processing
+// ---------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    console.log('📥 [WhatsApp Webhook POST Received]:\n', JSON.stringify(body, null, 2));
+    console.log('[Webhook POST]:\n', JSON.stringify(body, null, 2));
 
     const entries = body.entry || [];
-    if (entries.length === 0) {
-      console.log('ℹ️ [WhatsApp Webhook] No entries in payload');
-      return NextResponse.json({ status: 'no_entries' }, { status: 200 });
-    }
+    if (entries.length === 0) return NextResponse.json({ status: 'no_entries' }, { status: 200 });
 
     for (const entry of entries) {
-      const changes = entry.changes || [];
-      for (const change of changes) {
+      for (const change of (entry.changes || [])) {
         const value = change.value;
         if (!value) continue;
 
-        // 1. If status update (sent, delivered, read), log and acknowledge
-        if (value.statuses && value.statuses.length > 0) {
-          for (const status of value.statuses) {
-            console.log(`📊 [WhatsApp Status Update] Message ID: ${status.id} | Recipient: ${status.recipient_id} | Status: ${status.status}`);
+        // Delivery / read status updates
+        if (value.statuses?.length > 0) {
+          for (const s of value.statuses) {
+            console.log(`[Status] id=${s.id} recipient=${s.recipient_id} status=${s.status}`);
           }
         }
 
-        // 2. If incoming customer messages exist
         const messages = value.messages || [];
-        if (messages.length === 0) {
-          continue;
-        }
+        if (messages.length === 0) continue;
 
         for (const message of messages) {
-          // Deduplication: Avoid processing the exact same webhook message multiple times
-          if (message.id && isDuplicateOrInFlight(message.id)) {
-            console.log(`⚡ [WhatsApp Deduplication] Message ID ${message.id} already processed or in-flight. Skipping duplicate execution.`);
+          if (isDuplicateOrInFlight(message.id)) {
+            console.log(`[Dedup] Skipping duplicate message ${message.id}`);
             continue;
           }
-          const fromPhone = message.from; // e.g. "8801705785272"
-          const formattedPhone = fromPhone.startsWith('+') ? fromPhone : `+${fromPhone}`;
-          const customerName = value.contacts?.[0]?.profile?.name || 'Customer';
-          
-          // Extract message text or button click response with robust action routing
-          let messageText = '';
-          if (message.type === 'text') {
-            messageText = message.text?.body || '';
-          } else if (message.type === 'interactive') {
-            const replyId = message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || '';
-            const replyTitle = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || '';
-            
-            if (replyId.startsWith('track:')) {
-              const orderId = replyId.replace('track:', '').trim();
-              messageText = `Track order ${orderId}`;
-            } else if (replyId === 'btn_60uc') {
-              messageText = '60 UC nibo';
-            } else if (replyId === 'btn_385uc') {
-              messageText = '385 UC nibo';
-            } else if (replyId === 'btn_catalog') {
-              messageText = 'UC price list koto';
-            } else if (replyId === 'btn_website') {
-              messageText = 'Website discount link den';
-            } else {
-              messageText = replyTitle || replyId;
-            }
-          } else if (message.type === 'button') {
-            const payload = message.button?.payload || '';
-            const text = message.button?.text || '';
-            if (payload.startsWith('track:')) {
-              messageText = `Track order ${payload.replace('track:', '').trim()}`;
-            } else if (payload === 'btn_60uc') {
-              messageText = '60 UC nibo';
-            } else if (payload === 'btn_385uc') {
-              messageText = '385 UC nibo';
-            } else if (payload === 'btn_catalog') {
-              messageText = 'UC price list koto';
-            } else if (payload === 'btn_website') {
-              messageText = 'Website discount link den';
-            } else {
-              messageText = text || payload;
-            }
-          }
-
-          console.log(`💬 [WhatsApp Inbound Message] From: ${formattedPhone} (${customerName}) | Text: "${messageText}" | Type: ${message.type} | MessageID: ${message.id}`);
 
           try {
-            // 0. Trigger Seen (Blue Ticks) & Typing Effect on WhatsApp immediately
+            const fromPhone      = message.from;
+            const formattedPhone = fromPhone.startsWith('+') ? fromPhone : `+${fromPhone}`;
+            const customerName   = value.contacts?.[0]?.profile?.name || 'Customer';
+            const { text: messageText, buttonId } = resolveIncoming(message);
+
+            console.log(`[Inbound] from=${formattedPhone} (${customerName}) text="${messageText}" buttonId=${buttonId} type=${message.type} id=${message.id}`);
+
+            // Mark as read + typing indicator
             if (message.id) {
               whatsappService.markAsReadAndType(message.id).catch(err => {
-                console.warn(`⚠️ [WhatsApp Seen/Typing Indicator Error for ${message.id}]:`, err);
+                console.warn(`[Read/Type Error] ${message.id}:`, err);
               });
             }
 
-            if (!messageText) {
-              console.log(`⚠️ [WhatsApp Inbound] Non-text message type received: ${message.type}`);
+            // Skip empty (image, sticker, voice, etc.)
+            if (!messageText && !buttonId) {
+              console.log(`[Inbound] Unsupported type: ${message.type} - ignoring`);
               continue;
             }
 
-            // 1. Get or create customer profile
+            // Persist user + conversation + message
             const user = await db.getOrCreateUser(formattedPhone, customerName);
-
-            // 2. Get or create persistent conversation for this customer phone
             const conversation = await db.getOrCreateConversation(formattedPhone, customerName);
+            await db.addMessage(conversation.id, 'CUSTOMER', messageText || buttonId || '');
 
-            // 3. Save incoming customer message to database
-            await db.addMessage(conversation.id, 'CUSTOMER', messageText);
-            console.log(`💾 [WhatsApp Saved to DB] Conversation ID: ${conversation.id} | User ID: ${user.id} | Phone: ${formattedPhone}`);
+            console.log(`[DB] Saved | conv=${conversation.id} | phone=${formattedPhone}`);
 
-            // 4. If AI is active for this conversation, process via LangChain
-            const isAiActive = conversation.is_ai_active !== false;
-            if (isAiActive) {
-              console.log(`🤖 [WhatsApp AI] Triggering LangChain Agent for ${formattedPhone}...`);
-              const response = await langChainAgent.processStructuredMessage({
-                phone: formattedPhone,
-                messageText,
-                conversationId: conversation.id
-              });
+            // Process with deterministic sequential State Bot
+            await stateBot.handleIncomingMessage({
+              conversationId: conversation.id,
+              userId: user.id,
+              phone: formattedPhone,
+              customerName,
+              text: messageText,
+              buttonId: buttonId || undefined,
+              listId: message.interactive?.list_reply?.id || undefined
+            });
 
-              console.log(`🤖 [WhatsApp AI Response Generated]: "${response.text}"`);
-
-              // Save Bot message to DB
-              await db.addMessage(conversation.id, 'BOT', response.text);
-
-              // Send reply back to customer's WhatsApp (with interactive buttons or text)
-              let sendResult;
-              if (response.buttons && response.buttons.length > 0) {
-                console.log(`🚀 [WhatsApp Outbound] Sending interactive reply with ${response.buttons.length} buttons to ${formattedPhone}...`);
-                sendResult = await whatsappService.sendInteractiveButtons(formattedPhone, response.text, response.buttons);
-              } else {
-                console.log(`🚀 [WhatsApp Outbound] Sending text reply to ${formattedPhone}...`);
-                sendResult = await whatsappService.sendMessage(formattedPhone, response.text);
-              }
-
-              console.log(`✅ [WhatsApp Outbound Result] for ${formattedPhone}:`, JSON.stringify(sendResult));
-            } else {
-              console.log(`⏸️ [WhatsApp AI] AI is paused/disabled for conversation ${conversation.id}`);
-            }
           } finally {
-            if (message.id) {
-              releaseInFlight(message.id);
-            }
+            releaseInFlight(message.id);
           }
         }
       }
@@ -205,7 +151,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch (error) {
-    console.error('❌ [WhatsApp Webhook Error]:', error);
+    console.error('[Webhook Error]:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

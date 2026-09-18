@@ -12,7 +12,7 @@ import {
   Package,
   Database,
   Bot,
-  HelpCircle,
+  Trophy,
   ShieldCheck,
   LogOut
 } from 'lucide-react';
@@ -20,7 +20,7 @@ import {
 const navigation = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
   { name: 'Live Orders', href: '/orders', icon: ShoppingBag, badge: 'Live' },
-  { name: 'Q&A & AI Knowledge', href: '/qna', icon: HelpCircle },
+  { name: 'Customers & Leaderboard', href: '/users', icon: Trophy },
   { name: 'Telegram Workers', href: '/workers', icon: Users },
   { name: 'Supabase & Config', href: '/config', icon: Database },
 ];

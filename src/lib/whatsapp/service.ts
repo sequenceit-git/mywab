@@ -12,6 +12,17 @@ export interface WhatsAppButton {
   title: string;
 }
 
+export interface WhatsAppListRow {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface WhatsAppListSection {
+  title?: string;
+  rows: WhatsAppListRow[];
+}
+
 export const whatsappService = {
   /**
    * Send a free-form text message to customer's WhatsApp via Meta Cloud API
@@ -114,6 +125,77 @@ export const whatsappService = {
       return await this.sendMessage(toPhone, bodyText);
     } catch (err) {
       console.error('WhatsApp Interactive Button Network Exception:', err);
+      return await this.sendMessage(toPhone, bodyText);
+    }
+  },
+
+  /**
+   * Send an interactive List message (up to 10 options) via Meta Cloud API
+   */
+  async sendInteractiveList(
+    toPhone: string,
+    bodyText: string,
+    buttonLabel: string,
+    sections: WhatsAppListSection[],
+    headerText?: string,
+    footerText = 'DS Dukan — 24/7 Gaming Shop'
+  ): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+
+    if (!env.whatsapp.isConfigured) {
+      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
+      console.error(errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
+    try {
+      const formattedSections = sections.map((sec, sIdx) => ({
+        title: (sec.title || `Category ${sIdx + 1}`).slice(0, 24),
+        rows: sec.rows.map((row, rIdx) => ({
+          id: row.id || `row_${sIdx}_${rIdx}`,
+          title: row.title.slice(0, 24),
+          description: row.description ? row.description.slice(0, 72) : undefined
+        }))
+      }));
+
+      const payload: Record<string, any> = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanPhone,
+        type: 'interactive',
+        interactive: {
+          type: 'list',
+          body: { text: bodyText },
+          footer: { text: footerText },
+          action: {
+            button: buttonLabel.slice(0, 20),
+            sections: formattedSections
+          }
+        }
+      };
+
+      if (headerText) {
+        payload.interactive.header = { type: 'text', text: headerText.slice(0, 60) };
+      }
+
+      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.messages?.[0]?.id) {
+        return { success: true, messageId: data.messages[0].id };
+      }
+      console.error('WhatsApp Interactive List API Error:', JSON.stringify(data));
+      console.log(`[WhatsApp Fallback] Sending plain text message to ${cleanPhone}...`);
+      return await this.sendMessage(toPhone, bodyText);
+    } catch (err) {
+      console.error('WhatsApp Interactive List Network Exception:', err);
       return await this.sendMessage(toPhone, bodyText);
     }
   },

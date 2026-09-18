@@ -478,10 +478,17 @@ export default function DashboardOverviewPage() {
                   <ArrowRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-brand-400" />
                 </Link>
                 <Link
-                  href="/qna"
+                  href="/users"
+                  className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 hover:border-amber-500/40 transition flex items-center justify-between group"
+                >
+                  <span className="text-xs font-medium text-slate-300 group-hover:text-amber-300">🏆 Customer Leaderboard</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400" />
+                </Link>
+                <Link
+                  href="/workers"
                   className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 hover:border-brand-500/40 transition flex items-center justify-between group"
                 >
-                  <span className="text-xs font-medium text-slate-300 group-hover:text-white">Store FAQs & Price Catalog</span>
+                  <span className="text-xs font-medium text-slate-300 group-hover:text-white">Telegram Worker Team</span>
                   <ArrowRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-brand-400" />
                 </Link>
               </div>
