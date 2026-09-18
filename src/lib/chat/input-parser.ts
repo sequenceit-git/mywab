@@ -199,19 +199,42 @@ export interface ExtractedPayment {
   trxId?: string;
   lastDigits?: string;
   senderPhone?: string;
-  proofType: 'BOTH' | 'TRX_ID' | 'LAST_4' | 'PHONE' | 'CUSTOM';
+  proofType: 'BOTH' | 'TRX_ID' | 'LAST_4' | 'PHONE' | 'NONE';
   rawProof: string;
+  isValid: boolean;
+}
+
+const NON_TRX_WORDS = new Set([
+  'SEND', 'SENT', 'KORECI', 'KORECHI', 'PATHAISI', 'PATHALAM', 'DILAM', 'DISI',
+  'DONE', 'PAID', 'PAYMENT', 'COMPLETE', 'COMPLETED', 'CHECK', 'KOREN', 'DEKHEN',
+  'BHAI', 'BRO', 'SIR', 'APU', 'SS', 'SCREENSHOT', 'PICTURE', 'PIC', 'IMAGE',
+  'DIBO', 'PORE', 'THAK', 'HOBE', 'NAI', 'HOISE', 'HOICE', 'DIASO', 'DIYECHI',
+  'BKASH', 'BAKSH', 'NAGAD', 'ROCKET', 'UPAY', 'SENDMONEY', 'CASHIN', 'CASHOUT',
+  'ORDER', 'CONFIRM', 'CANCEL', 'HELLO', 'HI', 'THANKS', 'TNX', 'DHONNOBAD',
+  'TAKA', 'MONEY', 'ACCOUNT', 'NUMBER', 'AMOUNT', 'NOW', 'PLEASE', 'PLZ',
+  'YES', 'NO', 'OK', 'OKAY', 'ACHE', 'ASI', 'ACCOUNTS', 'NOTUN', 'KORBO',
+  'DELIVERY', 'STATUS', 'PRICE', 'KOTO', 'DAM'
+]);
+
+export interface PaymentProofContext {
+  expectedAmount?: number;
+  recipientAccount?: string;
+  playerUid?: string;
 }
 
 /**
- * Extract clean Payment Method, TrxID, Last 4 Digits or Combined Proof
+ * Extract clean Payment Method, TrxID, Last 4 Digits or Combined Proof strictly
  */
-export function extractPaymentProof(rawText: string): ExtractedPayment {
+export function extractPaymentProof(
+  rawText: string,
+  context?: PaymentProofContext
+): ExtractedPayment {
   if (!rawText) {
     return {
       paymentMethod: 'BKASH/NAGAD/ROCKET',
-      proofType: 'CUSTOM',
-      rawProof: 'N/A'
+      proofType: 'NONE',
+      rawProof: '',
+      isValid: false
     };
   }
 
@@ -220,7 +243,7 @@ export function extractPaymentProof(rawText: string): ExtractedPayment {
 
   // 1. Detect Payment Method
   let paymentMethod = 'BKASH/NAGAD/ROCKET';
-  if (lower.includes('bkash') || text.includes('বিকাশ')) {
+  if (lower.includes('bkash') || lower.includes('baksh') || text.includes('বিকাশ')) {
     paymentMethod = 'BKASH';
   } else if (lower.includes('nagad') || text.includes('নগদ')) {
     paymentMethod = 'NAGAD';
@@ -230,42 +253,81 @@ export function extractPaymentProof(rawText: string): ExtractedPayment {
     paymentMethod = 'UPAY';
   }
 
-  // 2. Check for explicit TrxID
+  // 2. Check for explicit TrxID prefix (e.g. "TrxID: 9J7A291A", "Trx: BL89AK2L0P", "TxnID 10293812", "BKASH-TRX-101")
   let foundTrxId: string | undefined;
-  const trxMatch = text.match(
-    /(?:trx\s*id|trx|tx\s*id|txid|transaction\s*id|trans\s*id|ট্রানজেকশন\s*আইডি|টিএক্স\s*আইডি|টিএক্স)[\s:=#\-_]*([a-zA-Z0-9]{5,20})/i
+  const trxPrefixMatch = text.match(
+    /(?:trx\s*id|trx|tx\s*id|txid|txn\s*id|txnid|transaction\s*id|trans\s*id|টিএক্স\s*আইডি|টিএক্স|ট্রানজেকশন\s*আইডি)[\s:=#\-_]*([a-zA-Z0-9]{3,25})/i
   );
-  if (trxMatch && trxMatch[1]) {
-    foundTrxId = trxMatch[1].trim().toUpperCase();
-  } else {
-    // Alphanumeric standard TrxID (contains letters + digits)
-    const alphanumericTrx = text.match(/\b([A-Za-z0-9]{8,12})\b/);
-    if (alphanumericTrx && /[0-9]/.test(alphanumericTrx[1]) && /[a-zA-Z]/.test(alphanumericTrx[1])) {
-      foundTrxId = alphanumericTrx[1].trim().toUpperCase();
+  if (trxPrefixMatch && trxPrefixMatch[1]) {
+    const candidate = trxPrefixMatch[1].trim().toUpperCase();
+    const isBlacklisted = NON_TRX_WORDS.has(candidate);
+    const hasDigits = /[0-9]/.test(candidate);
+    // Real TrxID must not be a conversational word and must have digits or be >= 6 alphanumeric chars
+    if (!isBlacklisted && (hasDigits || candidate.length >= 6)) {
+      foundTrxId = candidate;
     }
   }
 
-  // 3. Check for explicit Last 4 Digits (or 3-6 digit sender digits)
+  // 2b. If no prefix, check for standalone alphanumeric TrxID (mixed digits + letters, e.g. "9J7A291A", "BK1049281")
+  if (!foundTrxId) {
+    const alphanumericTokens = text.match(/\b([A-Za-z0-9]{6,20})\b/g);
+    if (alphanumericTokens) {
+      for (const token of alphanumericTokens) {
+        const candidate = token.trim().toUpperCase();
+        if (
+          !NON_TRX_WORDS.has(candidate) &&
+          /[0-9]/.test(candidate) &&
+          /[a-zA-Z]/.test(candidate) &&
+          candidate.length >= 6
+        ) {
+          foundTrxId = candidate;
+          break;
+        }
+      }
+    }
+  }
+
+  // 3. Check for explicit Last 4 Digits (e.g. "last 4 digit 4591", "লাস্ট ৪ সংখ্যা ৪৫৯১")
   let foundLastDigits: string | undefined;
   const lastDigitsMatch = text.match(
     /(?:last\s*(?:4\s*)?(?:digit|digits|no|num|number|code|সংখ্যার?|ডিজিট|নম্বর)?|লাস্ট\s*(?:৪\s*)?(?:ডিজিট|সংখ্যা|নম্বর)?)[\s:=#\-_]*([0-9]{3,6})/i
   );
   if (lastDigitsMatch && lastDigitsMatch[1]) {
-    foundLastDigits = lastDigitsMatch[1].trim();
+    const candidateDigits = lastDigitsMatch[1].trim();
+    const numericVal = parseInt(candidateDigits, 10);
+    // Must not be the expected payment amount (e.g. 115)
+    if (!context?.expectedAmount || numericVal !== context.expectedAmount) {
+      foundLastDigits = candidateDigits;
+    }
   }
 
-  // 4. Check for full 11-digit phone number
+  // 4. Check for full 11-digit sender phone number
   let foundPhone: string | undefined;
   const phoneMatch = text.match(/\b(01[3-9]\d{8})\b/);
   if (phoneMatch) {
-    foundPhone = phoneMatch[1].trim();
+    const matchedPhone = phoneMatch[1].trim();
+    // Exclude the shop's own recipient accounts
+    const knownShopAccounts = ['01330719250', '01859666014', '01700000000'];
+    const isShopAccount =
+      knownShopAccounts.includes(matchedPhone) ||
+      (context?.recipientAccount && matchedPhone.includes(context.recipientAccount.replace(/\D/g, '')));
+    if (!isShopAccount) {
+      foundPhone = matchedPhone;
+    }
   }
 
-  // 5. Standalone 3-6 digit number (if not already found as TrxID)
+  // 5. Standalone 4 digits (e.g. customer sends just "4591" or " 0912 ")
   if (!foundTrxId && !foundLastDigits && !foundPhone) {
-    const standaloneDigits = text.match(/\b(\d{3,6})\b/);
-    if (standaloneDigits) {
-      foundLastDigits = standaloneDigits[1].trim();
+    const standaloneDigitsMatch = text.match(/^\s*([0-9]{4})\s*$/);
+    if (standaloneDigitsMatch) {
+      const candidateDigits = standaloneDigitsMatch[1].trim();
+      const numericVal = parseInt(candidateDigits, 10);
+      if (
+        (!context?.expectedAmount || numericVal !== context.expectedAmount) &&
+        (!context?.playerUid || candidateDigits !== context.playerUid)
+      ) {
+        foundLastDigits = candidateDigits;
+      }
     }
   }
 
@@ -276,7 +338,8 @@ export function extractPaymentProof(rawText: string): ExtractedPayment {
       trxId: foundTrxId,
       lastDigits: foundLastDigits,
       proofType: 'BOTH',
-      rawProof: `TrxID: ${foundTrxId} | Last 4: ${foundLastDigits}`
+      rawProof: `TrxID: ${foundTrxId} | Last 4: ${foundLastDigits}`,
+      isValid: true
     };
   }
 
@@ -285,7 +348,8 @@ export function extractPaymentProof(rawText: string): ExtractedPayment {
       paymentMethod,
       trxId: foundTrxId,
       proofType: 'TRX_ID',
-      rawProof: foundTrxId
+      rawProof: foundTrxId,
+      isValid: true
     };
   }
 
@@ -294,7 +358,8 @@ export function extractPaymentProof(rawText: string): ExtractedPayment {
       paymentMethod,
       lastDigits: foundLastDigits,
       proofType: 'LAST_4',
-      rawProof: foundLastDigits
+      rawProof: foundLastDigits,
+      isValid: true
     };
   }
 
@@ -303,21 +368,17 @@ export function extractPaymentProof(rawText: string): ExtractedPayment {
       paymentMethod,
       senderPhone: foundPhone,
       proofType: 'PHONE',
-      rawProof: foundPhone
+      rawProof: foundPhone,
+      isValid: true
     };
   }
 
-  // Fallback cleanup
-  const cleaned = text
-    .replace(/(?:bkash|nagad|rocket|upay|বিকাশ|নগদ|রকেট|উপায়|send|money|koresi|koreci|korsi|diasi|dici|done|taka|pathaisi|pathano|hoise|last|no|digit|number|লাস্ট|টাকা|পাঠিয়েছি|পাঠাইছি)/gi, ' ')
-    .replace(/[^\w\s-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
+  // No valid payment proof found (pure conversational text like "Baksh e send koreci", "taka disi", "done")
   return {
     paymentMethod,
-    proofType: 'CUSTOM',
-    rawProof: cleaned || text || 'N/A'
+    proofType: 'NONE',
+    rawProof: '',
+    isValid: false
   };
 }
 

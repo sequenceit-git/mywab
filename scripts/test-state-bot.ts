@@ -294,8 +294,76 @@ async function runFullTestSuite() {
     console.log('✅ TEST 7 PASSED: Validation constraints strictly enforced');
   }
 
+  // =========================================================================
+  // TEST SUITE 8: Strict Payment Proof (TrxID / Last 4 Digits) Validation
+  // =========================================================================
   console.log('\n===============================================================');
-  console.log('🎉 ALL 7 TEST SUITES (25+ TEST CASES) PASSED WITH 100% SUCCESS!');
+  console.log('TEST 8: Strict Payment Proof Validation (Reject "Baksh e send koreci")');
+  console.log('===============================================================');
+  {
+    const phone = '+8801877777777';
+    const user = await db.getOrCreateUser(phone, 'Payment Test User');
+    const conv = await db.getOrCreateConversation(phone, 'Payment Test User');
+
+    // 1. Setup order up to AWAITING_PAYMENT
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, buttonId: 'game_pubg_uid' });
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, listId: 'pkg_pubg_60' });
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, text: '3827267' });
+    let st = db.getSessionState(conv.id);
+    if (st.step !== 'AWAITING_PAYMENT') throw new Error('Test 8 setup failed: Expected AWAITING_PAYMENT');
+
+    // 2. Customer selects Nagad
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, buttonId: 'pay_nagad' });
+    st = db.getSessionState(conv.id);
+    if (st.step !== 'AWAITING_PAYMENT' || st.draftOrder.paymentMethod !== 'NAGAD') throw new Error('Test 8 failed: Expected NAGAD method');
+
+    // 3. Customer sends text without TrxID: "Baksh e send koreci"
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, text: 'Baksh e send koreci' });
+    st = db.getSessionState(conv.id);
+    if (st.step !== 'AWAITING_PAYMENT') {
+      throw new Error(`Test 8 Critical Failure: "Baksh e send koreci" created an order! Step is ${st.step}`);
+    }
+    console.log('   ✓ Message "Baksh e send koreci" safely re-prompted without creating order');
+
+    // 4a. Customer sends text "taka pathaisi"
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, text: 'taka pathaisi' });
+    st = db.getSessionState(conv.id);
+    if (st.step !== 'AWAITING_PAYMENT') throw new Error('Test 8 failed: "taka pathaisi" created an order');
+    console.log('   ✓ Message "taka pathaisi" safely re-prompted without creating order');
+
+    // 4b. Customer sends text "Trx send koreci"
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, text: 'Trx send koreci' });
+    st = db.getSessionState(conv.id);
+    if (st.step !== 'AWAITING_PAYMENT') throw new Error('Test 8 failed: "Trx send koreci" created an order');
+    console.log('   ✓ Message "Trx send koreci" safely re-prompted without creating order');
+
+    // 4c. Customer sends price amount "Nagad e 115 taka disi" (amount is 115 Tk)
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, text: 'Nagad e 115 taka disi' });
+    st = db.getSessionState(conv.id);
+    if (st.step !== 'AWAITING_PAYMENT') throw new Error('Test 8 failed: "Nagad e 115 taka disi" created an order');
+    console.log('   ✓ Message "Nagad e 115 taka disi" safely re-prompted (115 Tk is price, not last 4 digits)');
+
+    // 4d. Customer sends shop receiver account "01330719250"
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, text: '01330719250' });
+    st = db.getSessionState(conv.id);
+    if (st.step !== 'AWAITING_PAYMENT') throw new Error('Test 8 failed: Shop account "01330719250" created an order');
+    console.log('   ✓ Shop receiver account "01330719250" safely rejected without creating order');
+
+    // 5. Customer now provides actual 4 digits: "4591"
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, text: '4591' });
+    st = db.getSessionState(conv.id);
+    if (st.step !== 'ORDER_PLACED') throw new Error('Test 8 failed: Expected ORDER_PLACED after sending 4591');
+
+    const orders = await db.getOrders();
+    const order = orders.find(o => o.delivery_phone === phone);
+    if (!order || order.trx_id !== '4591') throw new Error('Test 8: Order TrxID mismatch');
+    console.log('   ✓ Actual Last 4 digits "4591" accepted and order placed successfully:', order.order_id);
+
+    console.log('✅ TEST 8 PASSED: Strict TrxID and payment proof validation verified');
+  }
+
+  console.log('\n===============================================================');
+  console.log('🎉 ALL 8 TEST SUITES (30+ TEST CASES) PASSED WITH 100% SUCCESS!');
   console.log('===============================================================\n');
 }
 

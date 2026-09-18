@@ -151,15 +151,12 @@ export const stateBot = {
       return;
     }
 
-    // 7. If awaiting payment and user entered payment proof (TrxID / last digits / notes) without clicking a game button
+    // 7. If awaiting payment and user entered payment proof or text (without clicking a game button)
     if (session.step === 'AWAITING_PAYMENT' && !triggerId.startsWith('game_') && !triggerId.startsWith('pkg_')) {
       const isExplicitGameSwitch = ['movie', 'netflix', 'pubg', 'freefire', 'free fire', 'efootball', 'pes'].includes(normalizedText);
       if (!isExplicitGameSwitch) {
-        const extracted = extractPaymentProof(rawText);
-        if (extracted.rawProof && extracted.rawProof !== 'N/A') {
-          await this.handleTrxIdInput(phone, conversationId, userId, rawText, session);
-          return;
-        }
+        await this.handleTrxIdInput(phone, conversationId, userId, rawText, session);
+        return;
       }
     }
 
@@ -587,17 +584,52 @@ ${game.inputPrompt}`;
     userId: string,
     rawText: string,
     session: ConversationSessionState
-  ): Promise<void> {
+  ) {
+    if (isRefusalOrCancellation(rawText)) {
+      await this.handleCancellation(phone, conversationId);
+      return;
+    }
+
     if (isGreetingOrMenu(rawText)) {
       await this.sendWelcomeAndGameList(phone, conversationId);
       return;
     }
 
-    const extracted = extractPaymentProof(rawText);
+    const item = session.draftOrder.items?.[0];
+    const amount = session.draftOrder.totalAmount || item?.unitPrice || 0;
+    const selectedMethod = session.draftOrder.paymentMethod || 'BKASH';
+    const methodName = selectedMethod === 'NAGAD' ? 'Nagad (নগদ)' : selectedMethod === 'ROCKET' ? 'Rocket (রকেট)' : 'bKash (বিকাশ)';
+    const accountNumber = PAYMENT_ACCOUNTS[selectedMethod.toLowerCase() as keyof typeof PAYMENT_ACCOUNTS] || PAYMENT_ACCOUNTS.bkash;
+
+    const extracted = extractPaymentProof(rawText, {
+      expectedAmount: amount,
+      recipientAccount: accountNumber,
+      playerUid: session.draftOrder.playerUid
+    });
+
+    // If customer did not provide a valid TrxID or Last 4 digits (e.g. sent "Baksh e send koreci", "taka disi", "done")
+    if (!extracted.isValid || !extracted.rawProof) {
+      const promptText = 
+`⚠️ *সঠিক TrxID অথবা লাস্ট ৪ ডিজিট পাওয়া যায়নি!*
+
+টাকা পাঠিয়ে থাকলে অনুগ্রহ করে আপনার *TrxID* (যেমন: \`BK9827361\`) অথবা সেন্ডার নম্বরের *লাস্ট ৪ ডিজিট* (যেমন: \`4591\`) লিখে মেসেজ পাঠান।
+
+💳 *${methodName} নম্বর:* \`${accountNumber}\`
+💰 *প্রদেয় টাকার পরিমাণ:* ৳${amount} Tk
+
+*(বাতিল করতে চাইলে নিচে 'বাতিল করুন' বাটনে চাপ দিন)*`;
+
+      const buttons = [
+        { id: 'btn_main_menu', title: '❌ বাতিল করুন' }
+      ];
+
+      await whatsappService.sendInteractiveButtons(phone, promptText, buttons, 'সঠিক TrxID দিন');
+      return;
+    }
+
     const paymentMethod = (extracted.paymentMethod !== 'BKASH/NAGAD/ROCKET' ? extracted.paymentMethod : session.draftOrder.paymentMethod) || 'BKASH';
     const cleanTrx = extracted.rawProof;
-    const item = session.draftOrder.items?.[0];
-    const unitPrice = item?.unitPrice || session.draftOrder.totalAmount || 0;
+    const unitPrice = item?.unitPrice || amount;
     const productName = item?.productName || `${session.draftOrder.selectedGameLabel || 'Game'} (${item?.skuOrName || 'Top-Up'})`;
     const playerUid = session.draftOrder.playerUid || 'N/A';
     const accountInfo = getAccountFieldInfo(playerUid, session.draftOrder.selectedGameLabel);
