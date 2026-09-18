@@ -107,7 +107,7 @@ export default function DashboardOverviewPage() {
                 <span className="w-2.5 h-2.5 rounded-full bg-brand-400 animate-pulse"></span>
                 <span className="text-xs font-bold uppercase tracking-wider text-brand-400">Store Analytics Active</span>
               </div>
-              <h3 className="text-lg font-bold text-white">PUBG Mobile Top-Up Sales & Dispatch Operations</h3>
+              <h3 className="text-lg font-bold text-white">Gaming & Digital Top-Up Sales & Dispatch Operations</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-2xl">
                 Real-time tracking of daily revenue, customer orders across WhatsApp AI, and Telegram fulfillment metrics.
               </p>

@@ -2,7 +2,7 @@ import { db } from '@/lib/db';
 import { whatsappService } from '@/lib/whatsapp/service';
 import { telegramBot } from '@/lib/telegram/bot';
 import { GAME_CATEGORIES, GameCategory, GamePackage, PAYMENT_ACCOUNTS, findGameCategory, findPackage } from './game-catalog';
-import { extractCleanUid, extractPaymentProof, getAccountFieldInfo, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu } from './input-parser';
+import { extractCleanUid, extractPaymentProof, getAccountFieldInfo, getGameDeliveryConfig, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu } from './input-parser';
 import { ConversationSessionState, OrderItem } from '@/types';
 
 export interface IncomingEvent {
@@ -558,12 +558,21 @@ ${game.inputPrompt}`;
       return;
     }
 
+    const firstItem = order.items?.[0];
+    const gameTitle = 
+      order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || 
+      firstItem?.product_name || 
+      '';
+    const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
+    const accountInfo = getAccountFieldInfo(playerUid, gameTitle);
+    const deliveryConfig = getGameDeliveryConfig(gameTitle, firstItem?.product_name);
+
     const statusMap: Record<string, string> = {
       'PENDING': '⏳ পেন্ডিং (অর্ডার জমা হয়েছে)',
       'PENDING_CLAIM': '⏳ পেন্ডিং (প্রসেসিং শুরু হওয়ার অপেক্ষায়)',
       'CLAIMED': '⚡ প্রসেসিং চলছে (কর্মী কাজ করছেন)',
       'PROCESSING': '⚡ প্রসেসিং চলছে',
-      'DELIVERED': '✅ সম্পন্ন হয়েছে (টপ-আপ ডেলিভারি সম্পন্ন)',
+      'DELIVERED': '✅ সম্পন্ন হয়েছে (ডেলিভারি সম্পন্ন)',
       'COMPLETED': '✅ সম্পন্ন হয়েছে',
       'CANCELLED': '❌ বাতিল করা হয়েছে'
     };
@@ -576,15 +585,15 @@ ${game.inputPrompt}`;
 
 • *Order ID:* \`${order.order_id}\`
 • *স্ট্যাটাস:* ${statusText}
-• *আইডি / UID:* \`${order.player_uid || 'N/A'}\`
+• *${accountInfo.labelBn}:* \`${playerUid}\`
 • *প্যাকেজ:*
 ${itemsList}
 • *মূল্য:* ৳${order.total_amount} Tk
 
-${order.status === 'DELIVERED' ? '🎉 আপনার অ্যাকাউন্টে টপ-আপ পৌঁছে দেওয়া হয়েছে!' : '⚡ আমাদের টিম দ্রুত ডেলিভারি দিতে কাজ করছে (৫-১৫ মিনিট)।'}`;
+${order.status === 'DELIVERED' ? (accountInfo.isEmail ? '🎉 আপনার সাবস্ক্রিপশন সফলভাবে চালু করা হয়েছে!' : '🎉 আপনার অ্যাকাউন্টে টপ-আপ পৌঁছে দেওয়া হয়েছে!') : '⚡ আমাদের টিম দ্রুত ডেলিভারি দিতে কাজ করছে (৫-১৫ মিনিট)।'}`;
 
     const buttons = [
-      { id: 'btn_main_menu', title: '🎮 নতুন অর্ডার' },
+      { id: deliveryConfig.catalogButtonId, title: deliveryConfig.catalogButtonTitle },
       { id: 'btn_website', title: '🌐 ওয়েবসাইট' }
     ];
 

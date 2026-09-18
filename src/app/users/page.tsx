@@ -243,7 +243,7 @@ export default function UsersLeaderboardPage() {
                 {user.latest_uid && (
                   <div className="mt-3 text-xs text-slate-400 flex items-center gap-1.5 bg-slate-950/40 px-2.5 py-1.5 rounded-lg border border-slate-800/60">
                     <Gamepad2 className="w-3.5 h-3.5 text-brand-400" />
-                    <span className="text-slate-500 text-[11px]">Latest UID:</span>
+                    <span className="text-slate-500 text-[11px]">Latest Account/UID:</span>
                     <span className="font-mono text-slate-300">{user.latest_uid}</span>
                   </div>
                 )}
@@ -260,7 +260,7 @@ export default function UsersLeaderboardPage() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             type="text"
-            placeholder="Search by phone, name, or UID..."
+            placeholder="Search by phone, name, email, or UID..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-brand-500 transition"
@@ -322,7 +322,7 @@ export default function UsersLeaderboardPage() {
                 <th className="py-4 px-4">Status</th>
                 <th className="py-4 px-4 text-right">Total Spent</th>
                 <th className="py-4 px-4 text-center">Orders</th>
-                <th className="py-4 px-4">Player UIDs</th>
+                <th className="py-4 px-4">Account / UIDs</th>
                 <th className="py-4 px-4">Last Order</th>
                 <th className="py-4 px-4 text-right">Action</th>
               </tr>

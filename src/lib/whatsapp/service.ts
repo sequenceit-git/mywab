@@ -236,7 +236,7 @@ ${deliveryConfig.deliveryMessage}`;
 
     const buttons: WhatsAppButton[] = [
       { id: `track:${order.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
-      { id: 'btn_game_list', title: deliveryConfig.catalogButtonTitle },
+      { id: deliveryConfig.catalogButtonId, title: deliveryConfig.catalogButtonTitle },
       { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
     ];
 
@@ -295,7 +295,7 @@ DS Dukan থেকে কেনাকাটা করার জন্য ধন�
 ওয়েবসাইটে ২% ডিসকাউন্টে সরাসরি কিনতে ভিজিট করুন: https://www.dsdukan.com/#`;
 
     const buttons: WhatsAppButton[] = [
-      { id: 'btn_game_list', title: deliveryConfig.catalogButtonTitle },
+      { id: deliveryConfig.catalogButtonId, title: deliveryConfig.catalogButtonTitle },
       { id: 'btn_website', title: '🌐 ওয়েবসাইট' }
     ];
 
@@ -324,7 +324,7 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
 কোনো জিজ্ঞাসা বা সহায়তার জন্য আমাদের ইনবক্সে মেসেজ দিন অথবা ভিজিট করুন: https://www.dsdukan.com/#`;
 
     const buttons: WhatsAppButton[] = [
-      { id: 'btn_game_list', title: deliveryConfig.catalogButtonTitle },
+      { id: deliveryConfig.catalogButtonId, title: deliveryConfig.catalogButtonTitle },
       { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
     ];
 

@@ -22,6 +22,7 @@ import {
   Ban
 } from 'lucide-react';
 import { Order, OrderStatus } from '@/types';
+import { getAccountFieldInfo } from '@/lib/chat/input-parser';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -137,8 +138,8 @@ export default function OrdersPage() {
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-slate-950">
       <Header
-        title="DS Dukan Top-Up Center"
-        subtitle="Live tracking of PUBG UC top-ups, worker claims, customer dispatch, and cancellations"
+        title="DS Dukan Orders & Fulfillment"
+        subtitle="Live tracking of top-ups & subscriptions, worker claims, customer dispatch, and cancellations"
       />
 
       <main className="p-6 max-w-7xl mx-auto w-full space-y-6">
@@ -148,7 +149,7 @@ export default function OrdersPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search by Order ID, Player UID, TrxID, Phone..."
+              placeholder="Search by Order ID, Account / Email / UID, TrxID, Phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500/50"
@@ -193,6 +194,8 @@ export default function OrdersPage() {
                 const isSelected = selectedOrder?.id === order.id || selectedOrder?.order_id === order.order_id;
                 const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
                 const isCancelled = order.status === 'CANCELLED';
+                const productName = order.items?.[0]?.product_name || '';
+                const accInfo = getAccountFieldInfo(playerUid, productName);
 
                 return (
                   <div
@@ -232,7 +235,7 @@ export default function OrdersPage() {
 
                     <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-400">
                       <div className="flex items-center gap-1.5 font-mono text-emerald-400">
-                        <span>🎮 UID: <b>{playerUid}</b></span>
+                        <span>{accInfo.emoji} {accInfo.labelEn}: <b>{playerUid}</b></span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <Phone className="w-3.5 h-3.5 text-slate-400" />
@@ -340,20 +343,27 @@ export default function OrdersPage() {
                   </span>
                 </div>
 
-                {/* Player UID & Top-up details */}
-                <div className="p-3 rounded-xl bg-slate-950/80 border border-brand-500/30 space-y-1.5 text-xs">
-                  <div className="text-[10px] uppercase font-bold text-brand-400">PUBG Player UID</div>
-                  <div className="text-base font-mono font-black text-white tracking-wider">
-                    {selectedOrder.player_uid || selectedOrder.delivery_address?.name || 'N/A'}
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    Payment: <b className="text-slate-200">{selectedOrder.payment_method || 'bKash/Nagad/Rocket'}</b> | TrxID: <b className="font-mono text-emerald-400">{selectedOrder.trx_id || 'N/A'}</b>
-                  </div>
-                </div>
+                {/* Dynamic Account / UID & Top-up details */}
+                {(() => {
+                  const selProd = selectedOrder.items?.[0]?.product_name || '';
+                  const selUid = selectedOrder.player_uid || selectedOrder.delivery_address?.name || 'N/A';
+                  const selAccInfo = getAccountFieldInfo(selUid, selProd);
+                  return (
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-brand-500/30 space-y-1.5 text-xs">
+                      <div className="text-[10px] uppercase font-bold text-brand-400">{selAccInfo.emoji} {selAccInfo.labelEn}</div>
+                      <div className="text-base font-mono font-black text-white tracking-wider">
+                        {selUid}
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Payment: <b className="text-slate-200">{selectedOrder.payment_method || 'bKash/Nagad/Rocket'}</b> | TrxID: <b className="font-mono text-emerald-400">{selectedOrder.trx_id || 'N/A'}</b>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Items */}
                 <div className="space-y-2">
-                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Top-Up Packages</h4>
+                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Top-Up / Subscription Packages</h4>
                   <div className="space-y-1.5">
                     {selectedOrder.items?.map((item, i) => (
                       <div key={i} className="flex items-center justify-between text-xs p-2 rounded-lg bg-slate-950/60 border border-slate-800/50">
@@ -420,7 +430,7 @@ export default function OrdersPage() {
                         className="w-full py-2 px-3 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-bold flex items-center justify-center gap-2 transition"
                       >
                         <Ban className="w-4 h-4" />
-                        <span>Cancel Top-Up Order</span>
+                        <span>Cancel Order</span>
                       </button>
                     </div>
                   ) : (
@@ -449,90 +459,96 @@ export default function OrdersPage() {
         </div>
 
         {/* Modal: Cancel Order Confirmation */}
-        {cancellingOrder && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-dark-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2 text-rose-400">
-                  <ShieldAlert className="w-5 h-5" />
-                  <h3 className="text-sm font-bold text-white">Cancel Top-Up Order</h3>
-                </div>
-                <button
-                  onClick={() => setCancellingOrder(null)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-                >
-                  <XCircle className="w-4 h-4" />
-                </button>
-              </div>
+        {cancellingOrder && (() => {
+          const cancelProd = cancellingOrder.items?.[0]?.product_name || '';
+          const cancelUid = cancellingOrder.player_uid || cancellingOrder.delivery_address?.name || 'N/A';
+          const cancelAccInfo = getAccountFieldInfo(cancelUid, cancelProd);
 
-              <div className="space-y-3 text-xs">
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                  <div className="text-slate-400">Order ID: <b className="text-white font-mono">{cancellingOrder.order_id}</b></div>
-                  <div className="text-slate-400">Player UID: <b className="text-emerald-400 font-mono">{cancellingOrder.player_uid || 'N/A'}</b></div>
-                  <div className="text-slate-400">Amount: <b className="text-brand-400">৳{cancellingOrder.total_amount}</b></div>
+          return (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-dark-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-2 text-rose-400">
+                    <ShieldAlert className="w-5 h-5" />
+                    <h3 className="text-sm font-bold text-white">Cancel Order</h3>
+                  </div>
+                  <button
+                    onClick={() => setCancellingOrder(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
                 </div>
 
-                <form onSubmit={handleConfirmCancelOrder} className="space-y-3">
-                  <div>
-                    <label className="block font-semibold text-slate-300 mb-1.5">
-                      Select or Write Cancellation Reason (Optional):
-                    </label>
-                    <div className="grid grid-cols-1 gap-1.5 mb-2">
-                      {[
-                        'Player UID is invalid / not found',
-                        'Payment TrxID invalid or not received',
-                        'Customer requested cancellation',
-                        'Incorrect package selected by customer'
-                      ].map((preset) => (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() => setCancellationReason(preset)}
-                          className={`text-left text-[11px] p-2 rounded-lg border transition ${
-                            cancellationReason === preset
-                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                              : 'bg-slate-950 text-slate-400 border-slate-800/80 hover:text-white hover:border-slate-700'
-                          }`}
-                        >
-                          • {preset}
-                        </button>
-                      ))}
+                <div className="space-y-3 text-xs">
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                    <div className="text-slate-400">Order ID: <b className="text-white font-mono">{cancellingOrder.order_id}</b></div>
+                    <div className="text-slate-400">{cancelAccInfo.labelEn}: <b className="text-emerald-400 font-mono">{cancelUid}</b></div>
+                    <div className="text-slate-400">Amount: <b className="text-brand-400">৳{cancellingOrder.total_amount}</b></div>
+                  </div>
+
+                  <form onSubmit={handleConfirmCancelOrder} className="space-y-3">
+                    <div>
+                      <label className="block font-semibold text-slate-300 mb-1.5">
+                        Select or Write Cancellation Reason (Optional):
+                      </label>
+                      <div className="grid grid-cols-1 gap-1.5 mb-2">
+                        {[
+                          `${cancelAccInfo.labelEn} is invalid / not found`,
+                          'Payment TrxID invalid or not received',
+                          'Customer requested cancellation',
+                          'Incorrect package selected by customer'
+                        ].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setCancellationReason(preset)}
+                            className={`text-left text-[11px] p-2 rounded-lg border transition ${
+                              cancellationReason === preset
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                : 'bg-slate-950 text-slate-400 border-slate-800/80 hover:text-white hover:border-slate-700'
+                            }`}
+                          >
+                            • {preset}
+                          </button>
+                        ))}
+                      </div>
+
+                      <textarea
+                        rows={2}
+                        placeholder="Custom reason to notify the customer on WhatsApp..."
+                        value={cancellationReason}
+                        onChange={(e) => setCancellationReason(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500/50"
+                      />
                     </div>
 
-                    <textarea
-                      rows={2}
-                      placeholder="Custom reason to notify the customer on WhatsApp..."
-                      value={cancellationReason}
-                      onChange={(e) => setCancellationReason(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500/50"
-                    />
-                  </div>
+                    <p className="text-[11px] text-slate-400">
+                      ⚠️ Cancelling will mark the order as <b className="text-rose-400">CANCELLED</b>, release any claimed worker in Telegram, and send a cancellation message to the customer on WhatsApp.
+                    </p>
 
-                  <p className="text-[11px] text-slate-400">
-                    ⚠️ Cancelling will mark the order as <b className="text-rose-400">CANCELLED</b>, release any claimed worker in Telegram, and send a cancellation message to the customer on WhatsApp.
-                  </p>
-
-                  <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() => setCancellingOrder(null)}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition"
-                    >
-                      Keep Order
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isCancelling}
-                      className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition disabled:opacity-50 shadow-sm"
-                    >
-                      {isCancelling ? 'Cancelling...' : 'Confirm Cancel Order'}
-                    </button>
-                  </div>
-                </form>
+                    <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setCancellingOrder(null)}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition"
+                      >
+                        Back
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isCancelling}
+                        className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white transition flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isCancelling ? 'Cancelling...' : 'Confirm Cancellation'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </main>
     </div>
   );

@@ -2,6 +2,7 @@ import { Order, OrderStatus } from '@/types';
 import { getDbClient, isSupabaseConfigured } from '../client';
 import { mockStore } from '../mock-store';
 import { usersRepository } from './users';
+import { getAccountFieldInfo } from '@/lib/chat/input-parser';
 
 export function hydrateOrder(data: any): Order {
   if (!data) return data;
@@ -11,12 +12,12 @@ export function hydrateOrder(data: any): Order {
   if (!playerUid && data.delivery_address && typeof data.delivery_address === 'object') {
     playerUid = data.delivery_address.player_uid || data.delivery_address.name;
     if (!playerUid && typeof data.delivery_address.address === 'string') {
-      const match = data.delivery_address.address.match(/(?:UID|Player UID|ID):\s*([0-9a-zA-Z]+)/i);
+      const match = data.delivery_address.address.match(/(?:UID|Player UID|Email|Gmail|Account|ID|Phone):\s*([0-9a-zA-Z@._+-]+)/i);
       if (match) playerUid = match[1];
     }
   }
   if (!playerUid && typeof data.customer_notes === 'string') {
-    const match = data.customer_notes.match(/(?:PUBG UID|UID|Player UID):\s*([0-9a-zA-Z]+)/i);
+    const match = data.customer_notes.match(/(?:PUBG UID|Free Fire UID|UID|Player UID|Email|Gmail|Account|ID):\s*([0-9a-zA-Z@._+-]+)/i);
     if (match) playerUid = match[1];
   }
 
@@ -96,8 +97,12 @@ export const ordersRepository = {
     const orderIdCode = `WAP-${dateStr}-${randomSuffix}`;
     const orderUuid = crypto.randomUUID();
 
+    const productName = params.items?.[0]?.product_name || '';
+    const accountInfo = getAccountFieldInfo(params.playerUid || '', productName);
+    const accountLabel = accountInfo.labelEn;
+
     const deliveryAddressObj = {
-      address: `PUBG Player UID: ${params.playerUid || 'N/A'}`,
+      address: `${accountLabel}: ${params.playerUid || 'N/A'}`,
       player_uid: params.playerUid || null,
       trx_id: params.trxId || null,
       payment_method: params.paymentMethod || 'BKASH',
@@ -117,7 +122,7 @@ export const ordersRepository = {
         status: 'PENDING_CLAIM',
         delivery_address: deliveryAddressObj,
         delivery_phone: params.deliveryPhone,
-        customer_notes: params.customerNotes || (params.playerUid ? `PUBG UID: ${params.playerUid} | Trx: ${params.trxId || 'N/A'} | Pay: ${params.paymentMethod || 'BKASH'}` : null),
+        customer_notes: params.customerNotes || (params.playerUid ? `${accountLabel}: ${params.playerUid} | Trx: ${params.trxId || 'N/A'} | Pay: ${params.paymentMethod || 'BKASH'}` : null),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -189,10 +194,10 @@ export const ordersRepository = {
       total_amount: totalAmount,
       status: 'PENDING_CLAIM',
       delivery_address: params.deliveryAddress || {
-        address: `PUBG Player UID: ${params.playerUid || 'N/A'}`
+        address: `${accountLabel}: ${params.playerUid || 'N/A'}`
       },
       delivery_phone: params.deliveryPhone,
-      customer_notes: params.customerNotes,
+      customer_notes: params.customerNotes || (params.playerUid ? `${accountLabel}: ${params.playerUid} | Trx: ${params.trxId || 'N/A'} | Pay: ${params.paymentMethod || 'BKASH'}` : undefined),
       player_uid: params.playerUid,
       trx_id: params.trxId,
       payment_method: params.paymentMethod || 'BKASH',

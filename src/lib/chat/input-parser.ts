@@ -364,40 +364,46 @@ export function formatPaymentDisplayForTelegram(
 export function getGameDeliveryConfig(gameTitleOrCode?: string, firstItemName?: string): {
   deliveryMessage: string;
   catalogButtonTitle: string;
+  catalogButtonId: string;
 } {
   const text = `${gameTitleOrCode || ''} ${firstItemName || ''}`.toLowerCase();
 
-  if (text.includes('netflix') || text.includes('movie') || text.includes('anime') || text.includes('spotify') || text.includes('prime') || text.includes('crunchyroll') || text.includes('youtube') || text.includes('sub')) {
+  if (text.includes('netflix') || text.includes('movie') || text.includes('anime') || text.includes('spotify') || text.includes('prime') || text.includes('crunchyroll') || text.includes('youtube') || (text.includes('sub') && !text.includes('pubg'))) {
     return {
       deliveryMessage: 'আমাদের টিম খুব দ্রুত আপনার সাবস্ক্রিপশন চালু করে অ্যাকাউন্ট/লগইন তথ্য পাঠিয়ে দেবে! 🍿🚀',
-      catalogButtonTitle: '🍿 সাবস্ক্রিপশন তালিকা'
+      catalogButtonTitle: '🍿 সাবস্ক্রিপশন',
+      catalogButtonId: 'game_movie'
     };
   }
 
   if (text.includes('free fire') || text.includes('ff') || text.includes('diamond')) {
     return {
       deliveryMessage: 'আমাদের টপ-আপ টিম খুব দ্রুত আপনার আইডিতে ডায়মন্ড পাঠিয়ে দেবে! 🔥🚀',
-      catalogButtonTitle: '💎 Diamond প্রাইস'
+      catalogButtonTitle: '🔥 Diamond প্রাইস',
+      catalogButtonId: 'game_ff'
     };
   }
 
   if (text.includes('pubg') || text.includes('uc')) {
     return {
       deliveryMessage: 'আমাদের টপ-আপ টিম খুব দ্রুত আপনার আইডিতে ইউসি পাঠিয়ে দেবে! 🎮🚀',
-      catalogButtonTitle: '💎 UC প্রাইস লিস্ট'
+      catalogButtonTitle: '💎 UC প্রাইস',
+      catalogButtonId: 'game_pubg_uid'
     };
   }
 
   if (text.includes('efootball') || text.includes('fifa') || text.includes('fc mobile') || text.includes('coin')) {
     return {
       deliveryMessage: 'আমাদের টিম খুব দ্রুত আপনার আইডিতে কয়েন/পয়েন্ট টপ-আপ করে দেবে! ⚽🚀',
-      catalogButtonTitle: '⚽ কয়েন প্রাইস লিস্ট'
+      catalogButtonTitle: '⚽ কয়েন প্রাইস',
+      catalogButtonId: 'game_efb_android'
     };
   }
 
   return {
     deliveryMessage: 'আমাদের টপ-আপ টিম খুব দ্রুত আপনার সার্ভিসটি সম্পন্ন করে দেবে! 🚀',
-    catalogButtonTitle: '🎮 গেম প্রাইস লিস্ট'
+    catalogButtonTitle: '🎮 গেম তালিকা',
+    catalogButtonId: 'btn_game_list'
   };
 }
 

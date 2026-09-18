@@ -133,7 +133,7 @@ ${itemsText}
 
     if (order.status === 'CANCELLED') {
       let cancelReason = 'No reason provided';
-      if (order.customer_notes && !order.customer_notes.startsWith('PUBG UID:') && !order.customer_notes.startsWith('State Bot Order')) {
+      if (order.customer_notes && !order.customer_notes.match(/^(?:PUBG UID|Free Fire UID|UID|Player UID|Account|Email|State Bot Order):/i)) {
         cancelReason = order.customer_notes;
       }
       return {
@@ -484,11 +484,21 @@ ${itemsText}
         return { success: false, message: `Unauthorized: Claimed by ${assignedWorkerName}` };
       }
 
+      const firstItem = existingOrder.items?.[0];
+      const prodName = firstItem?.product_name || '';
+      const playerUid = 
+        existingOrder.player_uid || 
+        (existingOrder.delivery_address as any)?.player_uid || 
+        (existingOrder.delivery_address as any)?.name ||
+        existingOrder.delivery_address?.address?.match(/(?:UID|Player UID|Email|Gmail|Account|ID):\s*([0-9a-zA-Z@._+-]+)/i)?.[1] ||
+        'N/A';
+      const accountInfo = getAccountFieldInfo(playerUid, prodName);
+
       const promptHtml = 
 `⚠️ <b>CANCEL ORDER / অর্ডার বাতিলের কারণ নির্বাচন করুন</b>
 
 📦 <b>Order ID:</b> <code>${existingOrder.order_id}</code>
-🎮 <b>Player UID:</b> <code>${existingOrder.player_uid || 'N/A'}</code>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 👷 <b>Claimed Worker:</b> <b>${workerName}</b>
 
 <i>অনুগ্রহ করে নিচে থেকে বাতিলের সুনির্দিষ্ট কারণ নির্বাচন করুন:</i>`;
@@ -496,7 +506,7 @@ ${itemsText}
       const promptMarkup = {
         inline_keyboard: [
           [
-            { text: '🚫 ভুল Player UID / Invalid ID', callback_data: `cancel_confirm:${existingOrder.order_id}:Invalid Player UID (ভুল ইউআইডি)` }
+            { text: `🚫 ভুল ${accountInfo.labelBn} / Invalid`, callback_data: `cancel_confirm:${existingOrder.order_id}:Invalid ${accountInfo.labelEn} (ভুল তথ্য)` }
           ],
           [
             { text: '💳 ভুয়া / ইনভ্যালিড TrxID', callback_data: `cancel_confirm:${existingOrder.order_id}:Fake or Invalid TrxID (পেমেন্ট মেলেনি)` }
