@@ -4,52 +4,71 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
+import { useNav } from '@/components/NavContext';
+import { BrandLogo, WhatsAppIcon, TelegramIcon, SupabaseIcon } from '@/components/BrandIcons';
 import {
   LayoutDashboard,
   ShoppingBag,
-  MessageSquare,
   Users,
-  Package,
   Database,
-  Bot,
   Trophy,
   BadgePercent,
-  ShieldCheck,
-  LogOut
+  LogOut,
+  X
 } from 'lucide-react';
 
-const navigation = [
+export const navigation = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
   { name: 'Live Orders', href: '/orders', icon: ShoppingBag, badge: 'Live' },
   { name: 'Pricing & Profit', href: '/pricing', icon: BadgePercent },
-  { name: 'Customers & Leaderboard', href: '/users', icon: Trophy },
-  { name: 'Telegram Workers', href: '/workers', icon: Users },
-  { name: 'Supabase & Config', href: '/config', icon: Database },
+  { name: 'Leaderboard', href: '/users', icon: Trophy },
+  { name: 'Workers', href: '/workers', icon: Users },
+  { name: 'Config & DB', href: '/config', icon: Database },
 ];
 
-export function Sidebar() {
+export function Sidebar({ isMobile = false }: { isMobile?: boolean }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const { closeMobile } = useNav();
 
   return (
-    <aside className="w-64 bg-dark-900 border-r border-slate-800 flex flex-col h-screen sticky top-0">
+    <aside
+      className={`${
+        isMobile
+          ? 'w-72 bg-dark-900 border-r border-slate-800 flex flex-col h-full shadow-2xl'
+          : 'hidden lg:flex w-64 bg-dark-900/95 backdrop-blur-xl border-r border-slate-800 flex-col h-screen sticky top-0 shrink-0 z-30'
+      }`}
+    >
       {/* Brand Header */}
-      <div className="p-5 border-b border-slate-800 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-brand-400 flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
-          <Bot className="w-6 h-6" />
-        </div>
-        <div>
-          <div className="flex items-center gap-1.5">
-            <h1 className="font-bold text-lg text-white tracking-tight">WapBusiness</h1>
-            <span className="text-[10px] uppercase font-extrabold bg-brand-500/20 text-brand-400 px-1.5 py-0.5 rounded border border-brand-500/30">AI</span>
+      <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+        <Link href="/" onClick={isMobile ? closeMobile : undefined} className="flex items-center gap-3 group">
+          <BrandLogo className="w-9 h-9" />
+          <div>
+            <div className="flex items-center gap-1.5">
+              <h1 className="font-extrabold text-base text-white tracking-tight group-hover:text-brand-300 transition">
+                WapBusiness
+              </h1>
+              <span className="text-[9px] uppercase font-black bg-brand-500/20 text-brand-400 px-1.5 py-0.5 rounded border border-brand-500/30">
+                AI
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">WhatsApp & TG Commerce Hub</p>
           </div>
-          <p className="text-xs text-slate-400">WhatsApp & Telegram Hub</p>
-        </div>
+        </Link>
+
+        {isMobile && (
+          <button
+            onClick={closeMobile}
+            className="p-1.5 rounded-xl bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-700 transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Nav Menu */}
-      <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
-        <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
           Management
         </div>
 
@@ -61,9 +80,10 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
-              className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+              onClick={isMobile ? closeMobile : undefined}
+              className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ${
                 isActive
-                  ? 'bg-brand-500/15 text-brand-400 border border-brand-500/30 shadow-sm'
+                  ? 'bg-gradient-to-r from-brand-500/20 to-indigo-500/10 text-brand-400 border border-brand-500/30 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
               }`}
             >
@@ -72,7 +92,7 @@ export function Sidebar() {
                 <span>{item.name}</span>
               </div>
               {item.badge && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse">
                   {item.badge}
                 </span>
               )}
@@ -82,33 +102,33 @@ export function Sidebar() {
       </nav>
 
       {/* Connected Channels & User Footer */}
-      <div className="p-3 border-t border-slate-800 space-y-2">
-        <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs text-slate-400 space-y-1.5">
+      <div className="p-3 border-t border-slate-800/80 space-y-2">
+        <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80 text-xs text-slate-400 space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-[11px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse"></span>
+            <span className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-400">
+              <WhatsAppIcon className="w-3.5 h-3.5" />
               WhatsApp
             </span>
-            <span className="flex items-center gap-1.5 text-[11px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-telegram-500"></span>
+            <span className="flex items-center gap-1.5 text-[10px] font-medium text-telegram-500">
+              <TelegramIcon className="w-3.5 h-3.5" />
               Telegram
             </span>
-            <span className="flex items-center gap-1.5 text-[11px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            <span className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-300">
+              <SupabaseIcon className="w-3.5 h-3.5" />
               Supabase
             </span>
           </div>
         </div>
 
-        {/* User profile & Logout */}
-        <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/50 border border-slate-800/60">
+        {/* User Profile & Logout */}
+        <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950/50 border border-slate-800/60">
           <div className="flex items-center gap-2 overflow-hidden">
-            <div className="w-7 h-7 rounded-lg bg-brand-500/20 text-brand-400 font-bold text-xs flex items-center justify-center shrink-0 border border-brand-500/30">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-brand-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-sm">
               {user?.name?.[0] || 'A'}
             </div>
             <div className="overflow-hidden">
               <div className="text-xs font-semibold text-slate-200 truncate">{user?.name || 'Admin'}</div>
-              <div className="text-[10px] text-slate-400 truncate">{user?.email || 'admin@sequenceit.software'}</div>
+              <div className="text-[10px] text-slate-400 truncate max-w-[120px]">{user?.email || 'admin@sequenceit.software'}</div>
             </div>
           </div>
           <button

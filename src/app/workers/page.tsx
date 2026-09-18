@@ -13,6 +13,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { Worker } from '@/types';
+import { TelegramIcon } from '@/components/BrandIcons';
 
 export default function WorkersPage() {
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -48,18 +49,18 @@ export default function WorkersPage() {
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-screen bg-slate-950">
       <Header
         title="Telegram Worker Team & Permissions"
         subtitle="Manage fulfillment staff, Telegram IDs, and claim assignments"
       />
 
-      <main className="p-6 max-w-7xl mx-auto w-full space-y-6">
+      <main className="p-4 sm:p-6 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6 pb-20 lg:pb-6">
         {/* Telegram Architecture Guide Card */}
-        <div className="p-5 rounded-2xl bg-telegram-500/10 border border-telegram-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="p-4 sm:p-5 rounded-2xl bg-telegram-500/10 border border-telegram-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-telegram-500/20 text-telegram-500 shrink-0">
-              <Bot className="w-6 h-6" />
+            <div className="p-2 rounded-xl bg-telegram-500/20 text-telegram-500 shrink-0 mt-0.5">
+              <TelegramIcon className="w-6 h-6" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-white">How Workers Connect via Telegram</h3>
@@ -70,8 +71,8 @@ export default function WorkersPage() {
           </div>
         </div>
 
-        {/* Worker Table */}
-        <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
+        {/* Worker Section */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-xl">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-bold text-white text-base">Active Fulfillment Staff</h3>
@@ -87,7 +88,56 @@ export default function WorkersPage() {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Mobile Worker Cards (md:hidden) */}
+          <div className="md:hidden space-y-3">
+            {loading ? (
+              <div className="p-8 text-center text-slate-500 text-xs">Loading worker roster...</div>
+            ) : workers.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 space-y-2 bg-slate-950/40 rounded-xl border border-slate-800">
+                <p className="text-xs font-semibold text-slate-300">No Telegram workers registered yet</p>
+                <p className="text-[11px] text-slate-500">When workers join your Telegram Worker Group and claim dispatched orders, their profiles will automatically appear here with live statistics.</p>
+              </div>
+            ) : (
+              workers.map((w) => (
+                <div key={w.id} className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/70 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-bold text-white text-sm">{w.full_name}</div>
+                      <div className="text-xs font-mono text-telegram-500 flex items-center gap-1">
+                        <TelegramIcon className="w-3 h-3" />
+                        <span>@{w.telegram_username || 'n/a'}</span>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                      Active
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 rounded-xl bg-dark-900 border border-slate-800/60">
+                      <span className="text-[10px] uppercase text-slate-400 font-medium block">Active Claims</span>
+                      <span className="font-bold text-amber-400 text-sm">{w.active_orders || 0}</span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-dark-900 border border-slate-800/60">
+                      <span className="text-[10px] uppercase text-slate-400 font-medium block">Completed</span>
+                      <span className="font-extrabold text-brand-400 text-sm">{w.total_completed_orders || 0}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/50">
+                    <span>ID: <b className="font-mono text-slate-300">{w.telegram_user_id}</b></span>
+                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-semibold border border-slate-700">
+                      {w.role}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Desktop Worker Table (hidden on mobile) */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="bg-slate-950/80 text-slate-400 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-800">
                 <tr>

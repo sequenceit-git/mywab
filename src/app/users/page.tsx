@@ -21,6 +21,7 @@ import {
   Check
 } from 'lucide-react';
 import { UserLeaderboardEntry } from '@/types';
+import { WhatsAppIcon } from '@/components/BrandIcons';
 
 export default function UsersLeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<UserLeaderboardEntry[]>([]);
@@ -116,17 +117,17 @@ export default function UsersLeaderboardPage() {
   const topThree = leaderboard.slice(0, 3);
 
   return (
-    <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 md:p-8 space-y-6 max-w-7xl mx-auto pb-20 lg:pb-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/20">
               <Trophy className="w-5 h-5 font-bold" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">Customer Leaderboard</h1>
-              <p className="text-sm text-slate-400">Unique customers, lifetime purchases, and loyalty rankings</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Customer Leaderboard</h1>
+              <p className="text-xs sm:text-sm text-slate-400">Unique customers, lifetime purchases, and loyalty rankings</p>
             </div>
           </div>
         </div>
@@ -134,65 +135,73 @@ export default function UsersLeaderboardPage() {
         <button
           onClick={fetchLeaderboard}
           disabled={isLoading}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 text-sm font-medium transition self-start md:self-auto"
+          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 text-xs sm:text-sm font-medium transition self-start sm:self-auto"
         >
           <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh List
         </button>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Unique Customers</span>
+      {/* KPI Overview Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase">Customers</span>
             <Users className="w-4 h-4 text-brand-400" />
           </div>
-          <div className="text-2xl font-bold text-white">{totalCustomers}</div>
-          <div className="text-[11px] text-slate-400 mt-1">Total registered users</div>
+          <div className="mt-2">
+            <span className="text-xl sm:text-2xl font-extrabold text-white">{totalCustomers}</span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">{vipCount} VIP members</span>
+          </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Total Sales Volume</span>
+        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase">Total Revenue</span>
             <DollarSign className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-2xl font-bold text-emerald-400">৳{totalSpentAll.toLocaleString()}</div>
-          <div className="text-[11px] text-slate-400 mt-1">Across {totalOrdersAll} total orders</div>
+          <div className="mt-2">
+            <span className="text-xl sm:text-2xl font-extrabold text-emerald-400">৳{totalSpentAll.toLocaleString()}</span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Across all purchases</span>
+          </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">VIP Customers</span>
-            <Crown className="w-4 h-4 text-amber-400" />
+        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase">Fulfilled Orders</span>
+            <ShoppingBag className="w-4 h-4 text-sky-400" />
           </div>
-          <div className="text-2xl font-bold text-amber-400">{vipCount}</div>
-          <div className="text-[11px] text-slate-400 mt-1">High-value regular buyers</div>
+          <div className="mt-2">
+            <span className="text-xl sm:text-2xl font-extrabold text-white">{totalOrdersAll}</span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Delivered orders</span>
+          </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-sm">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Avg Customer LTV</span>
-            <Sparkles className="w-4 h-4 text-purple-400" />
+        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase">Avg LTV</span>
+            <Sparkles className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-2xl font-bold text-purple-400">৳{avgLtv.toLocaleString()}</div>
-          <div className="text-[11px] text-slate-400 mt-1">Average lifetime value</div>
+          <div className="mt-2">
+            <span className="text-xl sm:text-2xl font-extrabold text-amber-300">৳{avgLtv.toLocaleString()}</span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Average spent / user</span>
+          </div>
         </div>
       </div>
 
       {/* Top 3 Podium Cards */}
       {topThree.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {topThree.map((user, idx) => {
             const isFirst = idx === 0;
             const isSecond = idx === 1;
             const isThird = idx === 2;
 
             const badgeBg = isFirst
-              ? 'from-amber-500/20 via-amber-500/5 to-transparent border-amber-500/40 text-amber-300'
+              ? 'from-amber-500/20 via-amber-500/5 to-slate-900 border-amber-500/40 shadow-lg shadow-amber-500/10'
               : isSecond
-              ? 'from-slate-400/20 via-slate-400/5 to-transparent border-slate-400/40 text-slate-300'
-              : 'from-orange-500/20 via-orange-500/5 to-transparent border-orange-500/40 text-orange-300';
+              ? 'from-slate-400/20 via-slate-400/5 to-slate-900 border-slate-400/40'
+              : 'from-orange-500/20 via-orange-500/5 to-slate-900 border-orange-500/40';
 
             const crownColor = isFirst
               ? 'text-amber-400 bg-amber-400/20'
@@ -203,16 +212,16 @@ export default function UsersLeaderboardPage() {
             return (
               <div
                 key={user.id}
-                className={`p-6 rounded-2xl bg-gradient-to-b ${badgeBg} border relative overflow-hidden backdrop-blur-md`}
+                className={`p-4 sm:p-6 rounded-2xl bg-gradient-to-b ${badgeBg} border relative overflow-hidden backdrop-blur-md`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${crownColor}`}>
+                    <div className={`w-10 sm:w-12 h-10 sm:h-12 rounded-xl flex items-center justify-center font-bold text-sm sm:text-lg ${crownColor}`}>
                       {isFirst ? '🥇 #1' : isSecond ? '🥈 #2' : '🥉 #3'}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-white text-base">
+                        <span className="font-bold text-white text-sm sm:text-base">
                           {user.name || 'Anonymous Gamer'}
                         </span>
                         {user.status_tag === 'VIP' && (
@@ -229,14 +238,14 @@ export default function UsersLeaderboardPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 pt-4 border-t border-slate-800/80 grid grid-cols-2 gap-3">
+                <div className="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-[10px] font-medium uppercase text-slate-400">Total Spent</span>
-                    <p className="text-lg font-extrabold text-emerald-400">৳{user.total_spent.toLocaleString()}</p>
+                    <p className="text-base sm:text-lg font-extrabold text-emerald-400">৳{user.total_spent.toLocaleString()}</p>
                   </div>
                   <div>
-                    <span className="text-[10px] font-medium uppercase text-slate-400">Orders Completed</span>
-                    <p className="text-lg font-bold text-white">{user.total_orders} Orders</p>
+                    <span className="text-[10px] font-medium uppercase text-slate-400">Orders</span>
+                    <p className="text-base sm:text-lg font-bold text-white">{user.total_orders}</p>
                   </div>
                 </div>
 
@@ -254,25 +263,25 @@ export default function UsersLeaderboardPage() {
       )}
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
+      <div className="flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
         {/* Search */}
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             type="text"
-            placeholder="Search by phone, name, email, or UID..."
+            placeholder="Search phone, name, email, UID..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-brand-500 transition"
+            className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-900/80 border border-slate-800 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-brand-500 transition"
           />
         </div>
 
         {/* Filter Tabs & Sort Dropdown */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex p-1 rounded-xl bg-slate-900/90 border border-slate-800 text-xs">
+          <div className="flex p-1 rounded-xl bg-slate-900/90 border border-slate-800 text-xs overflow-x-auto scrollbar-none">
             <button
               onClick={() => setSelectedFilter('ALL')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition ${
+              className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition ${
                 selectedFilter === 'ALL' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -280,7 +289,7 @@ export default function UsersLeaderboardPage() {
             </button>
             <button
               onClick={() => setSelectedFilter('TOP_SPENDERS')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition ${
+              className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition ${
                 selectedFilter === 'TOP_SPENDERS' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -288,11 +297,11 @@ export default function UsersLeaderboardPage() {
             </button>
             <button
               onClick={() => setSelectedFilter('VIP')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition ${
+              className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition ${
                 selectedFilter === 'VIP' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
               }`}
             >
-              👑 VIP Only
+              👑 VIP
             </button>
           </div>
 
@@ -311,8 +320,103 @@ export default function UsersLeaderboardPage() {
         </div>
       </div>
 
-      {/* Main Leaderboard Table */}
-      <div className="bg-slate-900/70 border border-slate-800/80 rounded-2xl overflow-hidden backdrop-blur-sm shadow-xl">
+      {/* Mobile Customer Cards (md:hidden) */}
+      <div className="md:hidden space-y-3">
+        {filteredLeaderboard.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 bg-slate-900/50 rounded-2xl border border-slate-800 text-xs">
+            No customers found matching your criteria.
+          </div>
+        ) : (
+          filteredLeaderboard.map((user) => {
+            const cleanPhone = (user.phone_number || '').replace(/\D/g, '');
+            const waLink = `https://wa.me/${cleanPhone}`;
+
+            return (
+              <div
+                key={user.id}
+                className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800/90 space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center font-bold text-white text-xs border border-slate-700">
+                      #{user.rank}
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-sm">{user.name || 'Gamer Customer'}</div>
+                      <div className="text-xs font-mono text-slate-400 flex items-center gap-1">
+                        <span>{user.phone_number}</span>
+                        <button
+                          onClick={() => handleCopy(user.phone_number, `m-phone-${user.id}`)}
+                          className="text-slate-500 hover:text-white"
+                        >
+                          {copiedId === `m-phone-${user.id}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <select
+                    value={user.status_tag || 'REGULAR'}
+                    disabled={updatingUserId === user.id}
+                    onChange={e => handleUpdateStatus(user.id, e.target.value as any)}
+                    className={`text-[11px] font-bold px-2 py-1 rounded-lg border focus:outline-none transition ${
+                      user.status_tag === 'VIP'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : user.status_tag === 'FLAGGED'
+                        ? 'bg-red-500/20 text-red-300 border-red-500/30'
+                        : 'bg-slate-800 text-slate-300 border-slate-700'
+                    }`}
+                  >
+                    <option value="REGULAR" className="bg-slate-900 text-slate-300">REGULAR</option>
+                    <option value="VIP" className="bg-slate-900 text-amber-300">👑 VIP</option>
+                    <option value="FLAGGED" className="bg-slate-900 text-red-300">🚩 FLAGGED</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/60 text-xs">
+                  <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/40">
+                    <span className="text-[10px] uppercase text-slate-400 block font-medium">Total Spent</span>
+                    <span className="font-black text-emerald-400 text-sm">৳{user.total_spent.toLocaleString()}</span>
+                  </div>
+                  <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/40">
+                    <span className="text-[10px] uppercase text-slate-400 block font-medium">Orders</span>
+                    <span className="font-bold text-white text-sm">{user.total_orders}</span>
+                  </div>
+                </div>
+
+                {user.saved_uids.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap text-[11px] pt-1">
+                    <span className="text-slate-400">UIDs:</span>
+                    {user.saved_uids.slice(0, 2).map((uid, uIdx) => (
+                      <span key={uIdx} className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 font-mono text-slate-300">
+                        {uid}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-500">
+                    {user.last_order_at ? `Last: ${new Date(user.last_order_at).toLocaleDateString()}` : 'No orders yet'}
+                  </span>
+                  <a
+                    href={waLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 text-xs font-semibold"
+                  >
+                    <WhatsAppIcon className="w-3 h-3" />
+                    <span>WhatsApp</span>
+                  </a>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Main Desktop Leaderboard Table (hidden on mobile) */}
+      <div className="hidden md:block bg-slate-900/70 border border-slate-800/80 rounded-2xl overflow-hidden backdrop-blur-sm shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>

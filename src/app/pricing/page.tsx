@@ -173,91 +173,95 @@ export default function PricingPage() {
         subtitle="Configure selling prices, base wholesale costs, and monitor profit margins across all catalog packages"
       />
 
-      <main className="p-6 max-w-7xl mx-auto w-full space-y-6">
-        {/* Top 4 KPI Metrics Banner */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Average Profit Margin */}
-          <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-emerald-500/40 transition">
+      <main className="p-4 sm:p-6 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6 pb-20 lg:pb-6">
+        {/* KPI Top Row: 4 Metric Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {/* Total Revenue & Profit */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-emerald-500/40 transition">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Avg Catalog Margin</span>
-              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-                <Percent className="w-5 h-5" />
+              <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Potential Profit</span>
+              <div className="p-1.5 sm:p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                <DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
             </div>
-            <div className="mt-3">
-              <div className="text-2xl font-black text-emerald-400">
+            <div className="mt-2 sm:mt-3">
+              <div className="text-xl sm:text-2xl font-black text-emerald-400">
+                ৳{stats?.totalProfit.toLocaleString() || 0}
+              </div>
+              <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1">
+                From total ৳{stats?.totalPotentialRevenue.toLocaleString() || 0}
+              </p>
+            </div>
+          </div>
+
+          {/* Average Profit Margin */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-indigo-500/40 transition">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Avg Margin</span>
+              <div className="p-1.5 sm:p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+                <Percent className="w-4 h-4 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div className="mt-2 sm:mt-3">
+              <div className="text-xl sm:text-2xl font-black text-indigo-300">
                 {stats?.avgMarginPercent || 0}%
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Average gross margin across all packages
+              <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1">
+                Margin across catalog
               </p>
             </div>
           </div>
 
-          {/* Average Profit Per Unit */}
-          <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-brand-500/40 transition">
+          {/* Avg Profit Per Unit */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-brand-500/40 transition">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Avg Profit / Unit</span>
-              <div className="p-2 rounded-xl bg-brand-500/10 text-brand-400">
-                <TrendingUp className="w-5 h-5" />
+              <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Avg / Unit</span>
+              <div className="p-1.5 sm:p-2 rounded-xl bg-brand-500/10 text-brand-400">
+                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
             </div>
-            <div className="mt-3">
-              <div className="text-2xl font-black text-brand-400">
+            <div className="mt-2 sm:mt-3">
+              <div className="text-xl sm:text-2xl font-black text-brand-400">
                 ৳{stats?.avgProfitPerUnit || 0}
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Average net profit earned per item sale
+              <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1">
+                Net profit per item
               </p>
             </div>
           </div>
 
-          {/* Total Active Packages */}
-          <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-sky-500/40 transition">
+          {/* Total Active Packages & Reset */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Packages</span>
-              <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400">
-                <Package className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl font-black text-white">
-                {stats?.totalProducts || 0}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Configured across {categories.length} game/service categories
-              </p>
-            </div>
-          </div>
-
-          {/* Reset / Actions Card */}
-          <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Catalog Controls</span>
-              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
-                <RotateCcw className="w-5 h-5" />
-              </div>
+              <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Packages ({stats?.totalProducts || 0})</span>
+              <button
+                onClick={() => setShowResetModal(true)}
+                title="Reset to Default Prices"
+                className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
             </div>
             <div className="mt-2">
               <button
                 onClick={() => setShowResetModal(true)}
-                className="w-full py-2 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-700/90 border border-slate-700/60 text-xs font-bold text-slate-200 hover:text-white transition flex items-center justify-center gap-1.5 shadow-sm"
+                className="w-full py-1.5 sm:py-2 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-[11px] sm:text-xs font-bold text-slate-200 transition flex items-center justify-center gap-1"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset to Default Prices</span>
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset Default</span>
               </button>
             </div>
           </div>
         </div>
 
         {/* Filter, Search & Category Navigation */}
-        <div className="space-y-3 p-4 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-lg">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+        <div className="space-y-3 p-3.5 sm:p-4 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-lg">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="relative flex-1 max-w-md">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search packages, games, UC, diamonds, subscriptions..."
+                placeholder="Search packages, games, UC, diamonds..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500/50"
@@ -270,7 +274,7 @@ export default function PricingPage() {
           </div>
 
           {/* Category Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 border-t border-slate-800/60">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 border-t border-slate-800/60 scrollbar-none">
             <button
               onClick={() => setSelectedCategory('ALL')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
@@ -279,7 +283,7 @@ export default function PricingPage() {
                   : 'bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
-              🌐 All Categories ({products.length})
+              🌐 All ({products.length})
             </button>
 
             {categories.map((cat: any) => {
@@ -303,8 +307,88 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* Pricing & Profit Table */}
-        <div className="bg-dark-900/90 border border-slate-800/80 rounded-2xl overflow-hidden shadow-xl">
+        {/* Mobile Cards View (sm:hidden) */}
+        <div className="md:hidden space-y-3">
+          {loading ? (
+            <div className="py-12 text-center text-slate-500 text-xs">Loading pricing catalog...</div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="py-12 text-center text-slate-500 text-xs bg-dark-900/50 rounded-2xl border border-slate-800/60">
+              No packages match your search.
+            </div>
+          ) : (
+            filteredProducts.map((pkg) => {
+              const isHighMargin = pkg.marginPercent >= 20;
+              const isMedMargin = pkg.marginPercent >= 10 && pkg.marginPercent < 20;
+
+              return (
+                <div
+                  key={pkg.id}
+                  className="p-4 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{pkg.categoryEmoji}</span>
+                      <div>
+                        <div className="font-bold text-white text-sm">{pkg.name}</div>
+                        <div className="text-[10px] text-slate-400">{pkg.categoryTitle}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleOpenEdit(pkg)}
+                      className="p-2 rounded-xl bg-slate-800 hover:bg-brand-500 hover:text-dark-950 text-slate-300 transition"
+                      title="Edit Price"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/60 text-center text-xs">
+                    <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/50">
+                      <div className="text-[10px] text-slate-400 uppercase font-semibold">Cost Price</div>
+                      <div className="font-mono font-bold text-slate-300 mt-0.5">৳{pkg.basePrice}</div>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/50">
+                      <div className="text-[10px] text-brand-400 uppercase font-semibold">Sell Price</div>
+                      <div className="font-mono font-black text-brand-300 mt-0.5">৳{pkg.price}</div>
+                    </div>
+                    <div className="p-2 rounded-xl bg-emerald-950/20 border border-emerald-500/20">
+                      <div className="text-[10px] text-emerald-400 uppercase font-semibold">Profit</div>
+                      <div className="font-mono font-black text-emerald-400 mt-0.5">৳{pkg.profit}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                    <span className="flex items-center gap-1">
+                      Margin:
+                      <span
+                        className={`font-bold px-2 py-0.5 rounded-full ${
+                          isHighMargin
+                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                            : isMedMargin
+                            ? 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30'
+                            : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                        }`}
+                      >
+                        {pkg.marginPercent}%
+                      </span>
+                    </span>
+
+                    <button
+                      onClick={() => handleOpenEdit(pkg)}
+                      className="text-xs font-bold text-brand-400 hover:text-brand-300 hover:underline flex items-center gap-1"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      Edit Rates
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop Pricing & Profit Table (hidden on mobile) */}
+        <div className="hidden md:block bg-dark-900/90 border border-slate-800/80 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>

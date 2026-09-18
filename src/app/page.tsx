@@ -119,34 +119,34 @@ export default function DashboardOverviewPage() {
         subtitle="Daily & monthly revenue metrics, base price profit calculations, and worker dispatch"
       />
 
-      <main className="p-6 space-y-6 max-w-7xl mx-auto w-full">
+      <main className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto w-full">
         {/* Architecture Pipeline Banner */}
-        <div className="rounded-2xl bg-gradient-to-r from-brand-950/60 via-dark-900 to-indigo-950/60 border border-brand-500/20 p-5 shadow-xl backdrop-blur-md relative overflow-hidden">
+        <div className="rounded-2xl bg-gradient-to-r from-brand-950/60 via-dark-900 to-indigo-950/60 border border-brand-500/20 p-4 sm:p-5 shadow-xl backdrop-blur-md relative overflow-hidden">
           <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-brand-400 animate-pulse"></span>
-                <span className="text-xs font-bold uppercase tracking-wider text-brand-400">Store Analytics & Profit Active</span>
+                <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-brand-400">Store Analytics & Profit Active</span>
               </div>
-              <h3 className="text-lg font-bold text-white">Gaming & Digital Top-Up Sales, Pricing & Profit Hub</h3>
+              <h3 className="text-base sm:text-lg font-bold text-white">Gaming & Digital Top-Up Sales, Pricing & Profit Hub</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-2xl">
                 Real-time tracking of revenue, profit margins from base costs, WhatsApp AI sales, and Telegram fulfillment.
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
               <Link
                 href="/pricing"
-                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700/80 text-white font-bold text-xs hover:bg-slate-700 transition-all shadow-sm"
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700/80 text-white font-bold text-xs hover:bg-slate-700 transition-all shadow-sm"
               >
                 <BadgePercent className="w-4 h-4 text-brand-400" />
-                <span>Edit Pricing & Base Costs</span>
+                <span>Pricing & Margins</span>
               </Link>
               <Link
                 href="/orders"
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 text-dark-950 font-bold text-xs hover:bg-brand-400 transition-all shadow-lg shadow-brand-500/25"
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 text-dark-950 font-bold text-xs hover:bg-brand-400 transition-all shadow-lg shadow-brand-500/25"
               >
-                <span>View All Orders</span>
+                <span>View Orders</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
             </div>

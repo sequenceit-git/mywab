@@ -18,6 +18,7 @@ import {
   Send,
   ExternalLink
 } from 'lucide-react';
+import { SupabaseIcon, WhatsAppIcon, TelegramIcon } from '@/components/BrandIcons';
 
 interface SystemStatus {
   timestamp: string;
@@ -187,17 +188,17 @@ export default function ConfigPage() {
   const currentWhatsAppWebhook = status?.whatsapp.webhookUrl || (mounted && typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp` : '');
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-screen bg-slate-950">
       <Header
         title="Live System Diagnostics & Configuration"
         subtitle="Real-time status of database connections, AI engines, and external API webhooks"
       />
 
-      <main className="p-6 max-w-7xl mx-auto w-full space-y-6">
+      <main className="p-4 sm:p-6 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6 pb-20 lg:pb-6">
         {/* Top Overview Cards */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-lg">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white shadow-md">
+            <div className="p-2.5 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white shadow-md shrink-0">
               <Server className="w-5 h-5" />
             </div>
             <div>
@@ -206,7 +207,7 @@ export default function ConfigPage() {
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">Online</span>
               </div>
-              <p className="text-xs text-slate-400 font-mono mt-0.5">
+              <p className="text-xs text-slate-400 font-mono mt-0.5 break-all">
                 Host: <span suppressHydrationWarning className="text-slate-200 font-semibold">{currentDomain}</span>
               </p>
             </div>
@@ -215,7 +216,7 @@ export default function ConfigPage() {
           <button
             onClick={fetchStatus}
             disabled={loading}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition border border-slate-700/50 disabled:opacity-50"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition border border-slate-700/50 disabled:opacity-50 self-start sm:self-auto"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh Diagnostics</span>
@@ -223,13 +224,13 @@ export default function ConfigPage() {
         </div>
 
         {/* 4 Connected Services Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           {/* 1. Supabase Database Card */}
-          <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
+            <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <Database className="w-5 h-5" />
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                  <SupabaseIcon className="w-5 h-5" />
                 </div>
                 <div>
                   <h4 className="font-bold text-white text-sm">Supabase PostgreSQL</h4>
@@ -237,7 +238,7 @@ export default function ConfigPage() {
                 </div>
               </div>
               <span
-                className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${
+                className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0 ${
                   status?.supabase.connected
                     ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                     : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
@@ -249,14 +250,14 @@ export default function ConfigPage() {
             </div>
 
             <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">Database URL:</span>
-                <span className="font-mono text-slate-200 text-[11px] truncate max-w-[240px]">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-400 shrink-0">Database URL:</span>
+                <span className="font-mono text-slate-200 text-[11px] truncate max-w-[200px] sm:max-w-[240px]">
                   {status?.supabase.url}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">Service Role Key:</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-400 shrink-0">Service Role Key:</span>
                 <span className="font-mono text-slate-400 text-[11px]">
                   {status?.supabase.serviceRoleKeyMasked}
                 </span>
@@ -284,10 +285,10 @@ export default function ConfigPage() {
           </div>
 
           {/* 2. OpenAI & LangChain Card */}
-          <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
+            <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0">
                   <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
@@ -295,18 +296,18 @@ export default function ConfigPage() {
                   <p className="text-[11px] text-slate-400">Tool Calling & Conversational AI</p>
                 </div>
               </div>
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 shrink-0">
                 {status?.openai.isConfigured ? 'Ready' : 'Pending Key'}
               </span>
             </div>
 
             <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">Active Model:</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-400 shrink-0">Active Model:</span>
                 <span className="font-mono text-indigo-300 font-bold">{status?.openai.model || 'gpt-5-nano'}</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">OpenAI API Key:</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-400 shrink-0">OpenAI API Key:</span>
                 <span className="font-mono text-slate-400 text-[11px]">{status?.openai.apiKeyMasked}</span>
               </div>
             </div>
@@ -318,24 +319,24 @@ export default function ConfigPage() {
               </div>
               <div className="flex items-center justify-between text-[11px]">
                 <span>Language Support:</span>
-                <span className="font-semibold text-emerald-400">Bangla (বাংলা) & English (Bilingual)</span>
+                <span className="font-semibold text-emerald-400">Bangla (বাংলা) & English</span>
               </div>
             </div>
           </div>
 
           {/* 3. WhatsApp Cloud API Webhook Card */}
-          <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
+            <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-brand-500/10 text-brand-400 border border-brand-500/20">
-                  <MessageSquare className="w-5 h-5" />
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                  <WhatsAppIcon className="w-5 h-5" />
                 </div>
                 <div>
                   <h4 className="font-bold text-white text-sm">WhatsApp Business Cloud API</h4>
                   <p className="text-[11px] text-slate-400">Meta Developer Webhook Gateway</p>
                 </div>
               </div>
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20">
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 shrink-0">
                 {status?.whatsapp.isConfigured ? 'Configured' : 'Setup Required'}
               </span>
             </div>
@@ -380,12 +381,12 @@ export default function ConfigPage() {
 
               <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/50 space-y-1.5 text-[11px]">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Webhook Subscribed Field:</span>
+                  <span className="text-slate-400">Webhook Field:</span>
                   <span className="font-mono text-brand-400 font-semibold">messages</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Token Permissions:</span>
-                  <span className="font-mono text-slate-300">whatsapp_business_messaging, management</span>
+                  <span className="font-mono text-slate-300 truncate max-w-[180px]">whatsapp_business_messaging</span>
                 </div>
               </div>
 
@@ -412,7 +413,7 @@ export default function ConfigPage() {
                 ) : (
                   <>
                     <Send className="w-3.5 h-3.5" />
-                    <span>Send Test Message to +8801705785272 & Link WABA</span>
+                    <span>Send Test Message to +8801705785272</span>
                   </>
                 )}
               </button>
@@ -420,18 +421,18 @@ export default function ConfigPage() {
           </div>
 
           {/* 4. Telegram Worker Bot Card */}
-          <div className="p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
+            <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-telegram-500/10 text-telegram-500 border border-telegram-500/20">
-                  <Bot className="w-5 h-5" />
+                <div className="p-2.5 rounded-xl bg-telegram-500/10 text-telegram-500 border border-telegram-500/20 shrink-0">
+                  <TelegramIcon className="w-5 h-5" />
                 </div>
                 <div>
                   <h4 className="font-bold text-white text-sm">Telegram Worker Bot</h4>
                   <p className="text-[11px] text-slate-400">Order Dispatch & Atomic Claim Engine</p>
                 </div>
               </div>
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-telegram-500/10 text-telegram-500 border border-telegram-500/20">
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-telegram-500/10 text-telegram-500 border border-telegram-500/20 shrink-0">
                 {status?.telegram.isConfigured ? 'Active' : 'Setup Required'}
               </span>
             </div>
