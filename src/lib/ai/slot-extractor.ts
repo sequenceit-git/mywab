@@ -6,6 +6,7 @@ export interface ExtractedSlots {
   extractedTrx: string | null;
   extractedPaymentMethod: string | null;
   hasPaidIntent?: boolean;
+  hasPurchaseIntent?: boolean;  // Customer wants to buy but hasn't given slots yet
   extractedItems: Array<{ skuOrName: string; quantity: number }> | null;
   parallelOrders?: Array<{
     playerUid: string;
@@ -19,20 +20,51 @@ export function normalizeBengaliDigits(str: string): string {
 }
 
 /**
- * Extract all potential PUBG Player UIDs from text (5 to 12 digits)
+ * Detect Bangladesh mobile phone numbers (01X-XXXXXXXX format, 11 digits).
+ * These must NEVER be mistaken for PUBG Player UIDs.
+ */
+export function isBDPhoneNumber(digits: string): boolean {
+  return /^01[3-9]\d{8}$/.test(digits) || /^\+8801[3-9]\d{8}$/.test(digits);
+}
+
+/**
+ * Extract all potential PUBG Player UIDs from text (5 to 12 digits).
+ * Explicitly excludes Bangladesh phone numbers.
  */
 export function extractAllUids(messageText: string): string[] {
   const normalizedText = normalizeBengaliDigits(messageText);
   const uids: string[] = [];
+  // Match explicit UID labels first, then PUBG UIDs (typically start with 5, 7-12 digits)
   const regex = /(?:uid|id|আইডি|player\s*uid|account)[:\s]*(\d{5,12})|\b(5\d{7,10})\b|\b(\d{7,11})\b/gi;
   let match;
   while ((match = regex.exec(normalizedText)) !== null) {
     const val = match[1] || match[2] || match[3];
-    if (val && !uids.includes(val)) {
+    if (val && !uids.includes(val) && !isBDPhoneNumber(val)) {
       uids.push(val);
     }
   }
   return uids;
+}
+
+/**
+ * Detect if the customer is expressing intent to buy/purchase something
+ * without yet committing specific order slots. Used to transition BROWSING → COLLECTING_DETAILS.
+ */
+export function hasPurchaseIntent(messageText: string): boolean {
+  const lower = messageText.toLowerCase().trim();
+  const purchasePatterns = [
+    /\bnibo\b/i,              // Bengali: "will take"
+    /\bkinbo\b/i,            // Bengali: "will buy"
+    /\border\s*(debo|korbo|chai|dite|nibo)\b/i,
+    /\bi\s*(want|wanna|would like)\s*(to\s*)?(buy|order|get|purchase)/i,
+    /\bbuy\s*(it|this|that|now)?\b/i,
+    /\bpurchase\b/i,
+    /নিতে চাই/,
+    /কিনতে চাই/,
+    /অর্ডার দিতে চাই/,
+    /অর্ডার করতে চাই/,
+  ];
+  return purchasePatterns.some(p => p.test(lower));
 }
 
 export function extractSlotsFromMessage(messageText: string): ExtractedSlots {
@@ -122,6 +154,7 @@ export function extractSlotsFromMessage(messageText: string): ExtractedSlots {
     extractedTrx,
     extractedPaymentMethod,
     hasPaidIntent,
+    hasPurchaseIntent: hasPurchaseIntent(messageText),
     extractedItems,
     parallelOrders
   };

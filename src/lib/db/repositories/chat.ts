@@ -15,6 +15,13 @@ export const chatRepository = {
 
     const existing = mockStore.sessionStates.get(conversationId);
     if (!existing || !existing.draftOrder) {
+      // Cold-start detection: if there WAS a session but it's gone from memory
+      // (e.g. serverless cold start), log a warning so we can diagnose state loss.
+      // The Supabase draft_state is restored in getOrCreateConversation/getConversationById
+      // when a conversation is loaded — this is the recovery path.
+      if (!existing) {
+        console.warn(`[SessionState] Cold-start or missing session for conversationId=${conversationId}. Returning default IDLE state. If this is after a restart, state will be recovered from Supabase on next getConversationById call.`);
+      }
       const merged: ConversationSessionState = {
         step: existing?.step || 'IDLE',
         draftOrder: (existing?.draftOrder && Array.isArray(existing.draftOrder.items))
@@ -32,6 +39,7 @@ export const chatRepository = {
     // TTL check: 30 minutes of inactivity resets draft
     const thirtyMinutes = 30 * 60 * 1000;
     if (Date.now() - (existing.lastInteractionTimestamp || 0) > thirtyMinutes) {
+      console.log(`[SessionState] TTL expired for conversationId=${conversationId}. Resetting to IDLE.`);
       mockStore.sessionStates.set(conversationId, defaultState);
       return defaultState;
     }

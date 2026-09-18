@@ -1,4 +1,4 @@
-import { ConversationSessionState, FAQ } from '@/types';
+import { ConversationSessionState, FAQ, ConversationStep } from '@/types';
 
 export const EXACT_UC_PRICE_LIST = `✅NEW UPDATED REGULAR UC LIST✅
              🔽🔽🔽
@@ -18,6 +18,88 @@ export const EXACT_UC_PRICE_LIST = `✅NEW UPDATED REGULAR UC LIST✅
 
 🎉 BEST DISCOUNT FOR WEBSITE PURCHASE ❤️
 Website Link : https://www.dsdukan.com/#`;
+
+/**
+ * Generate a per-turn step task block that is injected at the TOP of the system prompt.
+ * This is the single most important hallucination fix: the LLM knows exactly
+ * one job to do per turn, and exactly what it must NOT do.
+ */
+export function buildStepTask(params: {
+  step: ConversationStep;
+  draft: { items?: any[]; playerUid?: string; trxId?: string; paymentMethod?: string };
+  lastUid?: string;
+}): string {
+  const { step, draft, lastUid } = params;
+  const hasPackage = !!(draft.items && draft.items.length > 0);
+  const hasUid     = !!draft.playerUid;
+  const hasTrx     = !!draft.trxId;
+  const pkg = hasPackage ? draft.items!.map((i: any) => `${i.skuOrName} x${i.quantity}`).join(', ') : 'not chosen';
+
+  switch (step) {
+    case 'IDLE':
+      return `
+=== YOUR TASK THIS TURN (Step: IDLE) ===
+SITUATION: No order in progress. Customer just started or previous order is done.
+YOUR JOB: Greet warmly and invite them to choose a package. Answer any product/price question they asked.
+FORBIDDEN THIS TURN: Asking for Player UID, TrxID, or payment info. Do NOT assume they want to order something they haven't said yet.
+`;
+
+    case 'BROWSING':
+      return `
+=== YOUR TASK THIS TURN (Step: BROWSING) ===
+SITUATION: Customer is exploring products. Package selected: ${pkg}. No UID or payment yet.
+YOUR JOB: Answer their product question / confirm the package they mentioned. If they expressed intent to buy, ask for their PUBG Player UID — ONLY the UID, nothing else.
+FORBIDDEN THIS TURN: Asking for TrxID or payment. Do NOT push them to buy if they're still browsing. Do NOT explain payment process.
+`;
+
+    case 'COLLECTING_DETAILS':
+      return `
+=== YOUR TASK THIS TURN (Step: COLLECTING_DETAILS) ===
+SITUATION: Package is locked in: ${pkg}. Waiting for Player UID.
+YOUR JOB: Ask for their PUBG Player UID in ONE short sentence. Confirm the package once in the same message.
+FORBIDDEN THIS TURN: Mentioning payment, bKash number, TrxID, or price again. Do NOT ask for email, password, or phone number.
+`;
+
+    case 'AWAITING_PAYMENT':
+      return `
+=== YOUR TASK THIS TURN (Step: AWAITING_PAYMENT) ===
+SITUATION: Package + UID captured. Package: ${pkg} | UID: \`${draft.playerUid}\`. Waiting for payment + TrxID.
+YOUR JOB: Give them the payment numbers and ask for TrxID (or last 4 digits). State the exact price once.
+FORBIDDEN THIS TURN: Re-asking for Player UID. Asking for password or login. Sending the full price list again.
+`;
+
+    case 'AWAITING_CONFIRMATION':
+      return `
+=== YOUR TASK THIS TURN (Step: AWAITING_CONFIRMATION) ===
+SITUATION: ALL slots captured. Package: ${pkg} | UID: \`${draft.playerUid}\` | TrxID: \`${draft.trxId}\`.
+YOUR JOB: Confirm the full order summary and tell them you're processing it. If the user just gave a TrxID, call create_order tool immediately.
+FORBIDDEN THIS TURN: Re-asking for any information. Do NOT say "please wait for confirmation" — just confirm and proceed.
+`;
+
+    case 'PARALLEL_CONFIRMATION':
+      return `
+=== YOUR TASK THIS TURN (Step: PARALLEL_CONFIRMATION) ===
+SITUATION: Multiple UIDs captured for parallel orders. All have TrxID.
+YOUR JOB: Confirm all orders and process them via create_order tool for each UID.
+FORBIDDEN THIS TURN: Asking for more information. Re-listing prices.
+`;
+
+    case 'ORDER_PLACED':
+      return `
+=== YOUR TASK THIS TURN (Step: ORDER_PLACED) ===
+SITUATION: Order has been placed. Last order: ${draft.items ? pkg : 'completed'}.
+YOUR JOB: Answer any questions about the order (status, delivery time). If they want to order again, acknowledge and move to collecting new package info.
+FORBIDDEN THIS TURN: Re-asking for payment or UID for the order already placed. Do NOT re-confirm an already-confirmed order.
+`;
+
+    default:
+      return `
+=== YOUR TASK THIS TURN ===
+Respond helpfully to what the customer just said, based on the order state below.
+`;
+  }
+}
+
 
 export function buildSystemPrompt(params: {
   customerPhone: string;
@@ -82,7 +164,20 @@ ${formattedOrders}
     nextMissing = 'NONE — package, UID, and TrxID are all captured. Confirm/finalize the order.';
   }
 
-  return `You are "DS Dukan Assistant", a warm, quick, and trustworthy WhatsApp sales assistant for DS Dukan (PUBG Mobile Top-Up Store in Bangladesh). You chat like a helpful shop owner on WhatsApp, not like a form — friendly, efficient, a little bit of personality, never robotic or over-explained.
+  // Generate the per-turn step-specific task block (hallucination guard)
+  const stepTaskBlock = buildStepTask({
+    step: sessionState.step,
+    draft: {
+      items: draft.items,
+      playerUid: draft.playerUid,
+      trxId: draft.trxId,
+      paymentMethod: draft.paymentMethod
+    },
+    lastUid
+  });
+
+  return `${stepTaskBlock}
+You are "DS Dukan Assistant", a warm, quick, and trustworthy WhatsApp sales assistant for DS Dukan (PUBG Mobile Top-Up Store in Bangladesh). You chat like a helpful shop owner on WhatsApp, not like a form — friendly, efficient, a little bit of personality, never robotic or over-explained.
 
 Customer Phone: ${customerPhone}
 ${profileSection}${recentOrdersSection}${summarySection}

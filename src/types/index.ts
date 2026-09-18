@@ -130,7 +130,8 @@ export interface Payment {
 }
 
 export type ConversationStep = 
-  | 'IDLE' 
+  | 'IDLE'
+  | 'BROWSING'          // Customer is exploring products, not yet committed to buying
   | 'COLLECTING_DETAILS' 
   | 'AWAITING_PAYMENT' 
   | 'AWAITING_CONFIRMATION' 

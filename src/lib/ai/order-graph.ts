@@ -149,7 +149,7 @@ async function classifyIntentNode(state: OrderGraphState): Promise<Partial<Order
 
   // 3. Greetings (Only if NOT in an active order flow)
   const isGreeting = ['hi', 'hello', 'hlw', 'hey', 'bhai acen', 'vai', 'line a acen', 'ভাই আছেন', 'হ্যালো', 'হাই'].some(g => lower === g || lower.startsWith(g));
-  if (isGreeting && (!sessionState.draftOrder?.items || sessionState.draftOrder.items.length === 0 || sessionState.step === 'IDLE' || sessionState.step === 'ORDER_PLACED')) {
+  if (isGreeting && (!sessionState.draftOrder?.items || sessionState.draftOrder.items.length === 0 || sessionState.step === 'IDLE' || sessionState.step === 'BROWSING' || sessionState.step === 'ORDER_PLACED')) {
     return { intent: 'GREETING' };
   }
 
@@ -178,14 +178,22 @@ async function classifyIntentNode(state: OrderGraphState): Promise<Partial<Order
   }
 
   // 7. Active Order Continuation (Preserve Order State!)
-  if (sessionState.draftOrder?.items && sessionState.draftOrder.items.length > 0 && sessionState.step !== 'IDLE' && sessionState.step !== 'ORDER_PLACED') {
+  if (sessionState.draftOrder?.items && sessionState.draftOrder.items.length > 0
+    && sessionState.step !== 'IDLE'
+    && sessionState.step !== 'BROWSING'
+    && sessionState.step !== 'ORDER_PLACED') {
     if (sessionState.parallelDrafts && sessionState.parallelDrafts.length > 1) {
       return { intent: 'PARALLEL_ORDER' };
     }
     return { intent: 'SINGLE_ORDER' };
   }
 
-  // 8. New Single Order Intent
+  // 8. BROWSING: Customer is exploring products, not yet committed
+  if (sessionState.step === 'BROWSING') {
+    return { intent: 'CATALOG' }; // Route to catalog/FAQ node to answer browsing questions
+  }
+
+  // 9. New Single Order Intent
   if (extractedSlots.extractedUid || extractedSlots.extractedItems || extractedSlots.extractedTrx) {
     return { intent: 'SINGLE_ORDER' };
   }

@@ -14,6 +14,7 @@ import { buildSystemPrompt } from './prompts';
 import { extractSlotsFromMessage, isAffirmativePhrase, isResetIntent } from './slot-extractor';
 import { fallbackEngineStructured, StructuredAgentResponse } from './fallback-engine';
 import { orderStateGraph } from './order-graph';
+import { runStepGuard } from './step-guard';
 
 export type { StructuredAgentResponse, WhatsAppButton };
 export {
@@ -57,7 +58,17 @@ export class LangChainAgentService {
   }
 
   /**
-   * Process customer message using LLM-agent with real-time tool calling and conversational reasoning
+   * Process customer message using LLM-agent with real-time tool calling and conversational reasoning.
+   *
+   * Pipeline:
+   *  1. Reset check (cancel/clear)
+   *  2. Slot extraction (extractSlotsFromMessage)
+   *  3. Step Guard — SINGLE slot-sync + step advancement (replaces duplicate inline extraction)
+   *  4. Returning customer UID auto-fill
+   *  5. Fast-path: place order if all slots complete
+   *  6. LLM with step-aware system prompt + customer-only history (no bot hallucination reinforcement)
+   *  7. LangGraph fallback
+   *  8. Rule engine fallback
    */
   async processStructuredMessage(params: {
     phone: string;
@@ -70,19 +81,35 @@ export class LangChainAgentService {
     if (isResetIntent(messageText)) {
       db.clearSessionDraft(conversationId);
       return {
-        text: 'আপনার অর্ডার ড্রাফট রিসেট করা হয়েছে ভাইয়া। নতুনভাবে কী প্যাকেজ নিতে চান বলুন! 🎮',
+        text: 'আপনার অর্ডার ড্রাফট রিসেট করা হয়েছে ভাইয়া। নতুনভাবে কী প্যাকেজ নিতে চান বলুন! 🎮',
         buttons: undefined
       };
     }
 
-    // 1. Fetch current session state, customer memory profile, and recent order history (<10ms)
-    let sessionState = db.getSessionState(conversationId);
+    // 1. Extract slots ONCE — all downstream uses this result.
+    const slots = extractSlotsFromMessage(messageText);
+
+    // 2. Step Guard: single-source slot sync + FSM step advancement.
+    //    This REPLACES the duplicate slot extraction that was previously
+    //    in langchain-agent.ts (lines 99–133). The step guard is now the
+    //    only place that writes to session state based on slot data.
+    const guardResult = await runStepGuard({
+      phone,
+      messageText,
+      conversationId,
+      slots
+    });
+    let sessionState = guardResult.updatedSessionState;
     let draft = sessionState.draftOrder;
+
+    // 3. Fetch customer profile and recent orders (for memory and prompt)
     const customerProfile = await db.getCustomerProfile(phone);
     const recentOrders = await db.getOrdersByPhone(phone);
     const isAffirmative = isAffirmativePhrase(messageText);
 
-    // 1b. Returning Customer Auto-Fill: If customer confirms using saved UID
+    // 4. Returning Customer UID Auto-Fill:
+    //    If customer confirms ("yes", "ok") and we have a saved UID but no current UID,
+    //    and there's a package selected, use their saved UID.
     if (isAffirmative && !draft.playerUid && customerProfile.last_used_uid && draft.items && draft.items.length > 0) {
       console.log(`[Memory Auto-Fill] Reusing saved Player UID ${customerProfile.last_used_uid} for returning customer ${phone}`);
       sessionState = db.setSessionState(conversationId, {
@@ -95,64 +122,22 @@ export class LangChainAgentService {
       draft = sessionState.draftOrder;
     }
 
-    // 1c. Proactive Deterministic Slot Extraction & State Sync for this customer's session
-    const { extractedUid, extractedTrx, extractedPaymentMethod, extractedItems, parallelOrders } = extractSlotsFromMessage(messageText);
-
-    if (extractedUid || extractedTrx || extractedPaymentMethod || extractedItems || parallelOrders) {
-      // If customer specifies a new package while session is IDLE, start a fresh draft
-      const isFreshPackage = extractedItems && extractedItems.length > 0 && sessionState.step === 'IDLE';
-      const updatedUid = isFreshPackage ? (extractedUid || undefined) : (extractedUid || draft.playerUid);
-      const updatedTrx = isFreshPackage ? (extractedTrx || undefined) : (extractedTrx || draft.trxId);
-      const updatedPayment = isFreshPackage ? (extractedPaymentMethod || undefined) : (extractedPaymentMethod || draft.paymentMethod);
-      const updatedItems = extractedItems && extractedItems.length > 0 ? extractedItems : draft.items;
-
-      let nextStep = sessionState.step;
-      const hasItems = updatedItems && updatedItems.length > 0;
-      const hasUid = Boolean(updatedUid && updatedUid.trim());
-      const hasPayment = Boolean(updatedTrx && updatedTrx.trim());
-
-      if (hasItems && hasUid && hasPayment) {
-        nextStep = 'AWAITING_CONFIRMATION';
-      } else if (hasItems && hasUid && !hasPayment) {
-        nextStep = 'AWAITING_PAYMENT';
-      } else if (hasItems && !hasUid) {
-        nextStep = 'COLLECTING_DETAILS';
-      }
-
-      sessionState = db.setSessionState(conversationId, {
-        step: nextStep,
-        draftOrder: {
-          items: updatedItems,
-          playerUid: updatedUid,
-          trxId: updatedTrx,
-          paymentMethod: updatedPayment,
-          customerPhone: phone
-        }
-      });
-      draft = sessionState.draftOrder;
-    }
-
-    // 2. Check Affirmation / Complete Slot Fast-Path
-    const hasValidUid = Boolean(draft.playerUid && /^\d{5,12}$/.test(draft.playerUid.trim()));
-    const hasValidTrx = Boolean(draft.trxId && draft.trxId.trim().length >= 4);
+    // 5. Fast-path: if all slots are captured, place the order directly
+    //    (no LLM needed for deterministic outcomes)
+    const hasValidUid  = Boolean(draft.playerUid && /^\d{5,12}$/.test(draft.playerUid.trim()));
+    const hasValidTrx  = Boolean(draft.trxId && draft.trxId.trim().length >= 4);
     const hasTopUpSlots = Boolean(draft.items && draft.items.length > 0 && hasValidUid);
     const hasCompleteOrder = Boolean(hasTopUpSlots && hasValidTrx);
 
     if (hasCompleteOrder || (sessionState.step === 'AWAITING_CONFIRMATION' && isAffirmative && hasValidTrx)) {
-      console.log(`[AI Fast-Path] Complete top-up slots / affirmative response received. Placing top-up order directly...`);
-      const targetPhone = draft.customerPhone || phone;
-      const targetName = draft.customerName || 'PUBG Player';
-      const targetUid = draft.playerUid || 'N/A';
-      const targetTrx = draft.trxId || 'N/A';
-      const targetPayment = draft.paymentMethod || 'bKash/Nagad/Rocket';
+      console.log(`[AI Fast-Path] Complete top-up slots detected. Placing order directly...`);
       const targetItems = draft.items && draft.items.length > 0 ? draft.items : [{ skuOrName: '60 UC', quantity: 1 }];
-
       const toolResultRaw = await createOrderTool.invoke({
-        customerPhone: targetPhone,
-        customerName: targetName,
-        playerUid: targetUid,
-        trxId: targetTrx,
-        paymentMethod: targetPayment,
+        customerPhone: draft.customerPhone || phone,
+        customerName: draft.customerName || 'PUBG Player',
+        playerUid: draft.playerUid!,
+        trxId: draft.trxId!,
+        paymentMethod: draft.paymentMethod || 'bKash/Nagad/Rocket',
         items: targetItems,
         customerNotes: draft.customerNotes,
         conversationId
@@ -162,44 +147,40 @@ export class LangChainAgentService {
       if (toolResult.success) {
         db.clearSessionDraft(conversationId, toolResult.order_id);
         db.updateCustomerProfile(phone, {
-          last_used_uid: targetUid,
-          preferred_payment: targetPayment,
+          last_used_uid: draft.playerUid!,
+          preferred_payment: draft.paymentMethod || 'bKash',
           total_completed_orders: (customerProfile.total_completed_orders || 0) + 1
         }).catch(() => {});
 
-        const text = 
+        const text =
 `🎉 *টপ-আপ অর্ডার সফলভাবে গ্রহণ করা হয়েছে!*
 
 📦 *Order ID:* \`${toolResult.order_id}\`
-🎮 *Player UID:* \`${toolResult.player_uid || targetUid}\`
+🎮 *Player UID:* \`${toolResult.player_uid || draft.playerUid}\`
 💎 *প্যাকেজ:* ${targetItems.map(i => `${i.skuOrName} x${i.quantity}`).join(', ')}
 💰 *মোট মূল্য:* ৳${toolResult.total_amount}
-💳 *পেমেন্ট:* ${toolResult.payment_method || targetPayment} (TrxID: \`${toolResult.trx_id || targetTrx}\`)
-⚡ *ডেলিভারি সময়:* ৫–১৫ মিনিট (5-15 Minutes)
+💳 *পেমেন্ট:* ${toolResult.payment_method || draft.paymentMethod} (TrxID: \`${toolResult.trx_id || draft.trxId}\`)
+⚡ *ডেলিভারি সময়:* ৫–১৫ মিনিট (5-15 Minutes)
 
-আপনার টপ-আপ প্রসেসিং শুরু হয়েছে। খুব শীঘ্রই ইউসি আপনার আইডিতে যুক্ত হয়ে যাবে! 🚀✨`;
+আপনার টপ-আপ প্রসেসিং শুরু হয়েছে। খুব শীঘ্রই ইউসি আপনার আইডিতে যুক্ত হয়ে যাবে! 🚀✨`;
 
         return { text, buttons: undefined, createdOrder: toolResult };
       }
     }
 
+    // 6. LLM path with step-aware prompt
     const activeFaqs = await db.getFAQs();
     const llm = this.getLLM();
 
-    // 3. Primary Path: Intelligent OpenAI LLM with Tools
     if (llm && env.openai.apiKey) {
       try {
-        console.log(`[AI Agent] Processing message from ${phone}: "${messageText}" using model ${env.openai.model || 'gpt-5-nano'}`);
+        console.log(`[AI Agent] Processing message from ${phone}: "${messageText}" | step=${sessionState.step} | model=${env.openai.model || 'gpt-5-nano'}`);
         const modelWithTools = llm.bindTools(this.tools);
 
         const conv = await db.getConversationById(conversationId);
         const historyMessages = conv?.messages || [];
 
-        // Exclude the very last message if it matches messageText to avoid duplication
-        const pastMessages = (historyMessages.length > 0 && historyMessages[historyMessages.length - 1].content === messageText)
-          ? historyMessages.slice(0, -1)
-          : historyMessages;
-
+        // Build step-aware system prompt (includes YOUR TASK THIS TURN block at top)
         const systemPromptStr = this.getSystemPrompt({
           customerPhone: phone,
           sessionState,
@@ -213,13 +194,25 @@ export class LangChainAgentService {
           new SystemMessage(systemPromptStr)
         ];
 
-        // Maintain fresh multi-turn conversational memory (last 8 messages)
-        pastMessages.slice(-8).forEach(m => {
-          if (m.sender === 'CUSTOMER') {
-            formattedHistory.push(new HumanMessage(m.content));
-          } else {
-            formattedHistory.push(new AIMessage(m.content));
-          }
+        // FIX: Inject ONLY customer messages from history (last 6).
+        // Previously we injected the last 8 messages including the bot's own
+        // confused replies — this was teaching the LLM to repeat its mistakes.
+        // Now we only show what the customer said, which is reliable ground truth.
+        // The system prompt's CURRENT ORDER STATE section provides all bot context.
+        const excludeLastIfDuplicate =
+          historyMessages.length > 0 &&
+          historyMessages[historyMessages.length - 1].content === messageText;
+        const pastMessages = excludeLastIfDuplicate
+          ? historyMessages.slice(0, -1)
+          : historyMessages;
+
+        // Only use CUSTOMER messages (not bot/admin replies) to avoid reinforcing bad behavior
+        const customerOnlyHistory = pastMessages
+          .filter(m => m.sender === 'CUSTOMER')
+          .slice(-6);
+
+        customerOnlyHistory.forEach(m => {
+          formattedHistory.push(new HumanMessage(m.content));
         });
 
         formattedHistory.push(new HumanMessage(messageText));
@@ -229,8 +222,8 @@ export class LangChainAgentService {
 
         // Tool Calling Execution Loop
         if (response.tool_calls && response.tool_calls.length > 0) {
-          console.log(`[AI Agent] Tool calls detected (${response.tool_calls.length}):`, response.tool_calls.map(tc => tc.name).join(', '));
-          
+          console.log(`[AI Agent] Tool calls: ${response.tool_calls.map(tc => tc.name).join(', ')}`);
+
           const toolMessages: ToolMessage[] = [];
           for (const toolCall of response.tool_calls) {
             const selectedTool = this.tools.find(t => t.name === toolCall.name);
@@ -275,7 +268,7 @@ export class LangChainAgentService {
       }
     }
 
-    // 4. Secondary Fallback: LangGraph State Graph
+    // 7. Secondary Fallback: LangGraph State Graph
     try {
       const graphResult = await orderStateGraph.invoke(
         {
@@ -303,7 +296,7 @@ export class LangChainAgentService {
       console.error('[LangGraph Fallback Error]:', graphErr);
     }
 
-    // 5. Ultimate Fallback: Rule Engine
+    // 8. Ultimate Fallback: Rule Engine
     const fallbackRes = await fallbackEngineStructured({ phone, messageText, conversationId });
     return {
       text: fallbackRes.text,
