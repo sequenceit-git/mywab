@@ -1,33 +1,37 @@
 -- Migration: 20260914000000_initial_schema.sql
--- Description: Initial schema for WapBusiness including tables, indexes, RLS policies, and atomic stored procedures.
+-- Description: Production Schema for WapBusiness WhatsApp Gaming Top-Up & Multi-Agent Telegram Management
 
--- 1. Enable required extensions
+-- 1. Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 2. USERS (Customers)
+-- 2. USERS (Customer Identity & Persistent Memory Profile)
 CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     phone_number VARCHAR(30) UNIQUE NOT NULL,
     name VARCHAR(255),
     address_profile JSONB DEFAULT '{}'::jsonb,
-    language_pref VARCHAR(10) DEFAULT 'bn', -- 'bn' or 'en'
+    customer_profile JSONB DEFAULT '{"saved_uids": [], "preferred_payment": "bKash", "total_orders": 0}'::jsonb,
+    language_pref VARCHAR(10) DEFAULT 'bn',
     status_tag VARCHAR(50) DEFAULT 'REGULAR', -- 'VIP', 'REGULAR', 'FLAGGED'
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. CONVERSATIONS
+-- 3. CONVERSATIONS (WhatsApp Sessions & AI Multi-Turn Draft State)
 CREATE TABLE IF NOT EXISTS public.conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     channel VARCHAR(30) DEFAULT 'WHATSAPP',
     is_ai_active BOOLEAN DEFAULT TRUE,
+    summary TEXT DEFAULT '',
+    draft_state JSONB DEFAULT '{}'::jsonb,
     last_message_at TIMESTAMPTZ DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. MESSAGES
+-- 4. MESSAGES (Live & Historic Chat Log)
 CREATE TABLE IF NOT EXISTS public.messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     conversation_id UUID NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
@@ -38,23 +42,15 @@ CREATE TABLE IF NOT EXISTS public.messages (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. PRODUCTS
-CREATE TABLE IF NOT EXISTS public.products (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    sku VARCHAR(100) UNIQUE NOT NULL,
-    name_en VARCHAR(255) NOT NULL,
-    name_bn VARCHAR(255) NOT NULL,
-    description_en TEXT,
-    description_bn TEXT,
-    price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
-    stock_qty INT NOT NULL DEFAULT 0,
-    category VARCHAR(100) DEFAULT 'General',
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
+-- 5. PACKAGE PRICING (Custom Dynamic Rates & Base Costs)
+CREATE TABLE IF NOT EXISTS public.package_pricing (
+    id VARCHAR(100) PRIMARY KEY, -- e.g. 'pkg_pubg_60'
+    price NUMERIC(10, 2) NOT NULL,
+    base_price NUMERIC(10, 2) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. FAQS
+-- 6. FAQS (Knowledge Base & Auto-Reply FAQs)
 CREATE TABLE IF NOT EXISTS public.faqs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     question_en TEXT NOT NULL,
@@ -66,14 +62,13 @@ CREATE TABLE IF NOT EXISTS public.faqs (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. ORDERS
+-- 7. ORDERS (Customer Purchases & Delivery State)
 CREATE TABLE IF NOT EXISTS public.orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    order_id VARCHAR(50) UNIQUE NOT NULL, -- e.g. WAP-20260914-1001
+    order_id VARCHAR(50) UNIQUE NOT NULL, -- e.g. WAP-20260918-1001
     user_id UUID NOT NULL REFERENCES public.users(id),
     total_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
-    status VARCHAR(30) NOT NULL DEFAULT 'PENDING_CLAIM', 
-    -- PENDING_PAYMENT, PENDING_CLAIM, CLAIMED, PROCESSING, OUT_FOR_DELIVERY, DELIVERED, CANCELLED
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING_CLAIM',
     delivery_address JSONB NOT NULL DEFAULT '{}'::jsonb,
     delivery_phone VARCHAR(30) NOT NULL,
     customer_notes TEXT,
@@ -82,11 +77,11 @@ CREATE TABLE IF NOT EXISTS public.orders (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. ORDER ITEMS
+-- 8. ORDER ITEMS (Package Line Items)
 CREATE TABLE IF NOT EXISTS public.order_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
-    product_id UUID REFERENCES public.products(id),
+    product_id VARCHAR(100),
     product_name VARCHAR(255) NOT NULL,
     unit_price NUMERIC(10, 2) NOT NULL,
     quantity INT NOT NULL DEFAULT 1,
@@ -94,37 +89,37 @@ CREATE TABLE IF NOT EXISTS public.order_items (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 9. WORKERS (Telegram Staff)
+-- 9. WORKERS (Telegram Staff Team)
 CREATE TABLE IF NOT EXISTS public.workers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     telegram_user_id BIGINT UNIQUE NOT NULL,
     telegram_username VARCHAR(100),
     full_name VARCHAR(255) NOT NULL,
     phone_number VARCHAR(30),
-    role VARCHAR(30) DEFAULT 'WORKER', -- 'WORKER', 'SUPERVISOR', 'ADMIN'
+    role VARCHAR(30) DEFAULT 'WORKER',
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 10. ORDER ASSIGNMENTS
+-- 10. ORDER ASSIGNMENTS (Telegram Worker Claims)
 CREATE TABLE IF NOT EXISTS public.order_assignments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
     worker_id UUID NOT NULL REFERENCES public.workers(id),
-    status VARCHAR(30) DEFAULT 'CLAIMED', -- 'CLAIMED', 'PROCESSING', 'DELIVERED', 'RELEASED'
+    status VARCHAR(30) DEFAULT 'CLAIMED',
     claimed_at TIMESTAMPTZ DEFAULT NOW(),
     completed_at TIMESTAMPTZ,
     notes TEXT
 );
 
--- 11. PAYMENTS
+-- 11. PAYMENTS (Transaction Verifications)
 CREATE TABLE IF NOT EXISTS public.payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
-    payment_method VARCHAR(30) NOT NULL DEFAULT 'COD', -- 'COD', 'BKASH', 'NAGAD', 'CARD'
+    payment_method VARCHAR(30) NOT NULL DEFAULT 'COD',
     trx_id VARCHAR(100),
     amount NUMERIC(10, 2) NOT NULL,
-    status VARCHAR(30) DEFAULT 'UNPAID', -- 'UNPAID', 'VERIFYING', 'VERIFIED', 'FAILED'
+    status VARCHAR(30) DEFAULT 'UNPAID',
     verified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -201,16 +196,22 @@ CREATE INDEX IF NOT EXISTS idx_users_phone ON public.users(phone_number);
 CREATE INDEX IF NOT EXISTS idx_orders_order_id ON public.orders(order_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_user ON public.orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_delivery_phone_recent ON public.orders(delivery_phone, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_user_id_recent ON public.orders(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON public.order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_user ON public.conversations(user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON public.messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_workers_telegram ON public.workers(telegram_user_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_order ON public.order_assignments(order_id);
+CREATE INDEX IF NOT EXISTS idx_payments_order ON public.payments(order_id);
+CREATE INDEX IF NOT EXISTS idx_payments_trx ON public.payments(trx_id);
+CREATE INDEX IF NOT EXISTS idx_faqs_category ON public.faqs(category);
 
 -- 14. ROW LEVEL SECURITY (RLS) POLICIES
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.package_pricing ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.faqs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
@@ -218,15 +219,22 @@ ALTER TABLE public.workers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
--- Allow anon & service_role full access for web app & bot operations
 DO $$ 
 BEGIN
-    -- Products & FAQs (Public read, service_role/authenticated write)
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public products read' AND tablename = 'products') THEN
-        CREATE POLICY "Public products read" ON public.products FOR SELECT USING (true);
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users access' AND tablename = 'users') THEN
+        CREATE POLICY "Users access" ON public.users FOR ALL USING (true) WITH CHECK (true);
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public products insert/update' AND tablename = 'products') THEN
-        CREATE POLICY "Public products insert/update" ON public.products FOR ALL USING (true) WITH CHECK (true);
+
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Conversations access' AND tablename = 'conversations') THEN
+        CREATE POLICY "Conversations access" ON public.conversations FOR ALL USING (true) WITH CHECK (true);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Messages access' AND tablename = 'messages') THEN
+        CREATE POLICY "Messages access" ON public.messages FOR ALL USING (true) WITH CHECK (true);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Package pricing access' AND tablename = 'package_pricing') THEN
+        CREATE POLICY "Package pricing access" ON public.package_pricing FOR ALL USING (true) WITH CHECK (true);
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public faqs read' AND tablename = 'faqs') THEN
@@ -236,36 +244,22 @@ BEGIN
         CREATE POLICY "Public faqs write" ON public.faqs FOR ALL USING (true) WITH CHECK (true);
     END IF;
 
-    -- Users
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users access' AND tablename = 'users') THEN
-        CREATE POLICY "Users access" ON public.users FOR ALL USING (true) WITH CHECK (true);
-    END IF;
-
-    -- Conversations & Messages
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Conversations access' AND tablename = 'conversations') THEN
-        CREATE POLICY "Conversations access" ON public.conversations FOR ALL USING (true) WITH CHECK (true);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Messages access' AND tablename = 'messages') THEN
-        CREATE POLICY "Messages access" ON public.messages FOR ALL USING (true) WITH CHECK (true);
-    END IF;
-
-    -- Orders & Order Items
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Orders access' AND tablename = 'orders') THEN
         CREATE POLICY "Orders access" ON public.orders FOR ALL USING (true) WITH CHECK (true);
     END IF;
+
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Order items access' AND tablename = 'order_items') THEN
         CREATE POLICY "Order items access" ON public.order_items FOR ALL USING (true) WITH CHECK (true);
     END IF;
 
-    -- Workers & Assignments
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Workers access' AND tablename = 'workers') THEN
         CREATE POLICY "Workers access" ON public.workers FOR ALL USING (true) WITH CHECK (true);
     END IF;
+
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Assignments access' AND tablename = 'order_assignments') THEN
         CREATE POLICY "Assignments access" ON public.order_assignments FOR ALL USING (true) WITH CHECK (true);
     END IF;
 
-    -- Payments
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Payments access' AND tablename = 'payments') THEN
         CREATE POLICY "Payments access" ON public.payments FOR ALL USING (true) WITH CHECK (true);
     END IF;

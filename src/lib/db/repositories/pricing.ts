@@ -31,7 +31,7 @@ export const pricingRepository = {
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
       try {
-        const { data } = await client.from('products').select('id, name, price, base_price, description');
+        const { data } = await client.from('package_pricing').select('id, price, base_price');
         if (Array.isArray(data)) {
           for (const item of data) {
             if (item.id) {
@@ -43,7 +43,7 @@ export const pricingRepository = {
           }
         }
       } catch (err) {
-        console.warn('Could not fetch custom prices from Supabase products table:', err);
+        console.warn('Could not fetch custom prices from Supabase package_pricing table:', err);
       }
     }
 
@@ -125,14 +125,14 @@ export const pricingRepository = {
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
       try {
-        await client.from('products').upsert({
+        await client.from('package_pricing').upsert({
           id: packageId,
           price: updates.price,
           base_price: updates.basePrice,
           updated_at: now
         });
       } catch (err) {
-        console.warn('Failed to upsert to Supabase products table (non-fatal):', err);
+        console.warn('Failed to upsert to Supabase package_pricing table (non-fatal):', err);
       }
     }
 
@@ -164,9 +164,9 @@ export const pricingRepository = {
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
       try {
-        await client.from('products').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await client.from('package_pricing').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       } catch (err) {
-        console.warn('Could not clear Supabase products table:', err);
+        console.warn('Could not clear Supabase package_pricing table:', err);
       }
     }
   }

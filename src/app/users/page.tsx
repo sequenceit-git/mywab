@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { UserLeaderboardEntry } from '@/types';
 import { WhatsAppIcon } from '@/components/BrandIcons';
+import { Header } from '@/components/Header';
 
 export default function UsersLeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<UserLeaderboardEntry[]>([]);
@@ -117,30 +118,36 @@ export default function UsersLeaderboardPage() {
   const topThree = leaderboard.slice(0, 3);
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 space-y-6 max-w-7xl mx-auto pb-20 lg:pb-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/20">
-              <Trophy className="w-5 h-5 font-bold" />
-            </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Customer Leaderboard</h1>
-              <p className="text-xs sm:text-sm text-slate-400">Unique customers, lifetime purchases, and loyalty rankings</p>
+    <div className="flex-1 flex flex-col min-h-screen bg-slate-950">
+      <Header
+        title="Customer Leaderboard & Loyalty"
+        subtitle="Unique customers, lifetime purchases, game top-up preferences, and VIP rankings"
+      />
+
+      <main className="p-4 sm:p-6 max-w-7xl mx-auto w-full space-y-6 pb-20 lg:pb-6">
+        {/* Leaderboard Title Banner */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/20 shrink-0">
+                <Trophy className="w-5 h-5 font-bold" />
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Customer Leaderboard</h1>
+                <p className="text-xs sm:text-sm text-slate-400">Unique customers, lifetime purchases, and loyalty rankings</p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <button
-          onClick={fetchLeaderboard}
-          disabled={isLoading}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 text-xs sm:text-sm font-medium transition self-start sm:self-auto"
-        >
-          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh List
-        </button>
-      </div>
+          <button
+            onClick={fetchLeaderboard}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 text-xs sm:text-sm font-medium transition self-start sm:self-auto shadow-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh List
+          </button>
+        </div>
 
       {/* KPI Overview Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -589,6 +596,7 @@ export default function UsersLeaderboardPage() {
           </table>
         </div>
       </div>
-    </div>
-  );
+    </main>
+  </div>
+);
 }

@@ -140,19 +140,16 @@ export const ordersRepository = {
 
       // 2. Insert order items
       if (params.items.length > 0) {
-        const orderItems = params.items.map(item => {
-          const isValidUuid = item.product_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.product_id);
-          return {
-            id: crypto.randomUUID(),
-            order_id: orderUuid,
-            product_id: isValidUuid ? item.product_id : null,
-            product_name: item.product_name,
-            unit_price: item.unit_price,
-            quantity: item.quantity,
-            subtotal: item.unit_price * item.quantity,
-            created_at: new Date().toISOString()
-          };
-        });
+        const orderItems = params.items.map(item => ({
+          id: crypto.randomUUID(),
+          order_id: orderUuid,
+          product_id: item.product_id || null,
+          product_name: item.product_name,
+          unit_price: item.unit_price,
+          quantity: item.quantity,
+          subtotal: item.unit_price * item.quantity,
+          created_at: new Date().toISOString()
+        }));
 
         await client.from('order_items').insert(orderItems);
       }

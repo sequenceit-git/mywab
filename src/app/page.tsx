@@ -154,78 +154,118 @@ export default function DashboardOverviewPage() {
           </div>
         </div>
 
-        {/* 4 Core Sales & Profit KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Today's Sales & Net Profit */}
-          <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-emerald-500/40 transition">
+        {/* 5 Core Sales & Profit KPI Cards including Daily Profit */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 sm:gap-4">
+          {/* 1. Daily Profit Card (Today's Net Profit) */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-dark-900/95 via-emerald-950/25 to-dark-900/95 border border-emerald-500/30 shadow-lg relative overflow-hidden group hover:border-emerald-400/60 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Today's Sales</span>
-              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-                <TrendingUp className="w-5 h-5" />
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-[11px] sm:text-xs font-bold text-emerald-400 uppercase tracking-wider">Daily Profit</span>
               </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl font-black text-emerald-400">৳{todaySales.toLocaleString()}</div>
-              <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
-                <span className="text-slate-400">Net Profit:</span>
-                <span className="font-bold text-emerald-300 font-mono">+৳{todayProfit.toLocaleString()} ({todayMargin}%)</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                <b className="text-slate-300">{todayOrders}</b> orders today
-              </p>
-            </div>
-          </div>
-
-          {/* This Month's Sales & Profit */}
-          <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-sky-500/40 transition">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">This Month</span>
-              <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400">
-                <Calendar className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl font-black text-sky-400">৳{thisMonthSales.toLocaleString()}</div>
-              <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
-                <span className="text-slate-400">Net Profit:</span>
-                <span className="font-bold text-sky-300 font-mono">+৳{thisMonthProfit.toLocaleString()} ({thisMonthMargin}%)</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                <b className="text-slate-300">{thisMonthOrders}</b> orders this month
-              </p>
-            </div>
-          </div>
-
-          {/* Total Net Profit */}
-          <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-brand-500/40 transition">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">All-Time Net Profit</span>
-              <div className="p-2 rounded-xl bg-brand-500/10 text-brand-400">
+              <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 group-hover:scale-105 transition-transform">
                 <DollarSign className="w-5 h-5" />
               </div>
             </div>
             <div className="mt-3">
-              <div className="text-2xl font-black text-brand-400">+৳{totalProfit.toLocaleString()}</div>
-              <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
-                <span className="text-slate-400">Avg Gross Margin:</span>
-                <span className="font-bold text-slate-200">{totalMargin}%</span>
+              <div className="flex items-baseline gap-2">
+                <div className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono tracking-tight">
+                  +৳{todayProfit.toLocaleString()}
+                </div>
+                {todaySales > 0 && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {todayMargin}%
+                  </span>
+                )}
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                From <b className="text-slate-300">৳{totalRevenue.toLocaleString()}</b> revenue ({totalOrders} orders)
+              <div className="mt-2 pt-2 border-t border-emerald-900/40 flex items-center justify-between text-xs">
+                <span className="text-slate-400">From Today's Sales:</span>
+                <span className="font-semibold text-slate-200">৳{todaySales.toLocaleString()}</span>
+              </div>
+              <p className="text-[11px] text-emerald-400/80 mt-1">
+                <b className="text-white font-mono">{todayOrders}</b> order{todayOrders === 1 ? '' : 's'} placed today
               </p>
             </div>
           </div>
 
-          {/* Completed Orders & Realized Profit */}
-          <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-purple-500/40 transition">
+          {/* 2. Today's Revenue / Sales */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-cyan-500/40 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Delivered Top-Ups</span>
-              <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
+              <span className="text-[11px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Today's Sales</span>
+              <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 group-hover:scale-105 transition-transform">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl sm:text-3xl font-black text-cyan-400 font-mono tracking-tight">
+                ৳{todaySales.toLocaleString()}
+              </div>
+              <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                <span className="text-slate-400">Order Volume:</span>
+                <span className="font-bold text-cyan-300">{todayOrders} orders</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Net Profit: <b className="text-emerald-400">+৳{todayProfit.toLocaleString()}</b>
+              </p>
+            </div>
+          </div>
+
+          {/* 3. This Month's Sales & Profit */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-sky-500/40 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">This Month</span>
+              <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400 group-hover:scale-105 transition-transform">
+                <Calendar className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl sm:text-3xl font-black text-sky-400 font-mono tracking-tight">
+                ৳{thisMonthSales.toLocaleString()}
+              </div>
+              <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                <span className="text-slate-400">Monthly Profit:</span>
+                <span className="font-bold text-sky-300 font-mono">+৳{thisMonthProfit.toLocaleString()}</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                <b className="text-slate-300">{thisMonthOrders}</b> orders ({thisMonthMargin}% margin)
+              </p>
+            </div>
+          </div>
+
+          {/* 4. Total Net Profit */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-brand-500/40 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">All-Time Net Profit</span>
+              <div className="p-2 rounded-xl bg-brand-500/10 text-brand-400 group-hover:scale-105 transition-transform">
+                <BadgePercent className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl sm:text-3xl font-black text-brand-400 font-mono tracking-tight">
+                +৳{totalProfit.toLocaleString()}
+              </div>
+              <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                <span className="text-slate-400">Avg Margin:</span>
+                <span className="font-bold text-slate-200">{totalMargin}%</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                From <b className="text-slate-300">৳{totalRevenue.toLocaleString()}</b> ({totalOrders} orders)
+              </p>
+            </div>
+          </div>
+
+          {/* 5. Completed Orders & Realized Profit */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-purple-500/40 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Delivered Top-Ups</span>
+              <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 group-hover:scale-105 transition-transform">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
             </div>
             <div className="mt-3">
-              <div className="text-2xl font-black text-purple-400">{deliveredOrders} done</div>
+              <div className="text-2xl sm:text-3xl font-black text-purple-400 font-mono tracking-tight">
+                {deliveredOrders} done
+              </div>
               <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
                 <span className="text-slate-400">Realized Profit:</span>
                 <span className="font-bold text-purple-300 font-mono">+৳{deliveredProfit.toLocaleString()}</span>
