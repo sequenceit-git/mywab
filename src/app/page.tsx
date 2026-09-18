@@ -119,7 +119,7 @@ export default function DashboardOverviewPage() {
         subtitle="Daily & monthly revenue metrics, base price profit calculations, and worker dispatch"
       />
 
-      <main className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto w-full">
+      <main className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto w-full pb-20 lg:pb-6">
         {/* Architecture Pipeline Banner */}
         <div className="rounded-2xl bg-gradient-to-r from-brand-950/60 via-dark-900 to-indigo-950/60 border border-brand-500/20 p-4 sm:p-5 shadow-xl backdrop-blur-md relative overflow-hidden">
           <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">

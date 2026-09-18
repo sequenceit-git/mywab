@@ -199,9 +199,16 @@ export default function OrdersPage() {
           <div className="text-base font-mono font-black text-white tracking-wider break-all">
             {selUid}
           </div>
-          <div className="text-[11px] text-slate-400 flex items-center gap-1.5 flex-wrap pt-0.5">
-            {getPaymentIcon(selectedOrder.payment_method)}
-            <span><b className="text-slate-200">{selectedOrder.payment_method || 'bKash/Nagad/Rocket'}</b> | TrxID: <b className="font-mono text-emerald-400">{selectedOrder.trx_id || 'N/A'}</b></span>
+          <div className="text-[11px] text-slate-400 flex items-center gap-2 flex-wrap pt-0.5">
+            <div className="flex items-center gap-1.5 shrink-0">
+              {getPaymentIcon(selectedOrder.payment_method)}
+              <span className="font-semibold text-slate-200">{selectedOrder.payment_method || 'bKash/Nagad/Rocket'}</span>
+            </div>
+            <span className="text-slate-600">|</span>
+            <div>
+              <span>TrxID: </span>
+              <b className="font-mono text-emerald-400 font-semibold">{selectedOrder.trx_id || 'N/A'}</b>
+            </div>
           </div>
         </div>
 
@@ -430,9 +437,16 @@ export default function OrdersPage() {
                         <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span>{order.delivery_phone}</span>
                       </div>
-                      <div className="sm:col-span-2 flex items-center gap-1.5 text-[11px] text-slate-300 truncate">
-                        {getPaymentIcon(order.payment_method)}
-                        <span>{order.payment_method || 'bKash/Nagad/Rocket'} | TrxID: <b className="font-mono text-white">{order.trx_id || 'N/A'}</b></span>
+                      <div className="sm:col-span-2 flex items-center gap-2 text-[11px] text-slate-300">
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {getPaymentIcon(order.payment_method)}
+                          <span className="font-semibold text-slate-200">{order.payment_method || 'bKash/Nagad/Rocket'}</span>
+                        </div>
+                        <span className="text-slate-600">|</span>
+                        <div className="truncate">
+                          <span>TrxID: </span>
+                          <b className="font-mono text-emerald-400 font-semibold">{order.trx_id || 'N/A'}</b>
+                        </div>
                       </div>
                     </div>
 
