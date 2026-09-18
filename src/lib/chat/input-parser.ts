@@ -1,6 +1,6 @@
 /**
- * Helpers for parsing, cleaning and formatting user inputs from WhatsApp
- * (e.g. Player UID, Game IDs, TrxIDs, Last 4 digits, Payment methods, Bangla numerals)
+ * Helpers for parsing, cleaning and formatting user inputs from WhatsApp & Telegram
+ * (e.g. Player UID, Email Accounts, Game IDs, TrxIDs, Last 4 digits, Payment methods, Bangla numerals)
  */
 
 /**
@@ -16,34 +16,40 @@ export function convertBengaliDigits(text: string): string {
 }
 
 /**
- * Extract clean, trimmed Player UID / Game ID / Account info
+ * Extract clean, trimmed Player UID / Email Account / Phone / Game ID
  */
 export function extractCleanUid(rawText: string): string {
   if (!rawText) return '';
   const converted = convertBengaliDigits(rawText.trim());
 
-  // 1. Check if matches key-value prefix like "UID: 123456", "Player ID 123456", "ID: 123456", "আমার আইডি: 123456"
+  // 1. Check if input contains an Email address (e.g. "okovijit@gmail.com" or "Email: okovijit@gmail.com")
+  const emailMatch = converted.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  if (emailMatch) {
+    return emailMatch[0].trim();
+  }
+
+  // 2. Check if matches key-value prefix like "UID: 123456", "Player ID 123456", "ID: 123456", "আমার আইডি: 123456"
   const prefixMatch = converted.match(
-    /(?:player\s*uid|player\s*id|playerid|uid|id|account|acc|user\s*id|আইডি|ইউআইডি|প্লেয়ার\s*আইডি|প্লেয়ার\s*আইডি)[\s:=#\-_]+([^\s,;()\[\]{}]+)/i
+    /(?:player\s*uid|player\s*id|playerid|uid|id|account|acc|user\s*id|email|gmail|আইডি|ইউআইডি|প্লেয়ার\s*আইডি|প্লেয়ার\s*আইডি|ইমেইল|জিমেইল)[\s:=#\-_]+([^\s,;()\[\]{}]+)/i
   );
   if (prefixMatch && prefixMatch[1]) {
     return prefixMatch[1].trim();
   }
 
-  // 2. Strip standard conversational prefixes
+  // 3. Strip standard conversational prefixes
   let cleaned = converted
-    .replace(/^(?:my\s*(?:player\s*)?(?:uid|id)\s*(?:is)?|amar\s*(?:uid|id|player\s*id)|আমার\s*(?:আইডি|প্লেয়ার\s*আইডি|প্লেয়ার\s*আইডি|ইউআইডি))\s*[:=\-_]?\s*/i, '')
-    .replace(/^(?:player\s*uid|player\s*id|playerid|uid|id|account|acc|আইডি|ইউআইডি)[\s:=#\-_]*/i, '')
+    .replace(/^(?:my\s*(?:player\s*)?(?:uid|id|email|account)\s*(?:is)?|amar\s*(?:uid|id|player\s*id|email)|আমার\s*(?:আইডি|প্লেয়ার\s*আইডি|প্লেয়ার\s*আইডি|ইউআইডি|ইমেইল))\s*[:=\-_]?\s*/i, '')
+    .replace(/^(?:player\s*uid|player\s*id|playerid|uid|id|account|acc|email|আইডি|ইউআইডি|ইমেইল)[\s:=#\-_]*/i, '')
     .replace(/[()[\]{}'"`]/g, ' ')
     .trim();
 
-  // 3. If there is a sequence of 5-15 digits at the start (e.g. "5875547 (nick)" -> "5875547")
+  // 4. If there is a sequence of 5-15 digits at the start (e.g. "5875547 (nick)" -> "5875547")
   const leadingDigits = cleaned.match(/^(\d{5,15})\b/);
   if (leadingDigits) {
     return leadingDigits[1];
   }
 
-  // 4. If first token is valid (e.g. "player#1234" or "user@gmail.com")
+  // 5. If first token is valid (e.g. "player#1234" or standard ID)
   const tokens = cleaned.split(/\s+/).filter(Boolean);
   if (tokens.length > 0) {
     const candidate = tokens[0];
@@ -55,17 +61,106 @@ export function extractCleanUid(rawText: string): string {
   return (cleaned || converted).trim();
 }
 
+/**
+ * Information regarding how to display the user's account / identifier
+ */
+export interface AccountFieldInfo {
+  labelEn: string;
+  labelBn: string;
+  emoji: string;
+  isEmail: boolean;
+}
+
+export function getAccountFieldInfo(identifierValue?: string, gameLabelOrCode?: string): AccountFieldInfo {
+  const val = identifierValue || '';
+  const game = (gameLabelOrCode || '').toLowerCase();
+
+  // 1. PUBG UID Top-Up & Subscriptions
+  if (game.includes('pubg')) {
+    if (game.includes('login') || game.includes('special')) {
+      return {
+        labelEn: 'Phone / Contact (QR)',
+        labelBn: 'হোয়াটসঅ্যাপ / যোগাযোগ নম্বর',
+        emoji: '📲',
+        isEmail: false
+      };
+    }
+    return {
+      labelEn: 'Player UID (PUBG)',
+      labelBn: 'Player UID',
+      emoji: '🎮',
+      isEmail: false
+    };
+  }
+
+  // 2. Free Fire Diamonds
+  if (game.includes('ff') || game.includes('free fire') || game.includes('diamond')) {
+    return {
+      labelEn: 'Player UID (Free Fire)',
+      labelBn: 'Player UID',
+      emoji: '🔥',
+      isEmail: false
+    };
+  }
+
+  // 3. eFootball Coins
+  if (game.includes('efb') || game.includes('efootball') || game.includes('konami')) {
+    return {
+      labelEn: 'Konami ID / Email',
+      labelBn: 'Konami ID / ইমেইল',
+      emoji: '⚽',
+      isEmail: val.includes('@')
+    };
+  }
+
+  // 4. Movie / Anime / Music Streaming Subscriptions (Netflix, Prime, Spotify, YouTube, Crunchyroll)
+  if (val.includes('@') || game.includes('movie') || game.includes('netflix') || game.includes('spotify') || game.includes('prime') || game.includes('crunchyroll') || game.includes('youtube')) {
+    return {
+      labelEn: 'Email / Gmail Account',
+      labelBn: 'ইমেইল / Gmail অ্যাকাউন্ট',
+      emoji: '📧',
+      isEmail: true
+    };
+  }
+
+  // 5. Generic Login / WhatsApp QR services
+  if (game.includes('login') || game.includes('qr') || game.includes('whatsapp')) {
+    return {
+      labelEn: 'Phone / Contact',
+      labelBn: 'মোবাইল / হোয়াটসঅ্যাপ নম্বর',
+      emoji: '📲',
+      isEmail: false
+    };
+  }
+
+  // 6. Default Player UID
+  return {
+    labelEn: 'Player UID',
+    labelBn: 'Player UID',
+    emoji: '🎮',
+    isEmail: false
+  };
+}
+
 export interface ExtractedPayment {
   paymentMethod: string;
-  trxId: string;
+  trxId?: string;
+  lastDigits?: string;
+  senderPhone?: string;
+  proofType: 'BOTH' | 'TRX_ID' | 'LAST_4' | 'PHONE' | 'CUSTOM';
+  rawProof: string;
 }
 
 /**
- * Extract clean Payment Method, TrxID or Last 4 Digits from user payment confirmation text
+ * Extract clean Payment Method, TrxID, Last 4 Digits or Combined Proof
  */
 export function extractPaymentProof(rawText: string): ExtractedPayment {
   if (!rawText) {
-    return { paymentMethod: 'BKASH/NAGAD/ROCKET', trxId: 'N/A' };
+    return {
+      paymentMethod: 'BKASH/NAGAD/ROCKET',
+      proofType: 'CUSTOM',
+      rawProof: 'N/A'
+    };
   }
 
   const text = convertBengaliDigits(rawText.trim());
@@ -83,66 +178,226 @@ export function extractPaymentProof(rawText: string): ExtractedPayment {
     paymentMethod = 'UPAY';
   }
 
-  // 2. Explicit TrxID patterns (e.g. "TrxID: BLA8392019", "Trx: 9J38A10982", "TX ID: ...", "trx id ...")
+  // 2. Check for explicit TrxID
+  let foundTrxId: string | undefined;
   const trxMatch = text.match(
     /(?:trx\s*id|trx|tx\s*id|txid|transaction\s*id|trans\s*id|ট্রানজেকশন\s*আইডি|টিএক্স\s*আইডি|টিএক্স)[\s:=#\-_]*([a-zA-Z0-9]{5,20})/i
   );
   if (trxMatch && trxMatch[1]) {
-    return {
-      paymentMethod,
-      trxId: trxMatch[1].trim().toUpperCase()
-    };
+    foundTrxId = trxMatch[1].trim().toUpperCase();
+  } else {
+    // Alphanumeric standard TrxID (contains letters + digits)
+    const alphanumericTrx = text.match(/\b([A-Za-z0-9]{8,12})\b/);
+    if (alphanumericTrx && /[0-9]/.test(alphanumericTrx[1]) && /[a-zA-Z]/.test(alphanumericTrx[1])) {
+      foundTrxId = alphanumericTrx[1].trim().toUpperCase();
+    }
   }
 
-  // 3. Explicit Last 4 Digits patterns (e.g. "last no 7647", "last 4 digit 7647", "লাস্ট ৪ ডিজিট ৭৬৪৭", "last 7647", "last number 7647")
+  // 3. Check for explicit Last 4 Digits (or 3-6 digit sender digits)
+  let foundLastDigits: string | undefined;
   const lastDigitsMatch = text.match(
-    /(?:last\s*(?:4\s*)?(?:digit|digits|no|num|number|code|সংখ্যার?|ডিজিট|নম্বর)?|লাস্ট\s*(?:৪\s*)?(?:ডিজিট|সংখ্যা|নম্বর)?)[\s:=#\-_]*([0-9]{3,8})/i
+    /(?:last\s*(?:4\s*)?(?:digit|digits|no|num|number|code|সংখ্যার?|ডিজিট|নম্বর)?|লাস্ট\s*(?:৪\s*)?(?:ডিজিট|সংখ্যা|নম্বর)?)[\s:=#\-_]*([0-9]{3,6})/i
   );
   if (lastDigitsMatch && lastDigitsMatch[1]) {
-    return {
-      paymentMethod,
-      trxId: lastDigitsMatch[1].trim()
-    };
+    foundLastDigits = lastDigitsMatch[1].trim();
   }
 
-  // 4. Standard bKash/Nagad TrxID alphanumeric formats (8-12 alphanumeric characters containing letters and numbers)
-  const alphanumericTrx = text.match(/\b([A-Za-z0-9]{8,12})\b/);
-  if (alphanumericTrx && /[0-9]/.test(alphanumericTrx[1]) && /[a-zA-Z]/.test(alphanumericTrx[1])) {
-    return {
-      paymentMethod,
-      trxId: alphanumericTrx[1].trim().toUpperCase()
-    };
-  }
-
-  // 5. BD Phone numbers (11 digits e.g. 01712345678 or 01872239597)
+  // 4. Check for full 11-digit phone number
+  let foundPhone: string | undefined;
   const phoneMatch = text.match(/\b(01[3-9]\d{8})\b/);
   if (phoneMatch) {
+    foundPhone = phoneMatch[1].trim();
+  }
+
+  // 5. Standalone 3-6 digit number (if not already found as TrxID)
+  if (!foundTrxId && !foundLastDigits && !foundPhone) {
+    const standaloneDigits = text.match(/\b(\d{3,6})\b/);
+    if (standaloneDigits) {
+      foundLastDigits = standaloneDigits[1].trim();
+    }
+  }
+
+  // Determine Proof Type & Raw Formatted Proof
+  if (foundTrxId && foundLastDigits) {
     return {
       paymentMethod,
-      trxId: phoneMatch[1].trim()
+      trxId: foundTrxId,
+      lastDigits: foundLastDigits,
+      proofType: 'BOTH',
+      rawProof: `TrxID: ${foundTrxId} | Last 4: ${foundLastDigits}`
     };
   }
 
-  // 6. Standalone 4-8 digit number (e.g. "7647", "send korsi 7647")
-  const digitMatch = text.match(/\b(\d{4,8})\b/);
-  if (digitMatch) {
+  if (foundTrxId) {
     return {
       paymentMethod,
-      trxId: digitMatch[1].trim()
+      trxId: foundTrxId,
+      proofType: 'TRX_ID',
+      rawProof: foundTrxId
     };
   }
 
-  // 7. Strip stopwords / conversational noise and return the leftover trimmed token
+  if (foundLastDigits) {
+    return {
+      paymentMethod,
+      lastDigits: foundLastDigits,
+      proofType: 'LAST_4',
+      rawProof: foundLastDigits
+    };
+  }
+
+  if (foundPhone) {
+    return {
+      paymentMethod,
+      senderPhone: foundPhone,
+      proofType: 'PHONE',
+      rawProof: foundPhone
+    };
+  }
+
+  // Fallback cleanup
   const cleaned = text
     .replace(/(?:bkash|nagad|rocket|upay|বিকাশ|নগদ|রকেট|উপায়|send|money|koresi|koreci|korsi|diasi|dici|done|taka|pathaisi|pathano|hoise|last|no|digit|number|লাস্ট|টাকা|পাঠিয়েছি|পাঠাইছি)/gi, ' ')
     .replace(/[^\w\s-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
-  const finalTrx = cleaned || text;
   return {
     paymentMethod,
-    trxId: finalTrx.slice(0, 30).trim()
+    proofType: 'CUSTOM',
+    rawProof: cleaned || text || 'N/A'
+  };
+}
+
+/**
+ * Format payment method and proof for WhatsApp Customer Card
+ */
+export function formatPaymentDisplayForWhatsApp(
+  proofText?: string,
+  methodName?: string
+): string {
+  const method = methodName || 'bKash/Nagad/Rocket';
+  const proof = (proofText || '').trim();
+
+  if (!proof || proof === 'N/A') {
+    return method;
+  }
+
+  // If already formatted with "TrxID: ... | Last 4: ..."
+  if (proof.includes('TrxID:') && proof.includes('Last 4:')) {
+    const trxPart = proof.match(/TrxID:\s*([^|]+)/i)?.[1]?.trim() || '';
+    const lastPart = proof.match(/Last 4:\s*([^|]+)/i)?.[1]?.trim() || '';
+    return `${method} (TrxID: \`${trxPart}\` | লাস্ট ৪ ডিজিট: \`${lastPart}\`)`;
+  }
+
+  // If it's a 3-6 digit number (Last digits)
+  if (/^\d{3,6}$/.test(proof)) {
+    return `${method} (লাস্ট ৪ ডিজিট: \`${proof}\`)`;
+  }
+
+  // If it's an 11 digit phone number
+  if (/^01[3-9]\d{8}$/.test(proof)) {
+    return `${method} (সেন্ডার নম্বর: \`${proof}\`)`;
+  }
+
+  // If standard alphanumeric TrxID
+  return `${method} (TrxID: \`${proof}\`)`;
+}
+
+/**
+ * Format payment lines for Telegram Worker Card
+ */
+export function formatPaymentDisplayForTelegram(
+  proofText?: string,
+  methodName?: string
+): { methodLabel: string; proofLines: string } {
+  let methodLabel = methodName || 'bKash/Nagad/Rocket';
+  if (methodLabel.toUpperCase() === 'BKASH') methodLabel = 'bKash';
+  if (methodLabel.toUpperCase() === 'NAGAD') methodLabel = 'Nagad';
+  if (methodLabel.toUpperCase() === 'ROCKET') methodLabel = 'Rocket';
+
+  const proof = (proofText || '').trim();
+
+  if (!proof || proof === 'N/A') {
+    return {
+      methodLabel,
+      proofLines: `🔢 <b>Payment Proof:</b> <code>N/A</code>`
+    };
+  }
+
+  // If both TrxID & Last 4
+  if (proof.includes('TrxID:') && proof.includes('Last 4:')) {
+    const trxPart = proof.match(/TrxID:\s*([^|]+)/i)?.[1]?.trim() || '';
+    const lastPart = proof.match(/Last 4:\s*([^|]+)/i)?.[1]?.trim() || '';
+    return {
+      methodLabel,
+      proofLines: `🔢 <b>TrxID:</b> <code>${trxPart}</code>\n📱 <b>Sender Last 4:</b> <code>${lastPart}</code>`
+    };
+  }
+
+  // If 3-6 digits
+  if (/^\d{3,6}$/.test(proof)) {
+    return {
+      methodLabel,
+      proofLines: `📱 <b>Sender Last 4:</b> <code>${proof}</code>`
+    };
+  }
+
+  // If 11 digit phone number
+  if (/^01[3-9]\d{8}$/.test(proof)) {
+    return {
+      methodLabel,
+      proofLines: `📱 <b>Sender Phone:</b> <code>${proof}</code>`
+    };
+  }
+
+  // Default alphanumeric TrxID
+  return {
+    methodLabel,
+    proofLines: `🔢 <b>TrxID:</b> <code>${proof}</code>`
+  };
+}
+
+/**
+ * Dynamic delivery ETA text and buttons based on product category
+ */
+export function getGameDeliveryConfig(gameTitleOrCode?: string, firstItemName?: string): {
+  deliveryMessage: string;
+  catalogButtonTitle: string;
+} {
+  const text = `${gameTitleOrCode || ''} ${firstItemName || ''}`.toLowerCase();
+
+  if (text.includes('netflix') || text.includes('movie') || text.includes('anime') || text.includes('spotify') || text.includes('prime') || text.includes('crunchyroll') || text.includes('youtube') || text.includes('sub')) {
+    return {
+      deliveryMessage: 'আমাদের টিম খুব দ্রুত আপনার সাবস্ক্রিপশন চালু করে অ্যাকাউন্ট/লগইন তথ্য পাঠিয়ে দেবে! 🍿🚀',
+      catalogButtonTitle: '🍿 সাবস্ক্রিপশন তালিকা'
+    };
+  }
+
+  if (text.includes('free fire') || text.includes('ff') || text.includes('diamond')) {
+    return {
+      deliveryMessage: 'আমাদের টপ-আপ টিম খুব দ্রুত আপনার আইডিতে ডায়মন্ড পাঠিয়ে দেবে! 🔥🚀',
+      catalogButtonTitle: '💎 Diamond প্রাইস'
+    };
+  }
+
+  if (text.includes('pubg') || text.includes('uc')) {
+    return {
+      deliveryMessage: 'আমাদের টপ-আপ টিম খুব দ্রুত আপনার আইডিতে ইউসি পাঠিয়ে দেবে! 🎮🚀',
+      catalogButtonTitle: '💎 UC প্রাইস লিস্ট'
+    };
+  }
+
+  if (text.includes('efootball') || text.includes('fifa') || text.includes('fc mobile') || text.includes('coin')) {
+    return {
+      deliveryMessage: 'আমাদের টিম খুব দ্রুত আপনার আইডিতে কয়েন/পয়েন্ট টপ-আপ করে দেবে! ⚽🚀',
+      catalogButtonTitle: '⚽ কয়েন প্রাইস লিস্ট'
+    };
+  }
+
+  return {
+    deliveryMessage: 'আমাদের টপ-আপ টিম খুব দ্রুত আপনার সার্ভিসটি সম্পন্ন করে দেবে! 🚀',
+    catalogButtonTitle: '🎮 গেম প্রাইস লিস্ট'
   };
 }
 
@@ -210,4 +465,3 @@ export function isGreetingOrMenu(rawText: string): boolean {
 
   return greetingWords.includes(text) || /^(?:hi|hello|hey|salam|assalamu\s*alaikum)\b/i.test(text);
 }
-

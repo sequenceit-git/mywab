@@ -2,15 +2,22 @@ import { Order } from '@/types';
 import { db } from '@/lib/db';
 import { whatsappService } from '@/lib/whatsapp/service';
 import { env } from '@/lib/config/env';
+import { getAccountFieldInfo, formatPaymentDisplayForTelegram } from '@/lib/chat/input-parser';
 
 export const telegramBot = {
   /**
-   * Helper to build HTML card and inline keyboard for any order state
+   * Helper to build dynamic HTML card and inline keyboard for any order state
    */
   generateOrderCard(order: Order, assignedWorkerName?: string): { cardHtml: string; replyMarkup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } {
+    const firstItem = order.items?.[0];
     const itemsText = order.items
       ?.map(item => `  ▪️ <b>${item.product_name}</b> x ${item.quantity} = ৳${item.subtotal}`)
       .join('\n') || '  ▪️ No item details';
+
+    const gameTitle = 
+      order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || 
+      firstItem?.product_name || 
+      'Top-Up Service';
 
     const workerName = assignedWorkerName || order.current_worker?.full_name || 'Worker Assigned';
 
@@ -18,15 +25,15 @@ export const telegramBot = {
       order.player_uid || 
       (order.delivery_address as any)?.player_uid || 
       (order.delivery_address as any)?.name ||
-      order.delivery_address?.address?.match(/(?:UID|Player UID|ID):\s*([0-9a-zA-Z]+)/i)?.[1] ||
-      order.customer_notes?.match(/(?:PUBG UID|UID|Player UID):\s*([0-9a-zA-Z]+)/i)?.[1] ||
+      order.delivery_address?.address?.match(/(?:UID|Player UID|Email|ID):\s*([0-9a-zA-Z@._+-]+)/i)?.[1] ||
+      order.customer_notes?.match(/(?:PUBG UID|UID|Player UID|Email|Account):\s*([0-9a-zA-Z@._+-]+)/i)?.[1] ||
       'N/A';
 
     const trxId = 
       order.trx_id || 
       (order.delivery_address as any)?.trx_id ||
       (order.delivery_address as any)?.notes ||
-      order.customer_notes?.match(/Trx:\s*([^|\n]+)/i)?.[1]?.trim() ||
+      order.customer_notes?.match(/(?:Proof|Trx):\s*([^|\n]+)/i)?.[1]?.trim() ||
       order.payments?.[0]?.transaction_id ||
       (order.payments?.[0] as any)?.trx_id ||
       'N/A';
@@ -39,30 +46,35 @@ export const telegramBot = {
       order.payments?.[0]?.method ||
       'bKash/Nagad/Rocket';
 
+    const accountInfo = getAccountFieldInfo(playerUid, gameTitle);
+    const { methodLabel, proofLines } = formatPaymentDisplayForTelegram(trxId, paymentMethod);
+
     if (order.status === 'CLAIMED' || order.status === 'PROCESSING') {
       return {
         cardHtml: 
-`✅ <b>TOP-UP CLAIMED / টপ-আপ গ্রহণ করা হয়েছে</b>
+`✅ <b>ORDER CLAIMED / অর্ডার গ্রহণ করা হয়েছে</b>
 
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-🎮 <b>Player UID:</b> <code>${playerUid}</code>
-💳 <b>Payment:</b> ${paymentMethod} (TrxID: <code>${trxId}</code>)
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>
+${proofLines}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 📝 <b>Notes:</b> ${order.customer_notes || 'None'}
 
 💎 <b>Packages:</b>
 ${itemsText}
 
-<i>Worker: Process the top-up in PUBG and click below when complete or cancel if invalid:</i>`,
+<i>Worker: Process the order and click below when complete or cancel if invalid:</i>`,
         replyMarkup: {
           inline_keyboard: [
             [
-              { text: '✅ Top-Up Completed (ডেলিভারি সম্পন্ন)', callback_data: `status_delivered:${order.order_id}` }
+              { text: '✅ Order Completed (ডেলিভারি সম্পন্ন)', callback_data: `status_delivered:${order.order_id}` }
             ],
             [
-              { text: '❌ Cancel Top-Up (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+              { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
             ]
           ]
         }
@@ -72,24 +84,25 @@ ${itemsText}
     if (order.status === 'OUT_FOR_DELIVERY') {
       return {
         cardHtml: 
-`⚡ <b>PROCESSING TOP-UP / প্রসেসিং চলছে</b>
+`⚡ <b>PROCESSING ORDER / প্রসেসিং চলছে</b>
 
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-🎮 <b>Player UID:</b> <code>${playerUid}</code>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> ${paymentMethod}
-🔢 <b>TrxID:</b> <code>${trxId}</code>
+💳 <b>Payment:</b> <b>${methodLabel}</b>
+${proofLines}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 
-<i>Click below once top-up is completed or cancel if invalid:</i>`,
+<i>Click below once order is completed or cancel if invalid:</i>`,
         replyMarkup: {
           inline_keyboard: [
             [
-              { text: '✅ Top-Up Completed', callback_data: `status_delivered:${order.order_id}` }
+              { text: '✅ Order Completed', callback_data: `status_delivered:${order.order_id}` }
             ],
             [
-              { text: '❌ Cancel Top-Up (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+              { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
             ]
           ]
         }
@@ -99,15 +112,18 @@ ${itemsText}
     if (order.status === 'DELIVERED') {
       return {
         cardHtml: 
-`🎉 <b>TOP-UP COMPLETED & DELIVERED / সম্পন্ন হয়েছে</b>
+`🎉 <b>ORDER COMPLETED & DELIVERED / সম্পন্ন হয়েছে</b>
 
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🎮 <b>Player UID:</b> <code>${playerUid}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 👷 <b>Processed by:</b> <b>${workerName}</b>
 💰 <b>Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> ${paymentMethod}
-🔢 <b>TrxID:</b> <code>${trxId}</code>
+💳 <b>Payment:</b> <b>${methodLabel}</b>
+${proofLines}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+💎 <b>Packages:</b>
+${itemsText}
 🕒 <b>Completed at:</b> ${new Date().toLocaleTimeString()}`,
         replyMarkup: {
           inline_keyboard: []
@@ -117,23 +133,25 @@ ${itemsText}
 
     if (order.status === 'CANCELLED') {
       let cancelReason = 'No reason provided';
-      if (order.customer_notes && !order.customer_notes.startsWith('PUBG UID:')) {
+      if (order.customer_notes && !order.customer_notes.startsWith('PUBG UID:') && !order.customer_notes.startsWith('State Bot Order')) {
         cancelReason = order.customer_notes;
       }
       return {
         cardHtml: 
-`❌ <b>TOP-UP CANCELLED / অর্ডার বাতিল করা হয়েছে</b>
+`❌ <b>ORDER CANCELLED / অর্ডার বাতিল করা হয়েছে</b>
 
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🎮 <b>Player UID:</b> <code>${playerUid}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 👷 <b>Handled by:</b> <b>${workerName}</b>
 ⚠️ <b>Reason / কারণ:</b> ${cancelReason}
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> ${paymentMethod} (TrxID: <code>${trxId}</code>)
+💳 <b>Payment:</b> <b>${methodLabel}</b>
+${proofLines}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 🕒 <b>Cancelled at:</b> ${new Date().toLocaleTimeString()}
 
-<i>⚠️ This top-up order is cancelled. No further worker action needed.</i>`,
+<i>⚠️ This order is cancelled. No further worker action needed.</i>`,
         replyMarkup: {
           inline_keyboard: []
         }
@@ -143,25 +161,26 @@ ${itemsText}
     // Default: PENDING_CLAIM / PENDING_PAYMENT
     return {
       cardHtml: 
-`🚨 <b>NEW TOP-UP ORDER / নতুন টপ-আপ অর্ডার</b>
+`🚨 <b>NEW ORDER / নতুন অর্ডার</b>
 
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🎮 <b>Player UID:</b> <code>${playerUid}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> ${paymentMethod}
-🔢 <b>TrxID / Sender:</b> <code>${trxId}</code>
+💳 <b>Payment:</b> <b>${methodLabel}</b>
+${proofLines}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 📝 <b>Notes:</b> ${order.customer_notes || 'None'}
 
 💎 <b>Packages:</b>
 ${itemsText}
 
-<i>Click below to claim and process this top-up order:</i>`,
+<i>Click below to claim and process this order:</i>`,
       replyMarkup: {
         inline_keyboard: [
           [
             {
-              text: '⚡ Claim Top-Up (অর্ডার গ্রহণ করুন)',
+              text: '⚡ Claim Order (অর্ডার গ্রহণ করুন)',
               callback_data: `claim:${order.order_id}`
             }
           ]

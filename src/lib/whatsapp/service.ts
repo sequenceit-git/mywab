@@ -1,5 +1,6 @@
 import { Order } from '@/types';
 import { env } from '@/lib/config/env';
+import { getAccountFieldInfo, formatPaymentDisplayForWhatsApp, getGameDeliveryConfig } from '@/lib/chat/input-parser';
 
 export interface SendMessageResult {
   success: boolean;
@@ -204,28 +205,38 @@ export const whatsappService = {
    * Send structured Order Confirmation notification to customer with buttons
    */
   async sendOrderConfirmation(order: Order): Promise<SendMessageResult> {
+    const firstItem = order.items?.[0];
     const itemsList = order.items?.map(i => `• ${i.product_name} x ${i.quantity} = ৳${i.subtotal}`).join('\n') || '';
     const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
     
-    const messageText = 
-`🎉 *টপ-আপ অর্ডার নিশ্চিতকরণ / Top-Up Confirmed!*
+    const gameTitle = 
+      order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || 
+      firstItem?.product_name || 
+      '';
 
-প্রিয় গ্রাহক, আপনার টপ-আপ অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে।
+    const accountInfo = getAccountFieldInfo(playerUid, gameTitle);
+    const paymentDisplay = formatPaymentDisplayForWhatsApp(order.trx_id, order.payment_method);
+    const deliveryConfig = getGameDeliveryConfig(gameTitle, firstItem?.product_name);
+    
+    const messageText = 
+`🎉 *অর্ডার নিশ্চিতকরণ / Order Confirmed!*
+
+প্রিয় গ্রাহক, আপনার অর্ডারটি সফলভাবে গ্রহণ করা হয়েছে।
 
 📦 *Order ID:* \`${order.order_id}\`
-🎮 *Player UID:* \`${playerUid}\`
+${accountInfo.emoji} *${accountInfo.labelBn}:* \`${playerUid}\`
 💰 *মোট মূল্য (Total):* ৳${order.total_amount}
-💳 *পেমেন্ট:* ${order.payment_method || 'bKash/Nagad/Rocket'} (TrxID: \`${order.trx_id || 'N/A'}\`)
+💳 *পেমেন্ট:* ${paymentDisplay}
 ⚡ *ডেলিভারি সময়:* ৫–১৫ মিনিট (5-15 Minutes)
 
 *প্যাকেজসমূহ (Packages):*
 ${itemsList}
 
-আমাদের টপ-আপ টিম খুব দ্রুত আপনার আইডিতে ইউসি পাঠিয়ে দেবে! 🚀`;
+${deliveryConfig.deliveryMessage}`;
 
     const buttons: WhatsAppButton[] = [
       { id: `track:${order.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
-      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
+      { id: 'btn_game_list', title: deliveryConfig.catalogButtonTitle },
       { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
     ];
 
@@ -236,11 +247,19 @@ ${itemsList}
    * Send Order Claimed by Worker notification
    */
   async sendOrderClaimedNotification(order: Order, workerName: string): Promise<SendMessageResult> {
-    const messageText = 
-`⚡ *টপ-আপ আপডেট / Processing Top-Up!*
+    const firstItem = order.items?.[0];
+    const gameTitle = 
+      order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || 
+      firstItem?.product_name || 
+      '';
+    const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
+    const accountInfo = getAccountFieldInfo(playerUid, gameTitle);
 
-আপনার টপ-আপ অর্ডার *#${order.order_id}* প্রসেসিং শুরু হয়েছে।
-আমাদের কর্মী *${workerName}* আপনার আইডিতে ইউসি টপ-আপ করছেন (সময় ৫–১৫ মিনিট)।`;
+    const messageText = 
+`⚡ *অর্ডার আপডেট / Order Processing!*
+
+আপনার অর্ডার *#${order.order_id}* (${playerUid}) প্রসেসিং শুরু হয়েছে।
+আমাদের কর্মী *${workerName}* আপনার অর্ডারে কাজ করছেন (সময় ৫–১৫ মিনিট)।`;
 
     const buttons: WhatsAppButton[] = [
       { id: `track:${order.order_id}`, title: '📦 লাইভ স্ট্যাটাস' }
@@ -253,16 +272,30 @@ ${itemsList}
    * Send Order Delivered & Completed notification
    */
   async sendOrderDeliveredNotification(order: Order): Promise<SendMessageResult> {
-    const messageText = 
-`✅ *টপ-আপ সফলভাবে সম্পন্ন হয়েছে / Top-Up Delivered!*
+    const firstItem = order.items?.[0];
+    const gameTitle = 
+      order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || 
+      firstItem?.product_name || 
+      '';
+    const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
+    const accountInfo = getAccountFieldInfo(playerUid, gameTitle);
+    const deliveryConfig = getGameDeliveryConfig(gameTitle, firstItem?.product_name);
 
-প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* সফলভাবে সম্পন্ন হয়েছে এবং ইউসি আপনার PUBG আইডিতে যুক্ত করা হয়েছে। 🎮✨
+    let completionNote = `আপনার আইডিতে টপ-আপ যুক্ত করা হয়েছে।`;
+    if (accountInfo.isEmail) {
+      completionNote = `আপনার সাবস্ক্রিপশন চালু করে অ্যাকাউন্ট/লগইন তথ্য সফলভাবে সরবরাহ করা হয়েছে।`;
+    }
+
+    const messageText = 
+`✅ *অর্ডার সফলভাবে সম্পন্ন হয়েছে / Order Delivered!*
+
+প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* (${playerUid}) সফলভাবে সম্পন্ন হয়েছে এবং ${completionNote} ✨
 
 DS Dukan থেকে কেনাকাটা করার জন্য ধন্যবাদ! ❤️
 ওয়েবসাইটে ২% ডিসকাউন্টে সরাসরি কিনতে ভিজিট করুন: https://www.dsdukan.com/#`;
 
     const buttons: WhatsAppButton[] = [
-      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
+      { id: 'btn_game_list', title: deliveryConfig.catalogButtonTitle },
       { id: 'btn_website', title: '🌐 ওয়েবসাইট' }
     ];
 
@@ -273,9 +306,16 @@ DS Dukan থেকে কেনাকাটা করার জন্য ধন�
    * Send Order Cancelled notification to customer
    */
   async sendOrderCancelledNotification(order: Order, reason?: string): Promise<SendMessageResult> {
+    const firstItem = order.items?.[0];
+    const gameTitle = 
+      order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || 
+      firstItem?.product_name || 
+      '';
     const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
+    const deliveryConfig = getGameDeliveryConfig(gameTitle, firstItem?.product_name);
+
     const messageText = 
-`❌ *টপ-আপ অর্ডার বাতিল করা হয়েছে / Top-Up Order Cancelled*
+`❌ *অর্ডার বাতিল করা হয়েছে / Order Cancelled*
 
 প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* (${playerUid}) বাতিল করা হয়েছে।
 ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
@@ -284,7 +324,7 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
 কোনো জিজ্ঞাসা বা সহায়তার জন্য আমাদের ইনবক্সে মেসেজ দিন অথবা ভিজিট করুন: https://www.dsdukan.com/#`;
 
     const buttons: WhatsAppButton[] = [
-      { id: 'btn_catalog', title: '💎 UC প্রাইস লিস্ট' },
+      { id: 'btn_game_list', title: deliveryConfig.catalogButtonTitle },
       { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
     ];
 

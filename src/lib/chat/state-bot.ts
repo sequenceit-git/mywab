@@ -2,7 +2,7 @@ import { db } from '@/lib/db';
 import { whatsappService } from '@/lib/whatsapp/service';
 import { telegramBot } from '@/lib/telegram/bot';
 import { GAME_CATEGORIES, GameCategory, GamePackage, PAYMENT_ACCOUNTS, findGameCategory, findPackage } from './game-catalog';
-import { extractCleanUid, extractPaymentProof, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu } from './input-parser';
+import { extractCleanUid, extractPaymentProof, getAccountFieldInfo, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu } from './input-parser';
 import { ConversationSessionState, OrderItem } from '@/types';
 
 export interface IncomingEvent {
@@ -362,11 +362,13 @@ ${game.inputPrompt}`;
       }
     });
 
+    const accountInfo = getAccountFieldInfo(cleanUid, gameLabel);
+
     const paymentMessage = 
 `📝 *অর্ডার সামারি:*
-• গেম: *${gameLabel}*
+• গেম / সার্ভিস: *${gameLabel}*
 • প্যাকেজ: *${pkgName}*
-• আইডি / একাউন্ট: \`${cleanUid}\`
+• ${accountInfo.emoji} ${accountInfo.labelBn}: \`${cleanUid}\`
 • মোট মূল্য: *৳${amount} Tk*
 
 💳 *পেমেন্ট নম্বরসমূহ (Personal Send Money / Cash In):*
@@ -473,11 +475,12 @@ ${game.inputPrompt}`;
   ): Promise<void> {
     const extracted = extractPaymentProof(rawText);
     const paymentMethod = (extracted.paymentMethod !== 'BKASH/NAGAD/ROCKET' ? extracted.paymentMethod : session.draftOrder.paymentMethod) || 'BKASH';
-    const cleanTrx = extracted.trxId;
+    const cleanTrx = extracted.rawProof;
     const item = session.draftOrder.items?.[0];
     const unitPrice = item?.unitPrice || session.draftOrder.totalAmount || 0;
     const productName = item?.productName || `${session.draftOrder.selectedGameLabel || 'Game'} (${item?.skuOrName || 'Top-Up'})`;
     const playerUid = session.draftOrder.playerUid || 'N/A';
+    const accountInfo = getAccountFieldInfo(playerUid, session.draftOrder.selectedGameLabel);
 
     try {
       // 1. Create order in Database
@@ -494,7 +497,7 @@ ${game.inputPrompt}`;
             quantity: 1
           }
         ],
-        customerNotes: `State Bot Order | Game: ${session.draftOrder.selectedGameLabel || 'N/A'} | UID: ${playerUid} | Trx: ${cleanTrx} | Pay: ${paymentMethod}`
+        customerNotes: `State Bot Order | Game: ${session.draftOrder.selectedGameLabel || 'N/A'} | ${accountInfo.labelEn}: ${playerUid} | Proof: ${cleanTrx} | Pay: ${paymentMethod}`
       });
 
       // 2. Clear draft and update session state

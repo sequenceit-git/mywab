@@ -163,8 +163,8 @@ export const GAME_CATEGORIES: GameCategory[] = [
     fullName: 'MOVIE/ANIME — SUBSCRIPTION & PACKS',
     emoji: '🎬',
     requiresUid: false,
-    inputLabel: 'Email / WhatsApp',
-    inputPrompt: '🎬 আপনার *ইমেইল বা WhatsApp নম্বর* লিখে দিন (যেখানে সাবস্ক্রিপশন লগইন তথ্য পাঠানো হবে):',
+    inputLabel: 'Email / Gmail Account',
+    inputPrompt: '🎬 আপনার *Email / Gmail অ্যাড্রেস* লিখে পাঠান (যেখানে সাবস্ক্রিপশন অ্যাকাউন্ট ও লগইন তথ্য পাঠানো হবে):',
     packages: [
       { id: 'pkg_sub_netflix', name: 'Netflix 1M (1 Screen)', price: 320, description: '1 Month UHD Screen' },
       { id: 'pkg_sub_crunchyroll', name: 'Crunchyroll 1M (Fan)', price: 180, description: '1 Month Anime Streaming' },
