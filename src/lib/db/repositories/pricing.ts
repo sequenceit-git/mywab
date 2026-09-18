@@ -1,4 +1,4 @@
-import { GAME_CATEGORIES, GameCategory, GamePackage } from '@/lib/chat/game-catalog';
+import { GAME_CATEGORIES, GameCategory, GamePackage } from '../../chat/game-catalog';
 import { getDbClient, isSupabaseConfigured } from '../client';
 import { mockStore } from '../mock-store';
 

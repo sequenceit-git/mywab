@@ -1,6 +1,6 @@
 import { Order } from '@/types';
-import { env } from '@/lib/config/env';
-import { getAccountFieldInfo, formatPaymentDisplayForWhatsApp, getGameDeliveryConfig } from '@/lib/chat/input-parser';
+import { env } from '../config/env';
+import { getAccountFieldInfo, formatPaymentDisplayForWhatsApp, getGameDeliveryConfig } from '../chat/input-parser';
 
 export interface SendMessageResult {
   success: boolean;
@@ -232,12 +232,14 @@ ${accountInfo.emoji} *${accountInfo.labelBn}:* \`${playerUid}\`
 *প্যাকেজসমূহ (Packages):*
 ${itemsList}
 
-${deliveryConfig.deliveryMessage}`;
+${deliveryConfig.deliveryMessage}
+
+🎮 *অন্য কোনো গেম বা সাবস্ক্রিপশন (Movie, Free Fire, eFootball ইত্যাদি) নিতে নিচে 'সব সার্ভিস ও গেম' বাটনে চাপ দিন:*`;
 
     const buttons: WhatsAppButton[] = [
+      { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' },
       { id: `track:${order.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
-      { id: deliveryConfig.catalogButtonId, title: deliveryConfig.catalogButtonTitle },
-      { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
+      { id: 'btn_website', title: '🌐 ওয়েবসাইট (২% ছাড়)' }
     ];
 
     return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Top-Up');
@@ -262,7 +264,8 @@ ${deliveryConfig.deliveryMessage}`;
 আমাদের কর্মী *${workerName}* আপনার অর্ডারে কাজ করছেন (সময় ৫–১৫ মিনিট)।`;
 
     const buttons: WhatsAppButton[] = [
-      { id: `track:${order.order_id}`, title: '📦 লাইভ স্ট্যাটাস' }
+      { id: `track:${order.order_id}`, title: '📦 লাইভ স্ট্যাটাস' },
+      { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' }
     ];
 
     return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Update');
@@ -279,7 +282,6 @@ ${deliveryConfig.deliveryMessage}`;
       '';
     const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
     const accountInfo = getAccountFieldInfo(playerUid, gameTitle);
-    const deliveryConfig = getGameDeliveryConfig(gameTitle, firstItem?.product_name);
 
     let completionNote = `আপনার আইডিতে টপ-আপ যুক্ত করা হয়েছে।`;
     if (accountInfo.isEmail) {
@@ -292,10 +294,13 @@ ${deliveryConfig.deliveryMessage}`;
 প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* (${playerUid}) সফলভাবে সম্পন্ন হয়েছে এবং ${completionNote} ✨
 
 DS Dukan থেকে কেনাকাটা করার জন্য ধন্যবাদ! ❤️
-ওয়েবসাইটে ২% ডিসকাউন্টে সরাসরি কিনতে ভিজিট করুন: https://www.dsdukan.com/#`;
+ওয়েবসাইটে ২% ডিসকাউন্টে সরাসরি কিনতে ভিজিট করুন: https://www.dsdukan.com/#
+
+🎮 *অন্য কোনো গেম বা সাবস্ক্রিপশন নিতে নিচের মেনু বাটনে চাপ দিন:*`;
 
     const buttons: WhatsAppButton[] = [
-      { id: deliveryConfig.catalogButtonId, title: deliveryConfig.catalogButtonTitle },
+      { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' },
+      { id: `track:${order.order_id}`, title: '📦 অর্ডার সামারি' },
       { id: 'btn_website', title: '🌐 ওয়েবসাইট' }
     ];
 
@@ -312,7 +317,6 @@ DS Dukan থেকে কেনাকাটা করার জন্য ধন�
       firstItem?.product_name || 
       '';
     const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
-    const deliveryConfig = getGameDeliveryConfig(gameTitle, firstItem?.product_name);
 
     const messageText = 
 `❌ *অর্ডার বাতিল করা হয়েছে / Order Cancelled*
@@ -324,7 +328,7 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
 কোনো জিজ্ঞাসা বা সহায়তার জন্য আমাদের ইনবক্সে মেসেজ দিন অথবা ভিজিট করুন: https://www.dsdukan.com/#`;
 
     const buttons: WhatsAppButton[] = [
-      { id: deliveryConfig.catalogButtonId, title: deliveryConfig.catalogButtonTitle },
+      { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' },
       { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
     ];
 

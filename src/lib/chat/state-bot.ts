@@ -1,8 +1,8 @@
-import { db } from '@/lib/db';
-import { whatsappService } from '@/lib/whatsapp/service';
-import { telegramBot } from '@/lib/telegram/bot';
+import { db } from '../db';
+import { whatsappService } from '../whatsapp/service';
+import { telegramBot } from '../telegram/bot';
 import { GAME_CATEGORIES, GameCategory, GamePackage, PAYMENT_ACCOUNTS, findGameCategory, findPackage, formatWhatsAppRow, formatWhatsAppButton } from './game-catalog';
-import { extractCleanUid, extractPaymentProof, getAccountFieldInfo, getGameDeliveryConfig, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu } from './input-parser';
+import { extractCleanUid, extractPaymentProof, getAccountFieldInfo, getGameDeliveryConfig, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu, parseSlashCommand, isRefusalOrCancellation, isPriceInquiry } from './input-parser';
 import { ConversationSessionState, OrderItem } from '@/types';
 
 export interface IncomingEvent {
@@ -27,31 +27,122 @@ export const stateBot = {
 
     const session = db.getSessionState(conversationId);
 
-    // 1. Gratitude, Acknowledgements & Pleasantries (e.g. "Thank you", "Nice", "Ok", "Done", "Peyechi", etc.)
+    // 0. Slash Commands (e.g. /menu, /start, /track, /cancel, /website, /help, /movie, /pubg, /ff, /efootball)
+    const slash = parseSlashCommand(rawText);
+    if (slash) {
+      switch (slash.command) {
+        case 'menu':
+        case 'cancel':
+          await this.sendWelcomeAndGameList(phone, conversationId, customerName);
+          return;
+
+        case 'track':
+          await this.handleTrackOrder(phone, conversationId, '', slash.args || '');
+          return;
+
+        case 'website':
+          await this.sendWebsiteInfo(phone, conversationId);
+          return;
+
+        case 'help':
+          await this.sendHelpInfo(phone, conversationId);
+          return;
+
+        case 'movie': {
+          const movieGame = findGameCategory('game_movie');
+          if (movieGame) {
+            await this.handleGameSelection(phone, conversationId, movieGame);
+            return;
+          }
+          break;
+        }
+
+        case 'pubg': {
+          const pubgGame = findGameCategory('game_pubg_uid');
+          if (pubgGame) {
+            await this.handleGameSelection(phone, conversationId, pubgGame);
+            return;
+          }
+          break;
+        }
+
+        case 'ff': {
+          const ffGame = findGameCategory('game_ff');
+          if (ffGame) {
+            await this.handleGameSelection(phone, conversationId, ffGame);
+            return;
+          }
+          break;
+        }
+
+        case 'efootball': {
+          const efbGame = findGameCategory('game_efb_android');
+          if (efbGame) {
+            await this.handleGameSelection(phone, conversationId, efbGame);
+            return;
+          }
+          break;
+        }
+
+        default:
+          await this.sendHelpInfo(phone, conversationId);
+          return;
+      }
+    }
+
+    // 1. Refusal, Cancellation or Change of mind ("No kinbo na", "pore nibo", "lagbe na", "thak", "দরকার নেই", etc.)
+    if (isRefusalOrCancellation(rawText) || isRefusalOrCancellation(triggerId)) {
+      await this.handleCancellation(phone, conversationId, customerName);
+      return;
+    }
+
+    // 2. Quick-restart / Menu button clicked or Greeting / Menu reset request
+    const isMenuButton = [
+      'btn_menu', 'btn_restart', 'btn_change_game', 'btn_main_menu', 
+      'btn_game_list', 'btn_cancel'
+    ].includes(triggerId);
+
+    if (isMenuButton || isGreetingOrMenu(rawText) || isGreetingOrMenu(triggerId)) {
+      await this.sendWelcomeAndGameList(phone, conversationId, customerName);
+      return;
+    }
+
+    // 3. Track Order button or text
+    if (triggerId === 'btn_track_order' || triggerId.startsWith('track:') || /^(?:track|অর্ডার\s*ট্র্যাক|ট্র্যাক|track\s*order)/i.test(normalizedText)) {
+      await this.handleTrackOrder(phone, conversationId, triggerId, rawText);
+      return;
+    }
+
+    // 4. Website button or text
+    if (triggerId === 'btn_website' || /^(?:website|ওয়েবসাইট|ওয়েবসাইট\s*তথ্য)/i.test(normalizedText)) {
+      await this.sendWebsiteInfo(phone, conversationId);
+      return;
+    }
+
+    // 5. Price / Packages inquiries ("dam koto", "price koto", "koto taka")
+    if (isPriceInquiry(rawText)) {
+      const currentGame = session.draftOrder.selectedGame ? findGameCategory(session.draftOrder.selectedGame) : undefined;
+      if (currentGame) {
+        await this.sendPackageList(phone, conversationId, currentGame);
+      } else {
+        await this.sendWelcomeAndGameList(phone, conversationId, customerName);
+      }
+      return;
+    }
+
+    // 6. Gratitude, Acknowledgements & Pleasantries (e.g. "Thank you", "Nice", "Ok", "Done", "Peyechi", etc.)
     if (isGratitudeOrPleasantry(rawText)) {
       await this.handleGratitude(phone, conversationId, customerName);
       return;
     }
 
-    // 2. Status inquiries ("order status", "status", "delivery status")
+    // 7. Status inquiries ("order status", "status", "delivery status")
     if (isStatusInquiry(rawText)) {
       await this.handleStatusInquiry(phone, conversationId);
       return;
     }
 
-    // 3. Greeting or Menu reset request ("Hi", "Hello", "Start", "Menu", "Restart")
-    if (isGreetingOrMenu(rawText)) {
-      await this.sendWelcomeAndGameList(phone, conversationId, customerName);
-      return;
-    }
-
-    // 4. Quick-restart / Menu button clicked
-    if (triggerId === 'btn_menu' || triggerId === 'btn_restart' || triggerId === 'btn_change_game') {
-      await this.sendWelcomeAndGameList(phone, conversationId, customerName);
-      return;
-    }
-
-    // 5. Payment method buttons / selection
+    // 6. Payment method buttons / selection
     if (
       triggerId.startsWith('pay_') ||
       (session.step === 'AWAITING_PAYMENT' && ['bkash', 'nagad', 'rocket', 'বিকাশ', 'নগদ', 'রকেট'].includes(normalizedText))
@@ -60,11 +151,32 @@ export const stateBot = {
       return;
     }
 
-    // 6. Check if trigger or text is selecting one of the game categories
-    const matchedGame = findGameCategory(triggerId) || (session.step === 'SELECTING_GAME' || session.step === 'IDLE' ? findGameCategory(rawText) : undefined);
+    // 7. If awaiting payment and user entered payment proof (TrxID / last digits / notes) without clicking a game button
+    if (session.step === 'AWAITING_PAYMENT' && !triggerId.startsWith('game_') && !triggerId.startsWith('pkg_')) {
+      const isExplicitGameSwitch = ['movie', 'netflix', 'pubg', 'freefire', 'free fire', 'efootball', 'pes'].includes(normalizedText);
+      if (!isExplicitGameSwitch) {
+        const extracted = extractPaymentProof(rawText);
+        if (extracted.rawProof && extracted.rawProof !== 'N/A') {
+          await this.handleTrxIdInput(phone, conversationId, userId, rawText, session);
+          return;
+        }
+      }
+    }
+
+    // 8. If collecting UID and user entered a valid UID / Email
+    if (session.step === 'COLLECTING_UID' && !triggerId.startsWith('game_') && !triggerId.startsWith('pkg_')) {
+      const cleanUid = extractCleanUid(rawText, session.draftOrder.selectedGame || session.draftOrder.selectedGameLabel);
+      if (cleanUid) {
+        await this.handleUidInput(phone, conversationId, rawText, session);
+        return;
+      }
+    }
+
+    // 9. Check if trigger or text is selecting one of the game categories (supported in any step!)
+    const matchedGame = findGameCategory(triggerId) || findGameCategory(rawText);
     if (matchedGame) {
       // Check if user also directly specified a package in the same message (e.g. "Netflix 1 month", "PUBG 60 UC")
-      const directPackage = findPackage(matchedGame, rawText);
+      const directPackage = findPackage(matchedGame, triggerId) || findPackage(matchedGame, rawText);
       if (directPackage) {
         await this.handlePackageSelection(phone, conversationId, matchedGame, directPackage);
         return;
@@ -73,7 +185,7 @@ export const stateBot = {
       return;
     }
 
-    // 7. Check if trigger or text is selecting a package for the currently selected game
+    // 10. Check if trigger or text is selecting a package for the currently selected game
     if (session.step === 'SELECTING_PACKAGE' || triggerId.startsWith('pkg_')) {
       const currentGame = session.draftOrder.selectedGame ? findGameCategory(session.draftOrder.selectedGame) : undefined;
       if (currentGame) {
@@ -85,7 +197,7 @@ export const stateBot = {
       }
     }
 
-    // 8. Step-specific text input routing
+    // 11. Step-specific text input routing
     switch (session.step) {
       case 'COLLECTING_UID':
         await this.handleUidInput(phone, conversationId, rawText, session);
@@ -145,7 +257,9 @@ export const stateBot = {
 `👋 আসসালামু আলাইকুম${nameGreeting}! DS Dukan-এ আপনাকে স্বাগতম।
 
 🎮 *আমাদের সব গেম টপ-আপ এবং সাবস্ক্রিপশন সার্ভিস:*
-নিচের মেনু থেকে আপনার কাঙ্ক্ষিত গেম বা সার্ভিসটি সিলেক্ট করুন। ডেলিভারি মাত্র ৫–১৫ মিনিটে! ⚡`;
+নিচের মেনু থেকে আপনার কাঙ্ক্ষিত গেম বা সার্ভিসটি সিলেক্ট করুন। ডেলিভারি মাত্র ৫–১৫ মিনিটে! ⚡
+
+💡 *কমান্ড টিপস:* যেকোনো সময় মেনু দেখতে */menu*, অর্ডার ট্র্যাক করতে */track* বা সহায়তার জন্য */help* লিখুন।`;
 
     const sections = [
       {
@@ -323,12 +437,29 @@ ${game.inputPrompt}`;
     rawText: string,
     session: ConversationSessionState
   ): Promise<void> {
-    const cleanUid = extractCleanUid(rawText);
+    if (isRefusalOrCancellation(rawText)) {
+      await this.handleCancellation(phone, conversationId);
+      return;
+    }
+
+    if (isGreetingOrMenu(rawText)) {
+      await this.sendWelcomeAndGameList(phone, conversationId);
+      return;
+    }
+
+    const cleanUid = extractCleanUid(rawText, session.draftOrder.selectedGame || session.draftOrder.selectedGameLabel);
 
     if (!cleanUid || cleanUid.length < 3) {
-      await whatsappService.sendMessage(
+      const gameLabel = session.draftOrder.selectedGameLabel || 'গেম';
+      const accountInfo = getAccountFieldInfo('', gameLabel);
+      const buttons = [
+        { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
+      ];
+      await whatsappService.sendInteractiveButtons(
         phone,
-        '⚠️ আইডি বা প্রয়োজনীয় তথ্যটি সঠিক নয়। অনুগ্রহ করে আপনার সঠিক প্লেয়ার আইডি বা তথ্যটি লিখে পাঠান:'
+        `⚠️ আপনার প্রদানকৃত *${accountInfo.labelBn}* তথ্যটি সঠিক মনে হচ্ছে না।\n\nঅনুগ্রহ করে আপনার সঠিক ${accountInfo.labelBn} লিখে পাঠান (অথবা অন্য সার্ভিস দেখতে নিচে মেইন মেনু সিলেক্ট করুন):`,
+        buttons,
+        'সঠিক তথ্য দিন'
       );
       return;
     }
@@ -457,6 +588,11 @@ ${game.inputPrompt}`;
     rawText: string,
     session: ConversationSessionState
   ): Promise<void> {
+    if (isGreetingOrMenu(rawText)) {
+      await this.sendWelcomeAndGameList(phone, conversationId);
+      return;
+    }
+
     const extracted = extractPaymentProof(rawText);
     const paymentMethod = (extracted.paymentMethod !== 'BKASH/NAGAD/ROCKET' ? extracted.paymentMethod : session.draftOrder.paymentMethod) || 'BKASH';
     const cleanTrx = extracted.rawProof;
@@ -526,18 +662,28 @@ ${game.inputPrompt}`;
     }
 
     if (!orderIdCode) {
-      await whatsappService.sendMessage(
+      const buttons = [
+        { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' }
+      ];
+      await whatsappService.sendInteractiveButtons(
         phone,
-        '📦 আপনার অর্ডার ট্র্যাক করতে আপনার *Order ID* (যেমন: `WAP-20260918-1234`) লিখে পাঠান।'
+        '📦 আপনার অর্ডার ট্র্যাক করতে আপনার *Order ID* (যেমন: `WAP-20260918-1234`) লিখে পাঠান:',
+        buttons,
+        'অর্ডার ট্র্যাকিং'
       );
       return;
     }
 
     const order = await db.getOrderByCode(orderIdCode);
     if (!order) {
-      await whatsappService.sendMessage(
+      const buttons = [
+        { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' }
+      ];
+      await whatsappService.sendInteractiveButtons(
         phone,
-        `❌ *${orderIdCode}* নম্বরের কোনো অর্ডার পাওয়া যায়নি। দয়া করে সঠিক Order ID দিন।`
+        `❌ *${orderIdCode}* নম্বরের কোনো অর্ডার পাওয়া যায়নি। দয়া করে সঠিক Order ID দিন অথবা সব সার্ভিস দেখতে নিচে চাপ দিন:`,
+        buttons,
+        'অর্ডার পাওয়া যায়নি'
       );
       return;
     }
@@ -577,8 +723,8 @@ ${itemsList}
 ${order.status === 'DELIVERED' ? (accountInfo.isEmail ? '🎉 আপনার সাবস্ক্রিপশন সফলভাবে চালু করা হয়েছে!' : '🎉 আপনার অ্যাকাউন্টে টপ-আপ পৌঁছে দেওয়া হয়েছে!') : '⚡ আমাদের টিম দ্রুত ডেলিভারি দিতে কাজ করছে (৫-১৫ মিনিট)।'}`;
 
     const buttons = [
-      { id: deliveryConfig.catalogButtonId, title: deliveryConfig.catalogButtonTitle },
-      { id: 'btn_website', title: '🌐 ওয়েবসাইট' }
+      { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' },
+      { id: 'btn_website', title: '🌐 ওয়েবসাইট (২% ছাড়)' }
     ];
 
     await whatsappService.sendInteractiveButtons(phone, message, buttons, 'DS Dukan Tracker');
@@ -595,7 +741,7 @@ https://www.dsdukan.com/#
 🎁 ওয়েবসাইটে সরাসরি অর্ডার করলে পাচ্ছেন *২% ইনস্ট্যান্ট ডিসকাউন্ট* এবং সাথে সাথে ডেলিভারি!`;
 
     const buttons = [
-      { id: 'btn_game_list', title: '🎮 গেম টপ-আপ নিন' }
+      { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' }
     ];
 
     await whatsappService.sendInteractiveButtons(phone, text, buttons, 'DS Dukan Website');
@@ -619,7 +765,7 @@ DS Dukan এর সাথে থাকার জন্য কৃতজ্ঞ। 
 🎮 নতুন অর্ডার করতে নিচের বাটনে চাপ দিন:`;
 
     const buttons = [
-      { id: 'btn_game_list', title: '🎮 নতুন অর্ডার' },
+      { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' },
       { id: 'btn_website', title: '🌐 ওয়েবসাইট (২% ছাড়)' },
       { id: 'btn_track_order', title: '📦 অর্ডার ট্র্যাক' }
     ];
@@ -647,7 +793,7 @@ DS Dukan এর সাথে থাকার জন্য কৃতজ্ঞ। 
 
     const buttons = [
       { id: 'btn_track_order', title: '📦 অর্ডার ট্র্যাক' },
-      { id: 'btn_game_list', title: '🎮 নতুন অর্ডার' }
+      { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' }
     ];
 
     await whatsappService.sendInteractiveButtons(phone, text, buttons, 'DS Dukan Support');
@@ -657,6 +803,80 @@ DS Dukan এর সাথে থাকার জন্য কৃতজ্ঞ। 
       sender: 'BOT',
       content: text,
       metadata: { type: 'STATUS_INQUIRY_REPLY' }
+    });
+  },
+
+  /**
+   * Help & Slash Command guide
+   */
+  async sendHelpInfo(phone: string, conversationId: string): Promise<void> {
+    const text = 
+`ℹ️ *DS Dukan — কমান্ড ও সহায়তা নির্দেশিকা (Commands & Guide)*
+
+আমাদের সাথে যেকোনো সময় সহজে ইন্টারঅ্যাক্ট করতে নিচের কমান্ডগুলো ব্যবহার করতে পারেন:
+
+📌 *বেসিক কমান্ডসমূহ:*
+• */menu* বা */start* : সব গেম ও সার্ভিসের তালিকা
+• */track [OrderID]* : লাইভ অর্ডার স্ট্যাটাস চেক
+• */cancel* : চলমান অর্ডার বাতিল ও মেনুতে ফিরে যাওয়া
+• */website* : অফিশিয়াল ওয়েবসাইট (২% ইনস্ট্যান্ট ছাড়)
+• */help* : সহায়তা ও কমান্ড লিস্ট
+
+🎮 *সার্ভিস শর্টকাট:*
+• */pubg* : PUBG Mobile UC প্রাইস ও টপ-আপ
+• */ff* : Free Fire Diamond প্রাইস ও টপ-আপ
+• */movie* : Netflix, Crunchyroll, Spotify সাবস্ক্রিপশন
+• */efootball* : eFootball Coins প্রাইস ও টপ-আপ
+
+📞 কোনো সমস্যা বা সহায়তার জন্য আমাদের ইনবক্সে সরাসরি লিখুন।`;
+
+    const buttons = [
+      { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' },
+      { id: 'btn_track_order', title: '📦 অর্ডার ট্র্যাক' },
+      { id: 'btn_website', title: '🌐 ওয়েবসাইট (২% ছাড়)' }
+    ];
+
+    await whatsappService.sendInteractiveButtons(phone, text, buttons, 'DS Dukan Help');
+
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: text,
+      metadata: { type: 'HELP_INFO' }
+    });
+  },
+
+  /**
+   * Handle Refusal, Cancellation or Change of mind gracefully
+   */
+  async handleCancellation(phone: string, conversationId: string, customerName?: string): Promise<void> {
+    db.clearSessionDraft(conversationId);
+    db.setSessionState(conversationId, {
+      step: 'IDLE'
+    });
+
+    const nameGreeting = customerName ? ` *${customerName}*` : '';
+    const text = 
+`👍 *ঠিক আছে${nameGreeting}, কোনো সমস্যা নেই!*
+
+আপনার যখনই কোনো গেম টপ-আপ বা সাবস্ক্রিপশন (PUBG, Free Fire, Netflix ইত্যাদি) প্রয়োজন হবে, আমাদের জানাতে পারেন। 🤝✨
+
+🌐 আমাদের ওয়েবসাইটে সরাসরি অর্ডারে রয়েছে *২% ইনস্ট্যান্ট ডিসকাউন্ট*!
+🎮 যেকোনো সময় সার্ভিস দেখতে নিচের বাটনে চাপ দিন:`;
+
+    const buttons = [
+      { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' },
+      { id: 'btn_website', title: '🌐 ওয়েবসাইট (২% ছাড়)' },
+      { id: 'btn_help', title: 'ℹ️ সহায়তা' }
+    ];
+
+    await whatsappService.sendInteractiveButtons(phone, text, buttons, 'DS Dukan Assistant');
+
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: text,
+      metadata: { type: 'CANCELLATION_REPLY' }
     });
   }
 };

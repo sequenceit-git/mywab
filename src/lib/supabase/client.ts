@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { env } from '@/lib/config/env';
+import { env } from '../config/env';
 
 export const isSupabaseConfigured = () => {
   return env.supabase.isConfigured;

@@ -2,7 +2,7 @@ import { Order, OrderStatus } from '@/types';
 import { getDbClient, isSupabaseConfigured } from '../client';
 import { mockStore } from '../mock-store';
 import { usersRepository } from './users';
-import { getAccountFieldInfo } from '@/lib/chat/input-parser';
+import { getAccountFieldInfo } from '../../chat/input-parser';
 
 export function hydrateOrder(data: any): Order {
   if (!data) return data;

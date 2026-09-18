@@ -1,8 +1,8 @@
 import { Order } from '@/types';
-import { db } from '@/lib/db';
-import { whatsappService } from '@/lib/whatsapp/service';
-import { env } from '@/lib/config/env';
-import { getAccountFieldInfo, formatPaymentDisplayForTelegram } from '@/lib/chat/input-parser';
+import { db } from '../db';
+import { whatsappService } from '../whatsapp/service';
+import { env } from '../config/env';
+import { getAccountFieldInfo, formatPaymentDisplayForTelegram } from '../chat/input-parser';
 
 export const telegramBot = {
   /**

@@ -16,16 +16,43 @@ export function convertBengaliDigits(text: string): string {
 }
 
 /**
- * Extract clean, trimmed Player UID / Email Account / Phone / Game ID
+ * Extract clean, trimmed Player UID / Email Account / Phone / Game ID based on game category
  */
-export function extractCleanUid(rawText: string): string {
+export function extractCleanUid(rawText: string, gameLabelOrCode?: string): string {
   if (!rawText) return '';
   const converted = convertBengaliDigits(rawText.trim());
+  const game = (gameLabelOrCode || '').toLowerCase();
 
-  // 1. Check if input contains an Email address (e.g. "okovijit@gmail.com" or "Email: okovijit@gmail.com")
+  // 0. Explicit check for Refusal, Cancellation, Menu, Pleasantry, Price Inquiry triggers
+  if (
+    isRefusalOrCancellation(rawText) || 
+    isRefusalOrCancellation(converted) ||
+    isGreetingOrMenu(rawText) || 
+    isGreetingOrMenu(converted) || 
+    isGratitudeOrPleasantry(rawText) ||
+    isPriceInquiry(rawText)
+  ) {
+    return '';
+  }
+
+  // 1. Email validation (For Movie/Anime/Netflix/Spotify/Prime/YouTube/Konami)
+  const isEmailService = game.includes('movie') || game.includes('netflix') || game.includes('spotify') || 
+                         game.includes('prime') || game.includes('crunchyroll') || game.includes('youtube') ||
+                         game.includes('efb') || game.includes('efootball') || game.includes('konami');
+
   const emailMatch = converted.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   if (emailMatch) {
     return emailMatch[0].trim();
+  }
+  if (isEmailService && !emailMatch) {
+    const isKonamiGame = game.includes('efb') || game.includes('efootball') || game.includes('konami');
+    if (isKonamiGame) {
+      const tokens = converted.split(/\s+/).filter(Boolean);
+      if (tokens.length === 1 && /^[a-zA-Z0-9_-]{4,25}$/.test(tokens[0]) && !isRefusalOrCancellation(tokens[0])) {
+        return tokens[0];
+      }
+    }
+    return ''; // Strictly require valid email for movie/OTT subscriptions
   }
 
   // 2. Check if matches key-value prefix like "UID: 123456", "Player ID 123456", "ID: 123456", "আমার আইডি: 123456"
@@ -33,32 +60,57 @@ export function extractCleanUid(rawText: string): string {
     /(?:player\s*uid|player\s*id|playerid|uid|id|account|acc|user\s*id|email|gmail|আইডি|ইউআইডি|প্লেয়ার\s*আইডি|প্লেয়ার\s*আইডি|ইমেইল|জিমেইল)[\s:=#\-_]+([^\s,;()\[\]{}]+)/i
   );
   if (prefixMatch && prefixMatch[1]) {
-    return prefixMatch[1].trim();
+    const matchedVal = prefixMatch[1].trim();
+    if (isRefusalOrCancellation(matchedVal) || isGreetingOrMenu(matchedVal) || isGratitudeOrPleasantry(matchedVal)) {
+      return '';
+    }
+    return matchedVal;
   }
 
   // 3. Strip standard conversational prefixes
   let cleaned = converted
-    .replace(/^(?:my\s*(?:player\s*)?(?:uid|id|email|account)\s*(?:is)?|amar\s*(?:uid|id|player\s*id|email)|আমার\s*(?:আইডি|প্লেয়ার\s*আইডি|প্লেয়ার\s*আইডি|ইউআইডি|ইমেইল))\s*[:=\-_]?\s*/i, '')
-    .replace(/^(?:player\s*uid|player\s*id|playerid|uid|id|account|acc|email|আইডি|ইউআইডি|ইমেইল)[\s:=#\-_]*/i, '')
+    .replace(/^(?:my\s*(?:player\s*)?(?:uid|id|email|account|number)\s*(?:is)?|amar\s*(?:uid|id|player\s*id|email|number)|আমার\s*(?:আইডি|প্লেয়ার\s*আইডি|প্লেয়ার\s*আইডি|ইউআইডি|ইমেইল|নম্বর))\s*[:=\-_]?\s*/i, '')
+    .replace(/^(?:player\s*uid|player\s*id|playerid|uid|id|account|acc|email|phone|আইডি|ইউআইডি|ইমেইল|নম্বর)[\s:=#\-_]*/i, '')
     .replace(/[()[\]{}'"`]/g, ' ')
     .trim();
 
-  // 4. If there is a sequence of 5-15 digits at the start (e.g. "5875547 (nick)" -> "5875547")
-  const leadingDigits = cleaned.match(/^(\d{5,15})\b/);
-  if (leadingDigits) {
-    return leadingDigits[1];
+  if (isRefusalOrCancellation(cleaned) || isGreetingOrMenu(cleaned) || isGratitudeOrPleasantry(cleaned)) {
+    return '';
   }
 
-  // 5. If first token is valid (e.g. "player#1234" or standard ID)
+  // 4. Numeric sequence check (For PUBG UID, Free Fire UID, Phone Numbers: 5-15 digits)
+  const digitsMatch = cleaned.match(/\b(\d{5,15})\b/);
+  if (digitsMatch) {
+    return digitsMatch[1];
+  }
+
+  // 5. BD 11-digit phone number check
+  const phoneMatch = cleaned.match(/\b(01[3-9]\d{8})\b/);
+  if (phoneMatch) {
+    return phoneMatch[1];
+  }
+
+  // 6. If game strictly requires numeric UID (PUBG UID, Free Fire, PUBG KR)
+  const isNumericUidGame = game.includes('uid') || game.includes('ff') || game.includes('free fire') || game.includes('kr');
+  if (isNumericUidGame) {
+    // Cannot accept plain English/Bengali words without numbers as UID
+    const anyDigits = cleaned.match(/\d{4,15}/);
+    if (anyDigits) {
+      return anyDigits[0];
+    }
+    return ''; // Reject conversational text
+  }
+
+  // 7. For other login / special services, accept single alphanumeric handle if >= 3 chars
   const tokens = cleaned.split(/\s+/).filter(Boolean);
-  if (tokens.length > 0) {
+  if (tokens.length === 1) {
     const candidate = tokens[0];
-    if (candidate.length >= 3) {
+    if (candidate.length >= 3 && !isRefusalOrCancellation(candidate) && !isGreetingOrMenu(candidate)) {
       return candidate.trim();
     }
   }
 
-  return (cleaned || converted).trim();
+  return '';
 }
 
 /**
@@ -457,17 +509,140 @@ export function isStatusInquiry(rawText: string): boolean {
 }
 
 /**
- * Check if a text is a standard greeting or menu request
+ * Check if a text expresses customer refusal, cancellation, or change of mind
+ * (e.g. "No kinbo na", "pore nibo", "lagbe na", "nibo na", "cancel", "দরকার নেই", "থাক")
+ */
+export function isRefusalOrCancellation(rawText: string): boolean {
+  if (!rawText) return false;
+  const text = rawText.trim().toLowerCase();
+  const clean = text.replace(/[^\w\s\u0980-\u09FF]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const refusalWords = [
+    'no', 'nah', 'na', 'nope', 'never', 'cancel', 'stop', 'back', 'thak',
+    'না', 'না না', 'নাহ', 'বাতিল', 'থাক', 'দরকার নেই', 'দরকার নাই', 'দরকার নাই ভাই',
+    'kinbo na', 'kinto chai na', 'nibo na', 'lagbe na', 'pore nibo', 'pore bolbo',
+    'pore', 'later', 'not now', 'dont want', 'dont need', 'no thanks',
+    'কিনব না', 'কিনবো না', 'নিব না', 'নিবো না', 'লাগবে না', 'দরকার নেই',
+    'পরে নিব', 'পরে নিবো', 'পরে বলব', 'পরে বলবো', 'এখন না', 'চাই না', 'বাদ দেন', 'বাদ দাও'
+  ];
+
+  if (refusalWords.includes(text) || refusalWords.includes(clean)) {
+    return true;
+  }
+
+  const refusalPatterns = [
+    /\b(?:no|nah|nope|not\s*now|dont\s*want|dont\s*need|no\s*thanks)\b/i,
+    /(?:kinbo\s*na|kinbo\s*nah|nibo\s*na|nibo\s*nah|lagbe\s*na|lagbo\s*na|dorkar\s*nai|dorkar\s*nei)/i,
+    /(?:pore\s*nibo|pore\s*kinbo|pore\s*bolbo|pore\s*hobe|thak\s*lagbe\s*na|bad\s*den)/i,
+    /(?:না|নাহ|দরকার\s*নেই|দরকার\s*নাই|লাগবে\s*না|কিনব\s*না|কিনবো\s*না|নিব\s*না|নিবো\s*না|পরে\s*নিব|পরে\s*নিবো|পরে\s*হবে|বাদ\s*দেন)/
+  ];
+
+  return refusalPatterns.some(p => p.test(clean) || p.test(text));
+}
+
+/**
+ * Check if a text is asking for price or packages
+ */
+export function isPriceInquiry(rawText: string): boolean {
+  if (!rawText) return false;
+  const text = rawText.trim().toLowerCase();
+  const clean = text.replace(/[^\w\s\u0980-\u09FF]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const pricePatterns = [
+    /\b(?:price|rate|cost|package|pkg|packages|price\s*list)\b/i,
+    /(?:dam\s*koto|price\s*koto|koto\s*taka|koto\s*tk|koto\s*kore|rate\s*koto)/i,
+    /(?:দাম\s*কত|প্রাইস\s*কত|টাকা\s*কত|রেট\s*কত|প্রাইস\s*লিস্ট|প্যাকেজ|মূল্য\s*কত)/
+  ];
+
+  return pricePatterns.some(p => p.test(clean) || p.test(text));
+}
+
+/**
+ * Check if a text is a standard greeting, menu, back, or cancel request
  */
 export function isGreetingOrMenu(rawText: string): boolean {
   if (!rawText) return false;
   const text = rawText.trim().toLowerCase();
 
+  // Strip emojis, punctuation and redundant spaces for robust matching
+  const clean = text.replace(/[^\w\s\u0980-\u09FF]/g, ' ').replace(/\s+/g, ' ').trim();
+
   const greetingWords = [
     'hi', 'hello', 'hey', 'start', 'menu', 'help', 'shuru', 
     'kemon achen', 'assalamu alaikum', 'assalamualaikum', 'salam', 'slm',
-    'হাই', 'হ্যালো', 'সালাম', 'শুরু', 'মেনু', 'হেল্প', 'কেমন আছেন'
+    'হাই', 'হ্যালো', 'সালাম', 'শুরু', 'মেনু', 'হেল্প', 'কেমন আছেন',
+    'main menu', 'মেইন মেনু', 'মেইনমেনু', 'মেইন মেন্যু', 'মেন্যু',
+    'cancel', 'বাতিল', 'বাতিল করুন', 'back', 'পিছনে', 'ফিরে যান',
+    'restart', 'রিস্টার্ট', 'home', 'হোম', 'list', 'তালিকা', 'সব গেম', 'সব সার্ভিস'
   ];
 
-  return greetingWords.includes(text) || /^(?:hi|hello|hey|salam|assalamu\s*alaikum)\b/i.test(text);
+  if (greetingWords.includes(text) || greetingWords.includes(clean)) {
+    return true;
+  }
+
+  return /^(?:hi|hello|hey|salam|assalamu\s*alaikum|start|menu|main\s*menu|cancel|back|help)\b/i.test(clean) ||
+         /(?:মেইন\s*মেনু|মেনু|বাতিল|ক্যানসেল|হোম|শুরু|রিস্টার্ট)/.test(clean);
 }
+
+/**
+ * Slash Command parser (e.g. /menu, /start, /track, /cancel, /website, /help, /movie, /pubg, /ff, /efootball)
+ */
+export interface SlashCommandResult {
+  isSlashCommand: boolean;
+  command: string; // e.g. 'menu', 'start', 'track', 'website', 'help', 'pubg', 'movie', 'ff', 'efootball', 'cancel'
+  args?: string;   // e.g. 'WAP-20260918-1234' for /track WAP-20260918-1234
+}
+
+export function parseSlashCommand(rawText: string): SlashCommandResult | null {
+  if (!rawText) return null;
+  const trimmed = rawText.trim();
+  if (!trimmed.startsWith('/') && !trimmed.startsWith('!')) return null;
+
+  const parts = trimmed.slice(1).trim().split(/\s+/);
+  const cmd = parts[0]?.toLowerCase() || '';
+  const args = parts.slice(1).join(' ').trim();
+
+  if (!cmd) return null;
+
+  // 1. Menu & Navigation Commands
+  if (['start', 'menu', 'main', 'mainmenu', 'games', 'services', 'catalog', 'shuru', 'home', 'মেনু', 'শুরু'].includes(cmd)) {
+    return { isSlashCommand: true, command: 'menu', args };
+  }
+
+  // 2. Track & Status
+  if (['track', 'status', 'order', 'trackorder', 'ট্র্যাক'].includes(cmd)) {
+    return { isSlashCommand: true, command: 'track', args };
+  }
+
+  // 3. Website & Discounts
+  if (['web', 'website', 'site', 'discount', 'offer', 'ওয়েবসাইট', 'ওয়েবসাইট'].includes(cmd)) {
+    return { isSlashCommand: true, command: 'website', args };
+  }
+
+  // 4. Help & Support
+  if (['help', 'support', 'contact', 'info', 'guide', 'হেল্প', 'সাহায্য'].includes(cmd)) {
+    return { isSlashCommand: true, command: 'help', args };
+  }
+
+  // 5. Cancel & Reset
+  if (['cancel', 'reset', 'restart', 'stop', 'back', 'বাতিল'].includes(cmd)) {
+    return { isSlashCommand: true, command: 'cancel', args };
+  }
+
+  // 6. Direct Service Shortcuts
+  if (['movie', 'netflix', 'anime', 'crunchyroll', 'spotify', 'prime', 'subs', 'subscription', 'মুভি'].includes(cmd)) {
+    return { isSlashCommand: true, command: 'movie', args };
+  }
+  if (['pubg', 'uc', 'pubgkr', 'kr', 'পাবজি'].includes(cmd)) {
+    return { isSlashCommand: true, command: 'pubg', args };
+  }
+  if (['ff', 'freefire', 'diamond', 'diamonds', 'ফ্রিফায়ার'].includes(cmd)) {
+    return { isSlashCommand: true, command: 'ff', args };
+  }
+  if (['efootball', 'efb', 'pes', 'coin', 'coins', 'ইফুটবল'].includes(cmd)) {
+    return { isSlashCommand: true, command: 'efootball', args };
+  }
+
+  return { isSlashCommand: true, command: cmd, args };
+}
+
