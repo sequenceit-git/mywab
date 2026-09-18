@@ -112,3 +112,138 @@ export function SupabaseIcon({ className = 'w-4 h-4' }: { className?: string }) 
     </svg>
   );
 }
+
+export function PubgIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={`shrink-0 ${className}`} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="24" height="24" rx="6" fill="url(#pubg_bg)" />
+      <path
+        d="M12 4.5C8.5 4.5 6 7 6 10.5C6 13 7.5 15 9.5 16.5L9 19.5L12 18.5L15 19.5L14.5 16.5C16.5 15 18 13 18 10.5C18 7 15.5 4.5 12 4.5Z"
+        fill="#F59E0B"
+      />
+      <path
+        d="M8.5 10.5H15.5V12.5C15.5 14 14 15 12 15C10 15 8.5 14 8.5 12.5V10.5Z"
+        fill="#1E293B"
+      />
+      <rect x="9.5" y="11" width="5" height="1" rx="0.5" fill="#38BDF8" />
+      <defs>
+        <linearGradient id="pubg_bg" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1E293B" />
+          <stop offset="1" stopColor="#0F172A" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+export function FreeFireIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={`shrink-0 ${className}`} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="24" height="24" rx="6" fill="url(#ff_bg)" />
+      <path
+        d="M12 4C12 4 14.5 7.5 14.5 10C14.5 10.5 14.3 11 14 11.4C14.8 11.2 16.5 10.5 16.5 9C16.5 13 13.5 18 9.5 18C7 18 5 16 5 13.5C5 10.5 7.5 8 9.5 6.5C9.5 7.5 10 9 11 9.5C11 7.5 12 4 12 4Z"
+        fill="#FBBF24"
+      />
+      <path
+        d="M12 11C12 11 13.5 12.5 13.5 14C13.5 15.5 12 16.5 10.5 16.5C9.5 16.5 8.5 15.5 8.5 14C8.5 12.5 10 11.5 10.5 11C11 12 11.5 12.5 12 11Z"
+        fill="#EF4444"
+      />
+      <defs>
+        <linearGradient id="ff_bg" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#EA580C" />
+          <stop offset="1" stopColor="#991B1B" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+export function EfootballIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={`shrink-0 ${className}`} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="24" height="24" rx="6" fill="url(#efb_bg)" />
+      <circle cx="12" cy="12" r="7.5" fill="#0284C7" stroke="#38BDF8" strokeWidth="1" />
+      <path
+        d="M12 7.5L14 9.5L13.2 12.5H10.8L10 9.5L12 7.5Z"
+        fill="#F8FAFC"
+      />
+      <path d="M12 4.5V7.5M16.5 6L14 9.5M18.5 11.5L13.2 12.5M16.5 17L12.5 15.5M7.5 6L10 9.5M5.5 11.5L10.8 12.5M7.5 17L11.5 15.5" stroke="#F8FAFC" strokeWidth="0.8" />
+      <defs>
+        <linearGradient id="efb_bg" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#0369A1" />
+          <stop offset="1" stopColor="#0C4A6E" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+export function MovieSubIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={`shrink-0 ${className}`} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="24" height="24" rx="6" fill="url(#movie_bg)" />
+      <rect x="5" y="6" width="14" height="12" rx="2" fill="#E11D48" />
+      <path d="M10 9L15 12L10 15V9Z" fill="white" />
+      <defs>
+        <linearGradient id="movie_bg" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#BE123C" />
+          <stop offset="1" stopColor="#881337" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+export function PubgKrIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={`shrink-0 ${className}`} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="24" height="24" rx="6" fill="#0F172A" stroke="#334155" strokeWidth="1" />
+      <circle cx="12" cy="12" r="5" fill="#E2E8F0" />
+      <path d="M12 7C9.24 7 7 9.24 7 12C7 13.5 8 14 9.5 14C11 14 12 13 12 12C12 11 13 10 14.5 10C16 10 17 10.5 17 12C17 9.24 14.76 7 12 7Z" fill="#DC2626" />
+      <path d="M12 17C14.76 17 17 14.76 17 12C17 10.5 16 10 14.5 10C13 10 12 11 12 12C12 13 11 14 9.5 14C8 14 7 13.5 7 12C7 14.76 9.24 17 12 17Z" fill="#2563EB" />
+    </svg>
+  );
+}
+
+export function PubgQrIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={`shrink-0 ${className}`} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="24" height="24" rx="6" fill="#1E1B4B" stroke="#4338CA" strokeWidth="1" />
+      <rect x="6" y="6" width="4" height="4" fill="#818CF8" />
+      <rect x="14" y="6" width="4" height="4" fill="#818CF8" />
+      <rect x="6" y="14" width="4" height="4" fill="#818CF8" />
+      <rect x="14" y="14" width="2" height="2" fill="#818CF8" />
+      <rect x="16" y="16" width="2" height="2" fill="#818CF8" />
+      <rect x="11" y="11" width="2" height="2" fill="#818CF8" />
+    </svg>
+  );
+}
+
+export function CrownSubIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={`shrink-0 ${className}`} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="24" height="24" rx="6" fill="#78350F" />
+      <path
+        d="M6 16.5H18L17 10L14 12.5L12 7.5L10 12.5L7 10L6 16.5Z"
+        fill="#FBBF24"
+      />
+      <circle cx="7" cy="9" r="1" fill="#FDE68A" />
+      <circle cx="12" cy="6.5" r="1" fill="#FDE68A" />
+      <circle cx="17" cy="9" r="1" fill="#FDE68A" />
+    </svg>
+  );
+}
+
+/**
+ * Returns a high-fidelity SVG icon for any game category ID
+ */
+export function CategoryIcon({ categoryId, className = 'w-4 h-4' }: { categoryId?: string; className?: string }) {
+  const id = (categoryId || '').toLowerCase();
+  if (id.includes('ff') || id.includes('freefire')) return <FreeFireIcon className={className} />;
+  if (id.includes('efb') || id.includes('efootball')) return <EfootballIcon className={className} />;
+  if (id.includes('movie') || id.includes('anime') || id.includes('sub_netflix')) return <MovieSubIcon className={className} />;
+  if (id.includes('kr')) return <PubgKrIcon className={className} />;
+  if (id.includes('login') || id.includes('qr') || id.includes('special')) return <PubgQrIcon className={className} />;
+  if (id.includes('sub') || id.includes('prime')) return <CrownSubIcon className={className} />;
+  return <PubgIcon className={className} />;
+}

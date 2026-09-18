@@ -241,7 +241,7 @@ export default function UsersLeaderboardPage() {
                 <div className="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-[10px] font-medium uppercase text-slate-400">Total Spent</span>
-                    <p className="text-base sm:text-lg font-extrabold text-emerald-400">৳{user.total_spent.toLocaleString()}</p>
+                    <p className="text-base sm:text-lg font-extrabold text-emerald-400">৳{(user.total_spent || 0).toLocaleString()}</p>
                   </div>
                   <div>
                     <span className="text-[10px] font-medium uppercase text-slate-400">Orders</span>
@@ -376,7 +376,7 @@ export default function UsersLeaderboardPage() {
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/60 text-xs">
                   <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/40">
                     <span className="text-[10px] uppercase text-slate-400 block font-medium">Total Spent</span>
-                    <span className="font-black text-emerald-400 text-sm">৳{user.total_spent.toLocaleString()}</span>
+                    <span className="font-black text-emerald-400 text-sm">৳{(user.total_spent || 0).toLocaleString()}</span>
                   </div>
                   <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/40">
                     <span className="text-[10px] uppercase text-slate-400 block font-medium">Orders</span>
@@ -520,7 +520,7 @@ export default function UsersLeaderboardPage() {
 
                       {/* Total Spent */}
                       <td className="py-4 px-4 text-right font-bold text-emerald-400 text-sm">
-                        ৳{user.total_spent.toLocaleString()}
+                        ৳{(user.total_spent || 0).toLocaleString()}
                       </td>
 
                       {/* Orders */}

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { Order, Worker } from '@/types';
+import { BkashIcon, NagadIcon, RocketIcon } from '@/components/BrandIcons';
 import {
   AreaChart,
   Area,
@@ -508,14 +509,28 @@ export default function DashboardOverviewPage() {
                   ) : (
                     analytics.paymentBreakdown.map((pay, i) => {
                       const totalPayVal = analytics.totalRevenue || 1;
-                      const percentage = Math.min(100, Math.round((pay.value / totalPayVal) * 100));
+                      const payVal = pay.value || 0;
+                      const percentage = Math.min(100, Math.round((payVal / totalPayVal) * 100));
+                      const payName = (pay.name || '').toLowerCase();
+
                       return (
                         <div key={i} className="space-y-1">
                           <div className="flex items-center justify-between text-xs">
-                            <span className="font-medium text-slate-200">{pay.name}</span>
+                            <div className="flex items-center gap-1.5 font-medium text-slate-200">
+                              {payName.includes('bkash') ? (
+                                <BkashIcon className="w-3.5 h-3.5" />
+                              ) : payName.includes('nagad') ? (
+                                <NagadIcon className="w-3.5 h-3.5" />
+                              ) : payName.includes('rocket') ? (
+                                <RocketIcon className="w-3.5 h-3.5" />
+                              ) : (
+                                <CreditCard className="w-3.5 h-3.5 text-slate-400" />
+                              )}
+                              <span>{pay.name}</span>
+                            </div>
                             <div className="text-right">
-                              <b className="text-emerald-400">৳{pay.value.toLocaleString()}</b>
-                              <span className="text-[10px] text-slate-500 ml-1.5">({pay.count} orders)</span>
+                              <b className="text-emerald-400">৳{payVal.toLocaleString()}</b>
+                              <span className="text-[10px] text-slate-500 ml-1.5">({pay.count || 0} orders)</span>
                             </div>
                           </div>
                           <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">

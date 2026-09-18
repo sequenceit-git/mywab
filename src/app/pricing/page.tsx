@@ -21,12 +21,13 @@ import {
   PlusCircle,
   HelpCircle
 } from 'lucide-react';
+import { CategoryIcon } from '@/components/BrandIcons';
 
 interface PricingProduct {
   id: string;
   categoryId: string;
   categoryTitle: string;
-  categoryEmoji: string;
+  categoryEmoji?: string;
   name: string;
   price: number;
   basePrice: number;
@@ -66,10 +67,12 @@ export default function PricingPage() {
   const fetchPricing = async () => {
     try {
       const res = await fetch('/api/pricing');
-      const data = await res.json();
-      if (data.success) {
-        setProducts(data.products || []);
-        setStats(data.stats || null);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setProducts(data.products || []);
+          setStats(data.stats || null);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch pricing catalog:', err);
@@ -142,21 +145,17 @@ export default function PricingPage() {
     }
   };
 
-  const handleResetToDefaults = async () => {
+  const handleResetDefaults = async () => {
     setIsResetting(true);
     try {
-      const res = await fetch('/api/pricing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reset' })
-      });
+      const res = await fetch('/api/pricing', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setShowResetModal(false);
         await fetchPricing();
       }
     } catch (err) {
-      console.error('Reset error:', err);
+      console.error('Failed to reset pricing defaults:', err);
     } finally {
       setIsResetting(false);
     }
@@ -186,10 +185,10 @@ export default function PricingPage() {
             </div>
             <div className="mt-2 sm:mt-3">
               <div className="text-xl sm:text-2xl font-black text-emerald-400">
-                ৳{stats?.totalProfit.toLocaleString() || 0}
+                ৳{(stats?.totalProfit ?? 0).toLocaleString()}
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1">
-                From total ৳{stats?.totalPotentialRevenue.toLocaleString() || 0}
+                From total ৳{(stats?.totalPotentialRevenue ?? 0).toLocaleString()}
               </p>
             </div>
           </div>
@@ -222,7 +221,7 @@ export default function PricingPage() {
             </div>
             <div className="mt-2 sm:mt-3">
               <div className="text-xl sm:text-2xl font-black text-brand-400">
-                ৳{stats?.avgProfitPerUnit || 0}
+                ৳{(stats?.avgProfitPerUnit ?? 0).toLocaleString()}
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1">
                 Net profit per item
@@ -277,13 +276,14 @@ export default function PricingPage() {
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 border-t border-slate-800/60 scrollbar-none">
             <button
               onClick={() => setSelectedCategory('ALL')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
                 selectedCategory === 'ALL'
                   ? 'bg-brand-500 text-dark-950 shadow-sm'
                   : 'bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800'
               }`}
             >
-              🌐 All ({products.length})
+              <Layers className="w-3.5 h-3.5" />
+              <span>All ({products.length})</span>
             </button>
 
             {categories.map((cat: any) => {
@@ -299,7 +299,7 @@ export default function PricingPage() {
                       : 'bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800'
                   }`}
                 >
-                  <span>{cat.emoji}</span>
+                  <CategoryIcon categoryId={cat.id} className="w-3.5 h-3.5" />
                   <span>{cat.title} ({count})</span>
                 </button>
               );
@@ -326,8 +326,8 @@ export default function PricingPage() {
                   className="p-4 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-3"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">{pkg.categoryEmoji}</span>
+                    <div className="flex items-center gap-2.5">
+                      <CategoryIcon categoryId={pkg.categoryId} className="w-7 h-7" />
                       <div>
                         <div className="font-bold text-white text-sm">{pkg.name}</div>
                         <div className="text-[10px] text-slate-400">{pkg.categoryTitle}</div>
@@ -424,8 +424,8 @@ export default function PricingPage() {
                       <tr key={pkg.id} className="hover:bg-slate-800/30 transition group">
                         {/* Category */}
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <span className="text-base">{pkg.categoryEmoji}</span>
+                          <div className="flex items-center gap-2.5">
+                            <CategoryIcon categoryId={pkg.categoryId} className="w-6 h-6" />
                             <div>
                               <div className="font-semibold text-white">{pkg.categoryTitle}</div>
                               <div className="text-[10px] text-slate-500 font-mono">{pkg.categoryId}</div>
@@ -621,7 +621,7 @@ export default function PricingPage() {
                   Cancel
                 </button>
                 <button
-                  onClick={handleResetToDefaults}
+                  onClick={handleResetDefaults}
                   disabled={isResetting}
                   className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white transition disabled:opacity-50"
                 >
