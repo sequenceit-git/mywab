@@ -66,14 +66,23 @@ export const stateBot = {
       return;
     }
 
-    // 5. Check if trigger or text is selecting one of the 9 game categories
+    // 5. Check if selecting a Payment Method button or text (bKash / Nagad / Rocket)
+    if (
+      triggerId.startsWith('pay_') ||
+      (session.step === 'AWAITING_PAYMENT' && ['bkash', 'nagad', 'rocket', 'বিকাশ', 'নগদ', 'রকেট'].includes(normalizedText))
+    ) {
+      await this.handlePaymentMethodSelection(phone, conversationId, triggerId || rawText, session);
+      return;
+    }
+
+    // 6. Check if trigger or text is selecting one of the 9 game categories
     const matchedGame = findGameCategory(triggerId) || (session.step === 'SELECTING_GAME' ? findGameCategory(rawText) : undefined);
     if (matchedGame) {
       await this.handleGameSelection(phone, conversationId, matchedGame);
       return;
     }
 
-    // 6. Check if trigger or text is selecting a package for the currently selected game
+    // 7. Check if trigger or text is selecting a package for the currently selected game
     if (session.step === 'SELECTING_PACKAGE' || triggerId.startsWith('pkg_')) {
       const currentGame = session.draftOrder.selectedGame ? findGameCategory(session.draftOrder.selectedGame) : undefined;
       if (currentGame) {
@@ -85,7 +94,7 @@ export const stateBot = {
       }
     }
 
-    // 7. Step-specific text input routing
+    // 8. Step-specific text input routing
     switch (session.step) {
       case 'COLLECTING_UID':
         await this.handleUidInput(phone, conversationId, rawText, session);
@@ -322,7 +331,7 @@ ${game.inputPrompt}`;
   },
 
   /**
-   * Step 3 -> Step 4: Validate UID input and display Payment details + ask for TrxID
+   * Step 3 -> Step 4: Validate UID input and display Payment summary + 1-Tap Method Selection Buttons
    */
   async handleUidInput(
     phone: string,
@@ -360,22 +369,24 @@ ${game.inputPrompt}`;
 • আইডি / একাউন্ট: \`${cleanUid}\`
 • মোট মূল্য: *৳${amount} Tk*
 
-💳 *পেমেন্ট একাউন্ট (Personal Send Money / Cash In):*
+💳 *পেমেন্ট নম্বরসমূহ (Personal Send Money / Cash In):*
 • *bKash:* \`${PAYMENT_ACCOUNTS.bkash}\`
 • *Nagad:* \`${PAYMENT_ACCOUNTS.nagad}\`
 • *Rocket:* \`${PAYMENT_ACCOUNTS.rocket}\`
 
-👉 টাকা পাঠানোর পর আপনার *bKash/Nagad/Rocket TrxID* অথবা নম্বরের *লাস্ট ৪ ডিজিট* লিখে পাঠান:`;
+👇 *টাকা পাঠানোর জন্য নিচের মাধ্যম সিলেক্ট করুন:*`;
 
     const buttons = [
-      { id: 'btn_main_menu', title: '❌ বাতিল করুন' }
+      { id: 'pay_bkash', title: '🟢 bKash' },
+      { id: 'pay_nagad', title: '🟠 Nagad' },
+      { id: 'pay_rocket', title: '🟣 Rocket' }
     ];
 
     await whatsappService.sendInteractiveButtons(
       phone,
       paymentMessage,
       buttons,
-      'পেমেন্ট তথ্য'
+      'পেমেন্ট মাধ্যম বাছুন'
     );
 
     await db.addMessage({
@@ -383,6 +394,70 @@ ${game.inputPrompt}`;
       sender: 'BOT',
       content: paymentMessage,
       metadata: { step: 'AWAITING_PAYMENT', playerUid: cleanUid, amount }
+    });
+  },
+
+  /**
+   * Handle Payment Method Selection (bKash, Nagad, Rocket)
+   */
+  async handlePaymentMethodSelection(
+    phone: string,
+    conversationId: string,
+    methodInput: string,
+    session: ConversationSessionState
+  ): Promise<void> {
+    let method = 'BKASH';
+    let methodName = 'bKash (বিকাশ)';
+    let accountNumber = PAYMENT_ACCOUNTS.bkash;
+
+    const lower = methodInput.toLowerCase();
+    if (lower.includes('nagad') || lower.includes('নগদ')) {
+      method = 'NAGAD';
+      methodName = 'Nagad (নগদ)';
+      accountNumber = PAYMENT_ACCOUNTS.nagad;
+    } else if (lower.includes('rocket') || lower.includes('রকেট')) {
+      method = 'ROCKET';
+      methodName = 'Rocket (রকেট)';
+      accountNumber = PAYMENT_ACCOUNTS.rocket;
+    }
+
+    db.setSessionState(conversationId, {
+      step: 'AWAITING_PAYMENT',
+      draftOrder: {
+        ...session.draftOrder,
+        paymentMethod: method
+      }
+    });
+
+    const item = session.draftOrder.items?.[0];
+    const amount = session.draftOrder.totalAmount || item?.unitPrice || 0;
+    const playerUid = session.draftOrder.playerUid || 'N/A';
+
+    const guideMessage = 
+`💳 *${methodName} পেমেন্ট নির্দেশিকা (Personal Send Money / Cash In)*
+
+• একাউন্ট নম্বর: \`${accountNumber}\` *(ট্যাপ করে কপি করুন)*
+• প্রদেয় টাকার পরিমাণ: *৳${amount} Tk*
+• রেফারেন্স (যদি চায়): \`${playerUid}\`
+
+👉 টাকা পাঠানোর পর আপনার *TrxID* অথবা নম্বরের *লাস্ট ৪ ডিজিট* লিখে মেসেজ পাঠান:`;
+
+    const buttons = [
+      { id: 'btn_main_menu', title: '❌ বাতিল করুন' }
+    ];
+
+    await whatsappService.sendInteractiveButtons(
+      phone,
+      guideMessage,
+      buttons,
+      'টাকা পাঠিয়ে TrxID দিন'
+    );
+
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: guideMessage,
+      metadata: { step: 'AWAITING_PAYMENT', selectedMethod: method, accountNumber }
     });
   },
 
@@ -396,7 +471,9 @@ ${game.inputPrompt}`;
     rawText: string,
     session: ConversationSessionState
   ): Promise<void> {
-    const { paymentMethod, trxId: cleanTrx } = extractPaymentProof(rawText);
+    const extracted = extractPaymentProof(rawText);
+    const paymentMethod = (extracted.paymentMethod !== 'BKASH/NAGAD/ROCKET' ? extracted.paymentMethod : session.draftOrder.paymentMethod) || 'BKASH';
+    const cleanTrx = extracted.trxId;
     const item = session.draftOrder.items?.[0];
     const unitPrice = item?.unitPrice || session.draftOrder.totalAmount || 0;
     const productName = item?.productName || `${session.draftOrder.selectedGameLabel || 'Game'} (${item?.skuOrName || 'Top-Up'})`;
