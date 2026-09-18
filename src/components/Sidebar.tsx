@@ -13,6 +13,7 @@ import {
   Database,
   Bot,
   Trophy,
+  BadgePercent,
   ShieldCheck,
   LogOut
 } from 'lucide-react';
@@ -20,6 +21,7 @@ import {
 const navigation = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
   { name: 'Live Orders', href: '/orders', icon: ShoppingBag, badge: 'Live' },
+  { name: 'Pricing & Profit', href: '/pricing', icon: BadgePercent },
   { name: 'Customers & Leaderboard', href: '/users', icon: Trophy },
   { name: 'Telegram Workers', href: '/workers', icon: Users },
   { name: 'Supabase & Config', href: '/config', icon: Database },

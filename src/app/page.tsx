@@ -13,7 +13,9 @@ import {
   Package,
   CreditCard,
   BarChart3,
-  Sparkles
+  Sparkles,
+  Percent,
+  BadgePercent
 } from 'lucide-react';
 import Link from 'next/link';
 import { Order, Worker } from '@/types';
@@ -26,7 +28,8 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer
+  ResponsiveContainer,
+  Legend
 } from 'recharts';
 
 interface AnalyticsData {
@@ -37,13 +40,21 @@ interface AnalyticsData {
   totalRevenue: number;
   deliveredRevenue: number;
   pendingRevenue: number;
+  totalProfit: number;
+  deliveredProfit: number;
+  pendingProfit: number;
+  totalMargin: number;
   todaySales: number;
+  todayProfit: number;
+  todayMargin: number;
   todayOrdersCount: number;
   thisMonthSales: number;
+  thisMonthProfit: number;
+  thisMonthMargin: number;
   thisMonthOrdersCount: number;
-  dailyTrend: Array<{ date: string; displayDate: string; revenue: number; orders: number; delivered: number }>;
-  monthlyTrend: Array<{ monthKey: string; displayMonth: string; revenue: number; orders: number }>;
-  topPackages: Array<{ name: string; count: number; revenue: number }>;
+  dailyTrend: Array<{ date: string; displayDate: string; revenue: number; profit: number; orders: number; delivered: number }>;
+  monthlyTrend: Array<{ monthKey: string; displayMonth: string; revenue: number; profit: number; orders: number }>;
+  topPackages: Array<{ name: string; count: number; revenue: number; profit: number; margin: number }>;
   paymentBreakdown: Array<{ name: string; count: number; value: number }>;
   activeWorkers: number;
   totalWorkers: number;
@@ -54,6 +65,7 @@ export default function DashboardOverviewPage() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
   const [chartView, setChartView] = useState<'daily' | 'monthly'>('daily');
+  const [chartMetric, setChartMetric] = useState<'both' | 'revenue' | 'profit'>('both');
 
   const fetchDashboardData = async () => {
     try {
@@ -80,12 +92,21 @@ export default function DashboardOverviewPage() {
   }, []);
 
   const todaySales = analytics?.todaySales || 0;
+  const todayProfit = analytics?.todayProfit || 0;
+  const todayMargin = analytics?.todayMargin || 0;
   const todayOrders = analytics?.todayOrdersCount || 0;
+
   const thisMonthSales = analytics?.thisMonthSales || 0;
+  const thisMonthProfit = analytics?.thisMonthProfit || 0;
+  const thisMonthMargin = analytics?.thisMonthMargin || 0;
   const thisMonthOrders = analytics?.thisMonthOrdersCount || 0;
+
   const totalRevenue = analytics?.totalRevenue || 0;
+  const totalProfit = analytics?.totalProfit || 0;
+  const totalMargin = analytics?.totalMargin || 0;
   const totalOrders = analytics?.totalOrders || 0;
   const deliveredOrders = analytics?.deliveredOrders || 0;
+  const deliveredProfit = analytics?.deliveredProfit || 0;
 
   const chartData = chartView === 'daily'
     ? (analytics?.dailyTrend || [])
@@ -95,7 +116,7 @@ export default function DashboardOverviewPage() {
     <div className="flex-1 flex flex-col">
       <Header
         title="Sales & Operations Hub"
-        subtitle="Daily & monthly revenue metrics, top-up performance, and worker fulfillment"
+        subtitle="Daily & monthly revenue metrics, base price profit calculations, and worker dispatch"
       />
 
       <main className="p-6 space-y-6 max-w-7xl mx-auto w-full">
@@ -105,15 +126,22 @@ export default function DashboardOverviewPage() {
             <div>
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-brand-400 animate-pulse"></span>
-                <span className="text-xs font-bold uppercase tracking-wider text-brand-400">Store Analytics Active</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-brand-400">Store Analytics & Profit Active</span>
               </div>
-              <h3 className="text-lg font-bold text-white">Gaming & Digital Top-Up Sales & Dispatch Operations</h3>
+              <h3 className="text-lg font-bold text-white">Gaming & Digital Top-Up Sales, Pricing & Profit Hub</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-                Real-time tracking of daily revenue, customer orders across WhatsApp AI, and Telegram fulfillment metrics.
+                Real-time tracking of revenue, profit margins from base costs, WhatsApp AI sales, and Telegram fulfillment.
               </p>
             </div>
 
             <div className="flex items-center gap-3">
+              <Link
+                href="/pricing"
+                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700/80 text-white font-bold text-xs hover:bg-slate-700 transition-all shadow-sm"
+              >
+                <BadgePercent className="w-4 h-4 text-brand-400" />
+                <span>Edit Pricing & Base Costs</span>
+              </Link>
               <Link
                 href="/orders"
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 text-dark-950 font-bold text-xs hover:bg-brand-400 transition-all shadow-lg shadow-brand-500/25"
@@ -125,9 +153,9 @@ export default function DashboardOverviewPage() {
           </div>
         </div>
 
-        {/* 4 Core Sales KPI Cards */}
+        {/* 4 Core Sales & Profit KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Today's Sales */}
+          {/* Today's Sales & Net Profit */}
           <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-emerald-500/40 transition">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Today's Sales</span>
@@ -137,13 +165,17 @@ export default function DashboardOverviewPage() {
             </div>
             <div className="mt-3">
               <div className="text-2xl font-black text-emerald-400">৳{todaySales.toLocaleString()}</div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                <b className="text-slate-200">{todayOrders}</b> orders received today
+              <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                <span className="text-slate-400">Net Profit:</span>
+                <span className="font-bold text-emerald-300 font-mono">+৳{todayProfit.toLocaleString()} ({todayMargin}%)</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                <b className="text-slate-300">{todayOrders}</b> orders today
               </p>
             </div>
           </div>
 
-          {/* This Month's Sales */}
+          {/* This Month's Sales & Profit */}
           <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-sky-500/40 transition">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">This Month</span>
@@ -153,29 +185,37 @@ export default function DashboardOverviewPage() {
             </div>
             <div className="mt-3">
               <div className="text-2xl font-black text-sky-400">৳{thisMonthSales.toLocaleString()}</div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                <b className="text-slate-200">{thisMonthOrders}</b> orders this month
+              <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                <span className="text-slate-400">Net Profit:</span>
+                <span className="font-bold text-sky-300 font-mono">+৳{thisMonthProfit.toLocaleString()} ({thisMonthMargin}%)</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                <b className="text-slate-300">{thisMonthOrders}</b> orders this month
               </p>
             </div>
           </div>
 
-          {/* Total All-Time Revenue */}
+          {/* Total Net Profit */}
           <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-brand-500/40 transition">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">All-Time Revenue</span>
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">All-Time Net Profit</span>
               <div className="p-2 rounded-xl bg-brand-500/10 text-brand-400">
                 <DollarSign className="w-5 h-5" />
               </div>
             </div>
             <div className="mt-3">
-              <div className="text-2xl font-black text-white">৳{totalRevenue.toLocaleString()}</div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                From <b className="text-slate-200">{totalOrders}</b> total orders
+              <div className="text-2xl font-black text-brand-400">+৳{totalProfit.toLocaleString()}</div>
+              <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                <span className="text-slate-400">Avg Gross Margin:</span>
+                <span className="font-bold text-slate-200">{totalMargin}%</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                From <b className="text-slate-300">৳{totalRevenue.toLocaleString()}</b> revenue ({totalOrders} orders)
               </p>
             </div>
           </div>
 
-          {/* Completed Orders */}
+          {/* Completed Orders & Realized Profit */}
           <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-purple-500/40 transition">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Delivered Top-Ups</span>
@@ -184,8 +224,12 @@ export default function DashboardOverviewPage() {
               </div>
             </div>
             <div className="mt-3">
-              <div className="text-2xl font-black text-purple-400">{deliveredOrders}</div>
-              <p className="text-[11px] text-slate-400 mt-1">
+              <div className="text-2xl font-black text-purple-400">{deliveredOrders} done</div>
+              <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                <span className="text-slate-400">Realized Profit:</span>
+                <span className="font-bold text-purple-300 font-mono">+৳{deliveredProfit.toLocaleString()}</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
                 {analytics?.pendingOrders || 0} currently in pipeline
               </p>
             </div>
@@ -196,41 +240,70 @@ export default function DashboardOverviewPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Chart Area */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Sales Revenue Trend Chart */}
+            {/* Sales Revenue & Profit Trend Chart */}
             <div className="rounded-2xl bg-dark-900/90 border border-slate-800/80 p-5 shadow-lg space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
                 <div>
                   <div className="flex items-center gap-2">
                     <BarChart3 className="w-5 h-5 text-brand-400" />
-                    <h3 className="font-bold text-white text-base">Sales & Revenue Trend</h3>
+                    <h3 className="font-bold text-white text-base">Revenue & Net Profit Trends</h3>
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    {chartView === 'daily' ? 'Daily revenue over the last 7 days' : 'Monthly revenue over the last 6 months'}
+                    {chartView === 'daily' ? 'Daily financial performance over the last 7 days' : 'Monthly financial performance over the last 6 months'}
                   </p>
                 </div>
 
-                {/* View Switcher Tabs */}
-                <div className="flex items-center p-1 bg-slate-950/80 border border-slate-800/80 rounded-xl">
-                  <button
-                    onClick={() => setChartView('daily')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      chartView === 'daily'
-                        ? 'bg-brand-500 text-dark-950 shadow-md'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Daily (7 Days)
-                  </button>
-                  <button
-                    onClick={() => setChartView('monthly')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      chartView === 'monthly'
-                        ? 'bg-brand-500 text-dark-950 shadow-md'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Monthly (6 Months)
-                  </button>
+                {/* View Switcher Tabs & Metric Toggles */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center p-1 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+                    <button
+                      onClick={() => setChartMetric('both')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                        chartMetric === 'both' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      All
+                    </button>
+                    <button
+                      onClick={() => setChartMetric('revenue')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                        chartMetric === 'revenue' ? 'bg-emerald-500/20 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Revenue
+                    </button>
+                    <button
+                      onClick={() => setChartMetric('profit')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                        chartMetric === 'profit' ? 'bg-brand-500/20 text-brand-400 shadow-sm' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Profit
+                    </button>
+                  </div>
+
+                  <div className="flex items-center p-1 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+                    <button
+                      onClick={() => setChartView('daily')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                        chartView === 'daily'
+                          ? 'bg-brand-500 text-dark-950 shadow-md'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Daily (7D)
+                    </button>
+                    <button
+                      onClick={() => setChartView('monthly')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                        chartView === 'monthly'
+                          ? 'bg-brand-500 text-dark-950 shadow-md'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Monthly (6M)
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -238,11 +311,11 @@ export default function DashboardOverviewPage() {
               <div className="h-72 w-full pt-2">
                 {loading ? (
                   <div className="h-full flex items-center justify-center text-xs text-slate-500">
-                    Loading sales charts...
+                    Loading sales & profit charts...
                   </div>
                 ) : chartData.length === 0 ? (
                   <div className="h-full flex items-center justify-center text-xs text-slate-500">
-                    No sales data recorded yet.
+                    No sales or profit data recorded yet.
                   </div>
                 ) : chartView === 'daily' ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -251,6 +324,10 @@ export default function DashboardOverviewPage() {
                         <linearGradient id="colorDailyRevenue" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
                           <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                        </linearGradient>
+                        <linearGradient id="colorDailyProfit" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
@@ -277,17 +354,34 @@ export default function DashboardOverviewPage() {
                           color: '#f8fafc',
                           boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
                         }}
-                        formatter={(value: any) => [`৳${Number(value).toLocaleString()}`, 'Revenue']}
+                        formatter={(value: any, name: any) => [
+                          `৳${Number(value).toLocaleString()}`,
+                          name === 'revenue' ? 'Sales Revenue' : 'Net Profit'
+                        ]}
                         labelFormatter={(label) => `Date: ${label}`}
                       />
-                      <Area
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke="#10b981"
-                        strokeWidth={2.5}
-                        fillOpacity={1}
-                        fill="url(#colorDailyRevenue)"
-                      />
+                      {(chartMetric === 'both' || chartMetric === 'revenue') && (
+                        <Area
+                          type="monotone"
+                          dataKey="revenue"
+                          name="revenue"
+                          stroke="#10b981"
+                          strokeWidth={2.5}
+                          fillOpacity={1}
+                          fill="url(#colorDailyRevenue)"
+                        />
+                      )}
+                      {(chartMetric === 'both' || chartMetric === 'profit') && (
+                        <Area
+                          type="monotone"
+                          dataKey="profit"
+                          name="profit"
+                          stroke="#f59e0b"
+                          strokeWidth={2.5}
+                          fillOpacity={1}
+                          fill="url(#colorDailyProfit)"
+                        />
+                      )}
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
@@ -317,15 +411,30 @@ export default function DashboardOverviewPage() {
                           color: '#f8fafc',
                           boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
                         }}
-                        formatter={(value: any) => [`৳${Number(value).toLocaleString()}`, 'Monthly Sales']}
+                        formatter={(value: any, name: any) => [
+                          `৳${Number(value).toLocaleString()}`,
+                          name === 'revenue' ? 'Monthly Sales' : 'Monthly Profit'
+                        ]}
                         labelFormatter={(label) => `Month: ${label}`}
                       />
-                      <Bar
-                        dataKey="revenue"
-                        fill="#38bdf8"
-                        radius={[6, 6, 0, 0]}
-                        barSize={36}
-                      />
+                      {(chartMetric === 'both' || chartMetric === 'revenue') && (
+                        <Bar
+                          dataKey="revenue"
+                          name="revenue"
+                          fill="#38bdf8"
+                          radius={[6, 6, 0, 0]}
+                          barSize={chartMetric === 'both' ? 20 : 36}
+                        />
+                      )}
+                      {(chartMetric === 'both' || chartMetric === 'profit') && (
+                        <Bar
+                          dataKey="profit"
+                          name="profit"
+                          fill="#f59e0b"
+                          radius={[6, 6, 0, 0]}
+                          barSize={chartMetric === 'both' ? 20 : 36}
+                        />
+                      )}
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -334,17 +443,19 @@ export default function DashboardOverviewPage() {
 
             {/* Product & Payment Breakdown Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Top Selling Packages */}
+              {/* Top Selling Packages with Profit Details */}
               <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Package className="w-4 h-4 text-brand-400" />
-                    <h4 className="font-bold text-white text-sm">Top Packages</h4>
+                    <h4 className="font-bold text-white text-sm">Top Packages by Sales & Profit</h4>
                   </div>
-                  <span className="text-[11px] text-slate-400">By units sold</span>
+                  <Link href="/pricing" className="text-[11px] text-brand-400 hover:underline">
+                    Edit Prices
+                  </Link>
                 </div>
 
-                <div className="space-y-2.5 pt-1">
+                <div className="space-y-3 pt-1">
                   {(!analytics?.topPackages || analytics.topPackages.length === 0) ? (
                     <div className="py-6 text-center text-slate-500 text-xs">No package data available</div>
                   ) : (
@@ -352,15 +463,23 @@ export default function DashboardOverviewPage() {
                       const maxUnits = analytics.topPackages[0]?.count || 1;
                       const percentage = Math.round((pkg.count / maxUnits) * 100);
                       return (
-                        <div key={i} className="space-y-1">
+                        <div key={i} className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/50 space-y-1.5">
                           <div className="flex items-center justify-between text-xs">
-                            <span className="font-medium text-slate-200">{pkg.name}</span>
+                            <span className="font-semibold text-slate-200">{pkg.name}</span>
                             <div className="text-right">
-                              <b className="text-brand-400">{pkg.count} sold</b>
-                              <span className="text-[10px] text-slate-500 ml-1.5">(৳{pkg.revenue})</span>
+                              <b className="text-white">{pkg.count} sold</b>
+                              <span className="text-[10px] text-slate-400 ml-1.5">(৳{pkg.revenue})</span>
                             </div>
                           </div>
-                          <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
+                          
+                          <div className="flex items-center justify-between text-[11px] text-slate-400">
+                            <span>Profit: <b className="text-emerald-400 font-mono">+৳{pkg.profit}</b></span>
+                            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold">
+                              {pkg.margin}% Margin
+                            </span>
+                          </div>
+
+                          <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
                             <div
                               className="bg-gradient-to-r from-brand-500 to-emerald-400 h-1.5 rounded-full transition-all duration-500"
                               style={{ width: `${percentage}%` }}
@@ -464,6 +583,16 @@ export default function DashboardOverviewPage() {
               </div>
               <div className="grid grid-cols-1 gap-2 pt-1">
                 <Link
+                  href="/pricing"
+                  className="p-3 rounded-xl bg-slate-950/60 border border-brand-500/30 hover:border-brand-500/60 transition flex items-center justify-between group"
+                >
+                  <div className="flex items-center gap-2">
+                    <BadgePercent className="w-4 h-4 text-brand-400" />
+                    <span className="text-xs font-semibold text-white">Pricing & Profit Settings</span>
+                  </div>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-brand-400" />
+                </Link>
+                <Link
                   href="/orders"
                   className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 hover:border-brand-500/40 transition flex items-center justify-between group"
                 >
@@ -484,13 +613,6 @@ export default function DashboardOverviewPage() {
                   <span className="text-xs font-medium text-slate-300 group-hover:text-amber-300">🏆 Customer Leaderboard</span>
                   <ArrowRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400" />
                 </Link>
-                <Link
-                  href="/workers"
-                  className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 hover:border-brand-500/40 transition flex items-center justify-between group"
-                >
-                  <span className="text-xs font-medium text-slate-300 group-hover:text-white">Telegram Worker Team</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-brand-400" />
-                </Link>
               </div>
             </div>
           </div>
@@ -499,3 +621,4 @@ export default function DashboardOverviewPage() {
     </div>
   );
 }
+

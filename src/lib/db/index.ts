@@ -4,6 +4,7 @@ import { ordersRepository } from './repositories/orders';
 import { workersRepository } from './repositories/workers';
 import { chatRepository } from './repositories/chat';
 import { analyticsRepository } from './repositories/analytics';
+import { pricingRepository } from './repositories/pricing';
 
 export { mockStore } from './mock-store';
 export {
@@ -28,6 +29,9 @@ export const db = {
   ...chatRepository,
 
   // Analytics & Payments
-  ...analyticsRepository
+  ...analyticsRepository,
+
+  // Pricing & Profit Catalog
+  ...pricingRepository
 };
 
