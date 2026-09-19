@@ -73,7 +73,7 @@ export const whatsappService = {
     bodyText: string,
     buttons: WhatsAppButton[],
     headerText?: string,
-    footerText = 'WapBusiness Shopping Assistant'
+    footerText = 'DS Dukan — 24/7 Gaming Shop'
   ): Promise<SendMessageResult> {
     const cleanPhone = toPhone.replace(/\D/g, '');
     const validButtons = buttons.slice(0, 3).map((b, idx) => ({

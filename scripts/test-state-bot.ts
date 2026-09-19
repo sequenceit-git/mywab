@@ -362,8 +362,53 @@ async function runFullTestSuite() {
     console.log('✅ TEST 8 PASSED: Strict TrxID and payment proof validation verified');
   }
 
+  // =========================================================================
+  // TEST SUITE 9: Regression Test for "Last no 7677" Payment Proof
+  // =========================================================================
   console.log('\n===============================================================');
-  console.log('🎉 ALL 8 TEST SUITES (30+ TEST CASES) PASSED WITH 100% SUCCESS!');
+  console.log('TEST 9: "Last no 7677" Payment Proof (No Refusal False Positive)');
+  console.log('===============================================================');
+  {
+    const phone = '+8801876770000';
+    const user = await db.getOrCreateUser(phone, 'Ovijit');
+    const conv = await db.getOrCreateConversation(phone, 'Ovijit');
+
+    // 1. Select PUBG Mobile KR
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, buttonId: 'game_pubg_kr' });
+    // 2. Select 180 KR UC (390 Tk - matching screenshot)
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, listId: 'pkg_kr_180' });
+    // 3. Enter Player UID: 7366377 (matching screenshot)
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, text: '7366377' });
+    // 4. Select Nagad (pay_nagad)
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, buttonId: 'pay_nagad' });
+
+    let st = db.getSessionState(conv.id);
+    if (st.step !== 'AWAITING_PAYMENT') throw new Error(`Test 9 setup failed: Expected AWAITING_PAYMENT, got ${st.step}`);
+
+    // 5. Customer sends "Last no 7677" (EXACT text from user screenshot)
+    await stateBot.handleIncomingMessage({ conversationId: conv.id, userId: user.id, phone, text: 'Last no 7677' });
+    st = db.getSessionState(conv.id);
+
+    if (st.step !== 'ORDER_PLACED') {
+      throw new Error(`Test 9 failed: "Last no 7677" did not place order! Current step: ${st.step}`);
+    }
+
+    const orders = await db.getOrders();
+    const order = orders.find(o => o.delivery_phone === phone);
+    if (!order || order.trx_id !== '7677') {
+      throw new Error(`Test 9 failed: Order trx_id mismatch, expected 7677 got ${order?.trx_id}`);
+    }
+    if (order.total_amount !== 390) {
+      throw new Error(`Test 9 failed: Expected 390 Tk, got ${order.total_amount}`);
+    }
+
+    console.log('   ✓ "Last no 7677" successfully processed as payment proof (trx_id: 7677)');
+    console.log('   ✓ Order placed successfully:', order.order_id);
+    console.log('✅ TEST 9 PASSED: "Last no 7677" correctly treated as payment proof and order placed');
+  }
+
+  console.log('\n===============================================================');
+  console.log('🎉 ALL 9 TEST SUITES PASSED WITH 100% SUCCESS!');
   console.log('===============================================================\n');
 }
 

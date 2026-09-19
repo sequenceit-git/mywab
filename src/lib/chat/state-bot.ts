@@ -90,6 +90,28 @@ export const stateBot = {
       }
     }
 
+    // 0. If in AWAITING_PAYMENT and user entered valid payment proof (TrxID / last 4 digits / phone), process payment immediately!
+    if (session.step === 'AWAITING_PAYMENT' && rawText && !triggerId.startsWith('game_') && !triggerId.startsWith('pkg_')) {
+      const isMenuBtn = ['btn_menu', 'btn_restart', 'btn_change_game', 'btn_main_menu', 'btn_game_list', 'btn_cancel'].includes(triggerId);
+      if (!isMenuBtn) {
+        const item = session.draftOrder.items?.[0];
+        const amount = session.draftOrder.totalAmount || item?.unitPrice || 0;
+        const selectedMethod = session.draftOrder.paymentMethod || 'BKASH';
+        const accountNumber = PAYMENT_ACCOUNTS[selectedMethod.toLowerCase() as keyof typeof PAYMENT_ACCOUNTS] || PAYMENT_ACCOUNTS.bkash;
+
+        const paymentProof = extractPaymentProof(rawText, {
+          expectedAmount: amount,
+          recipientAccount: accountNumber,
+          playerUid: session.draftOrder.playerUid
+        });
+
+        if (paymentProof.isValid && paymentProof.rawProof) {
+          await this.handleTrxIdInput(phone, conversationId, userId, rawText, session);
+          return;
+        }
+      }
+    }
+
     // 1. Refusal, Cancellation or Change of mind ("No kinbo na", "pore nibo", "lagbe na", "thak", "দরকার নেই", etc.)
     if (isRefusalOrCancellation(rawText) || isRefusalOrCancellation(triggerId)) {
       await this.handleCancellation(phone, conversationId, customerName);
@@ -585,16 +607,6 @@ ${game.inputPrompt}`;
     rawText: string,
     session: ConversationSessionState
   ) {
-    if (isRefusalOrCancellation(rawText)) {
-      await this.handleCancellation(phone, conversationId);
-      return;
-    }
-
-    if (isGreetingOrMenu(rawText)) {
-      await this.sendWelcomeAndGameList(phone, conversationId);
-      return;
-    }
-
     const item = session.draftOrder.items?.[0];
     const amount = session.draftOrder.totalAmount || item?.unitPrice || 0;
     const selectedMethod = session.draftOrder.paymentMethod || 'BKASH';
@@ -609,6 +621,15 @@ ${game.inputPrompt}`;
 
     // If customer did not provide a valid TrxID or Last 4 digits (e.g. sent "Baksh e send koreci", "taka disi", "done")
     if (!extracted.isValid || !extracted.rawProof) {
+      if (isRefusalOrCancellation(rawText)) {
+        await this.handleCancellation(phone, conversationId);
+        return;
+      }
+
+      if (isGreetingOrMenu(rawText)) {
+        await this.sendWelcomeAndGameList(phone, conversationId);
+        return;
+      }
       const promptText = 
 `⚠️ *সঠিক TrxID অথবা লাস্ট ৪ ডিজিট পাওয়া যায়নি!*
 

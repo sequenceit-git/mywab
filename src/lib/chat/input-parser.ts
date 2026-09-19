@@ -578,6 +578,21 @@ export function isRefusalOrCancellation(rawText: string): boolean {
   const text = rawText.trim().toLowerCase();
   const clean = text.replace(/[^\w\s\u0980-\u09FF]/g, ' ').replace(/\s+/g, ' ').trim();
 
+  // 1. Never treat payment proofs, account numbers, or "no" (abbreviation for "number") as refusal
+  if (
+    /(?:last|acc|account|trx|tx|mobile|phone|sender|bkash|nagad|rocket|card|serial|sl)\s*(?:no|num|number)\b/i.test(text) ||
+    /\bno[\s.:#]*\d+/i.test(text) ||
+    /\bno\s*(?:problem|problm|prob|prblm|issue|worries|worry)\b/i.test(text)
+  ) {
+    return false;
+  }
+
+  // If text contains a valid payment proof (TrxID, last 4 digits, or sender phone), it is NEVER a refusal
+  const paymentCheck = extractPaymentProof(rawText);
+  if (paymentCheck.isValid && paymentCheck.rawProof) {
+    return false;
+  }
+
   const refusalWords = [
     'no', 'nah', 'na', 'nope', 'never', 'cancel', 'stop', 'back', 'thak',
     'না', 'না না', 'নাহ', 'বাতিল', 'থাক', 'দরকার নেই', 'দরকার নাই', 'দরকার নাই ভাই',
@@ -592,10 +607,10 @@ export function isRefusalOrCancellation(rawText: string): boolean {
   }
 
   const refusalPatterns = [
-    /\b(?:no|nah|nope|not\s*now|dont\s*want|dont\s*need|no\s*thanks)\b/i,
+    /\b(?:not\s*now|dont\s*want|don't\s*want|dont\s*need|don't\s*need|no\s*need|no\s*thanks|no\s*thx|no\s+(?:bro|brother|bhai|vai|sir|kintu|pore|lagbe|nibo|chai|dorkar|bad))\b/i,
     /(?:kinbo\s*na|kinbo\s*nah|nibo\s*na|nibo\s*nah|lagbe\s*na|lagbo\s*na|dorkar\s*nai|dorkar\s*nei)/i,
     /(?:pore\s*nibo|pore\s*kinbo|pore\s*bolbo|pore\s*hobe|thak\s*lagbe\s*na|bad\s*den)/i,
-    /(?:না|নাহ|দরকার\s*নেই|দরকার\s*নাই|লাগবে\s*না|কিনব\s*না|কিনবো\s*না|নিব\s*না|নিবো\s*না|পরে\s*নিব|পরে\s*নিবো|পরে\s*হবে|বাদ\s*দেন)/
+    /(?:(?:^|\s)(?:না|নাহ)(?:\s|$)|দরকার\s*(?:নেই|নাই)|লাগবে\s*না|কিনব[ও]?\s*না|নিব[ও]?\s*না|পরে\s*(?:নিব[ও]?|হবে|বলব[ও]?)|বাদ\s*(?:দেন|দাও)|চাই\s*না|এখন\s*না)/
   ];
 
   return refusalPatterns.some(p => p.test(clean) || p.test(text));
