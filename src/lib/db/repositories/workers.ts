@@ -230,6 +230,15 @@ export const workersRepository = {
     order.current_worker = worker;
     order.updated_at = new Date().toISOString();
 
+    for (const o of mockStore.orders.values()) {
+      if (o.order_id.toUpperCase() === orderIdCode.toUpperCase() || o.id === order.id) {
+        o.status = 'CLAIMED';
+        o.current_worker = worker;
+        o.updated_at = new Date().toISOString();
+        break;
+      }
+    }
+
     return {
       success: true,
       message: 'সফলভাবে অর্ডারটি ক্লেইম করেছেন!',

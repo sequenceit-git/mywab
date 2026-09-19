@@ -4,7 +4,40 @@ import { whatsappService } from '../whatsapp/service';
 import { env } from '../config/env';
 import { getAccountFieldInfo, formatPaymentDisplayForTelegram } from '../chat/input-parser';
 
+export interface PendingWorkerCancellation {
+  orderIdCode: string;
+  workerTelegramId: number;
+  workerName: string;
+  chatId?: string | number;
+  messageId?: number;
+  createdAt: number;
+}
+
+// In-memory store for tracking active worker cancellation prompt sessions
+const pendingWorkerCancellations = new Map<number, PendingWorkerCancellation>();
+
 export const telegramBot = {
+  /**
+   * Pending cancellation session helpers
+   */
+  setPendingCancellation(workerTelegramId: number, data: Omit<PendingWorkerCancellation, 'createdAt'>) {
+    pendingWorkerCancellations.set(workerTelegramId, { ...data, createdAt: Date.now() });
+  },
+
+  getPendingCancellation(workerTelegramId: number): PendingWorkerCancellation | undefined {
+    const pending = pendingWorkerCancellations.get(workerTelegramId);
+    if (!pending) return undefined;
+    // Expire after 15 minutes
+    if (Date.now() - pending.createdAt > 15 * 60 * 1000) {
+      pendingWorkerCancellations.delete(workerTelegramId);
+      return undefined;
+    }
+    return pending;
+  },
+
+  clearPendingCancellation(workerTelegramId: number) {
+    pendingWorkerCancellations.delete(workerTelegramId);
+  },
   /**
    * Helper to build dynamic HTML card and inline keyboard for any order state
    */
@@ -182,6 +215,10 @@ ${itemsText}
             {
               text: '⚡ Claim Order (অর্ডার গ্রহণ করুন)',
               callback_data: `claim:${order.order_id}`
+            },
+            {
+              text: '❌ Cancel (বাতিল)',
+              callback_data: `cancel_prompt:${order.order_id}`
             }
           ]
         ]
@@ -468,12 +505,71 @@ ${itemsText}
 
     // 4. ACTION: CANCEL PROMPT (Show Cancellation Reasons)
     if (action === 'cancel_prompt') {
-      // Must be claimed first
-      if (!assignedTelegramId && (existingOrder.status === 'PENDING_CLAIM' || existingOrder.status === 'PENDING_PAYMENT')) {
-        await this.answerCallbackQuery(id, `⚠️ প্রথমে 'Claim Top-Up' বাটনে ক্লিক করে অর্ডারটি গ্রহণ করুন!`, true);
-        return { success: false, message: 'Order must be claimed first' };
+      // Check worker lock
+      if (assignedTelegramId && assignedTelegramId !== from.id) {
+        await this.answerCallbackQuery(
+          id,
+          `⛔ একশন বাতিল!\nএই অর্ডারটি [${assignedWorkerName}] ক্লেইম করেছেন। শুধুমাত্র তিনি অথবা অ্যাডমিন প্যানেল এটি বাতিল করতে পারবেন।`,
+          true
+        );
+        return { success: false, message: `Unauthorized: Claimed by ${assignedWorkerName}` };
       }
 
+      // Reset any active pending custom cancellation mode if user navigated back to options
+      this.clearPendingCancellation(from.id);
+
+      const firstItem = existingOrder.items?.[0];
+      const prodName = firstItem?.product_name || '';
+      const playerUid = 
+        existingOrder.player_uid || 
+        (existingOrder.delivery_address as any)?.player_uid || 
+        (existingOrder.delivery_address as any)?.name ||
+        existingOrder.delivery_address?.address?.match(/(?:UID|Player UID|Email|Gmail|Account|ID):\s*([0-9a-zA-Z@._+-]+)/i)?.[1] ||
+        'N/A';
+      const accountInfo = getAccountFieldInfo(playerUid, prodName);
+
+      const promptHtml = 
+`⚠️ <b>CANCEL ORDER / অর্ডার বাতিলের কারণ নির্বাচন করুন</b>
+
+📦 <b>Order ID:</b> <code>${existingOrder.order_id}</code>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
+👷 <b>Worker:</b> <b>${workerName}</b>
+
+<i>অনুগ্রহ করে নিচে থেকে বাতিলের সুনির্দিষ্ট কারণ নির্বাচন করুন অথবা নিজে কারণ লিখুন:</i>`;
+
+      const promptMarkup = {
+        inline_keyboard: [
+          [
+            { text: `🚫 ভুল ${accountInfo.labelBn} / Invalid`, callback_data: `cancel_confirm:${existingOrder.order_id}:Invalid ${accountInfo.labelEn} (ভুল তথ্য)` }
+          ],
+          [
+            { text: '💳 ভুয়া / ইনভ্যালিড TrxID', callback_data: `cancel_confirm:${existingOrder.order_id}:Fake or Invalid TrxID (পেমেন্ট মেলেনি)` }
+          ],
+          [
+            { text: '📉 স্টক শেষ / সার্ভার সমস্যা', callback_data: `cancel_confirm:${existingOrder.order_id}:Out of Stock / Server Error` }
+          ],
+          [
+            { text: '✍️ নিজে কারণ লিখুন (Write Custom Reason)', callback_data: `cancel_custom_prompt:${existingOrder.order_id}` }
+          ],
+          [
+            { text: '👤 কাস্টমার রিকোয়েস্ট (Customer Requested)', callback_data: `cancel_confirm:${existingOrder.order_id}:Customer Requested` }
+          ],
+          [
+            { text: '🔙 ফিরে যান (Back to Order)', callback_data: `cancel_back:${existingOrder.order_id}` }
+          ]
+        ]
+      };
+
+      if (message) {
+        await this.editMessageText(message.chat.id, message.message_id, promptHtml, promptMarkup);
+      }
+
+      await this.answerCallbackQuery(id, 'বাতিলের কারণ নির্বাচন করুন বা লিখুন', false);
+      return { success: true, message: 'Cancellation reason prompt displayed' };
+    }
+
+    // 4b. ACTION: CANCEL CUSTOM PROMPT (Worker wants to write custom reason)
+    if (action === 'cancel_custom_prompt') {
       // Check worker lock
       if (assignedTelegramId && assignedTelegramId !== from.id) {
         await this.answerCallbackQuery(
@@ -494,45 +590,68 @@ ${itemsText}
         'N/A';
       const accountInfo = getAccountFieldInfo(playerUid, prodName);
 
-      const promptHtml = 
-`⚠️ <b>CANCEL ORDER / অর্ডার বাতিলের কারণ নির্বাচন করুন</b>
+      // Register pending cancellation session for this worker
+      this.setPendingCancellation(from.id, {
+        orderIdCode: existingOrder.order_id,
+        workerTelegramId: from.id,
+        workerName,
+        chatId: message?.chat.id,
+        messageId: message?.message_id
+      });
+
+      const customPromptHtml = 
+`✍️ <b>CANCEL ORDER / অর্ডার বাতিলের কারণ লিখুন</b>
 
 📦 <b>Order ID:</b> <code>${existingOrder.order_id}</code>
 ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
-👷 <b>Claimed Worker:</b> <b>${workerName}</b>
+👷 <b>Worker:</b> <b>${workerName}</b>
 
-<i>অনুগ্রহ করে নিচে থেকে বাতিলের সুনির্দিষ্ট কারণ নির্বাচন করুন:</i>`;
+<i>অনুগ্রহ করে নিচে রিপ্লাই (Reply) করে অথবা সরাসরি চ্যাটে বাতিলের কারণ লিখে পাঠান।</i>
 
-      const promptMarkup = {
+<b>উদাহরণ:</b>
+• আইডি পাসওয়ার্ড ভুল
+• ২-স্টেপ ভেরিফিকেশন অন, ব্যাকআপ কোড দিন
+• প্লেয়ার লেভেল কম, গিফট দেওয়া যাচ্ছে না
+• পেমেন্টের তথ্য মেলেনি
+
+<i>(বাতিল করতে না চাইলে নিচের 'ফিরে যান' বাটনে ক্লিক করুন)</i>`;
+
+      const customPromptMarkup = {
         inline_keyboard: [
           [
-            { text: `🚫 ভুল ${accountInfo.labelBn} / Invalid`, callback_data: `cancel_confirm:${existingOrder.order_id}:Invalid ${accountInfo.labelEn} (ভুল তথ্য)` }
+            { text: '🔙 কারণ তালিকায় ফিরুন (Reason List)', callback_data: `cancel_prompt:${existingOrder.order_id}` }
           ],
           [
-            { text: '💳 ভুয়া / ইনভ্যালিড TrxID', callback_data: `cancel_confirm:${existingOrder.order_id}:Fake or Invalid TrxID (পেমেন্ট মেলেনি)` }
-          ],
-          [
-            { text: '📉 স্টক শেষ / সার্ভার সমস্যা', callback_data: `cancel_confirm:${existingOrder.order_id}:Out of Stock / Server Error` }
-          ],
-          [
-            { text: '👤 কাস্টমার রিকোয়েস্ট / অন্যান্য', callback_data: `cancel_confirm:${existingOrder.order_id}:Customer Requested / Other` }
-          ],
-          [
-            { text: '🔙 ফিরে যান (Back to Order)', callback_data: `cancel_back:${existingOrder.order_id}` }
+            { text: '❌ ফিরে যান (Back to Order)', callback_data: `cancel_back:${existingOrder.order_id}` }
           ]
         ]
       };
 
       if (message) {
-        await this.editMessageText(message.chat.id, message.message_id, promptHtml, promptMarkup);
+        await this.editMessageText(message.chat.id, message.message_id, customPromptHtml, customPromptMarkup);
+
+        // Send a force-reply trigger message so Telegram automatically focuses input in reply mode
+        try {
+          await this.sendMessage(message.chat.id, `✍️ <b>[${workerName}]</b>, #${existingOrder.order_id} অর্ডারটি বাতিলের কারণ লিখে পাঠান:\n<i>(এই মেসেজটিতে রিপ্লাই করে কারণটি টাইপ করুন)</i>`, {
+            reply_to_message_id: message.message_id,
+            reply_markup: {
+              force_reply: true,
+              selective: true,
+              input_field_placeholder: 'অর্ডার বাতিলের সুনির্দিষ্ট কারণ লিখুন...'
+            }
+          });
+        } catch (promptErr) {
+          console.error('Failed to dispatch force-reply prompt:', promptErr);
+        }
       }
 
-      await this.answerCallbackQuery(id, 'বাতিলের কারণ নির্বাচন করুন', false);
-      return { success: true, message: 'Cancellation reason prompt displayed' };
+      await this.answerCallbackQuery(id, '✍️ এবার চ্যাটে বাতিলের কারণ লিখে পাঠান', false);
+      return { success: true, message: 'Custom cancellation prompt active' };
     }
 
     // 5. ACTION: CANCEL BACK (Return to claimed order view)
     if (action === 'cancel_back') {
+      this.clearPendingCancellation(from.id);
       if (message) {
         const { cardHtml, replyMarkup } = this.generateOrderCard(existingOrder, assignedWorkerName || workerName);
         await this.editMessageText(message.chat.id, message.message_id, cardHtml, replyMarkup);
@@ -543,12 +662,6 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 
     // 6. ACTION: CANCEL CONFIRM (Execute cancellation with reason)
     if (action === 'cancel_confirm') {
-      // Must be claimed first
-      if (!assignedTelegramId && (existingOrder.status === 'PENDING_CLAIM' || existingOrder.status === 'PENDING_PAYMENT')) {
-        await this.answerCallbackQuery(id, `⚠️ প্রথমে 'Claim Top-Up' বাটনে ক্লিক করে অর্ডারটি গ্রহণ করুন!`, true);
-        return { success: false, message: 'Order must be claimed first' };
-      }
-
       // Check worker lock
       if (assignedTelegramId && assignedTelegramId !== from.id) {
         await this.answerCallbackQuery(
@@ -563,37 +676,23 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
       const targetOrderIdCode = parts[1];
       const cancelReason = parts.slice(2).join(':') || 'Worker cancelled';
 
-      try {
-        const updateResult = await db.updateOrderStatus(targetOrderIdCode, 'CANCELLED', {
-          workerTelegramId: from.id,
-          notes: cancelReason
-        });
+      const result = await this.executeOrderCancellation({
+        orderIdCode: targetOrderIdCode,
+        cancelReason,
+        workerTelegramId: from.id,
+        workerName,
+        workerUsername: from.username,
+        chatId: message?.chat.id,
+        messageId: message?.message_id
+      });
 
-        if (!updateResult.success) {
-          await this.answerCallbackQuery(id, `⚠️ ${updateResult.message}`, true);
-          return { success: false, message: updateResult.message };
-        }
-
-        const order = updateResult.order || existingOrder;
-        order.customer_notes = cancelReason;
-
-        if (message) {
-          const { cardHtml, replyMarkup } = this.generateOrderCard(order, workerName);
-          await this.editMessageText(message.chat.id, message.message_id, cardHtml, replyMarkup);
-        }
-
-        // Notify customer via WhatsApp about cancellation and reason
-        whatsappService.sendOrderCancelledNotification(order, cancelReason).catch(err => {
-          console.error('[Telegram->WhatsApp Notify Error on Worker Cancel]:', err);
-        });
-
-        await this.answerCallbackQuery(id, `❌ অর্ডারটি বাতিল করা হয়েছে। কারণ: ${cancelReason}`, true);
-        return { success: true, message: `Order cancelled: ${cancelReason}` };
-      } catch (err) {
-        console.error('[Telegram Cancel Error]:', err);
-        await this.answerCallbackQuery(id, `⚠️ Failed to cancel: ${String(err)}`, true);
-        return { success: false, message: String(err) };
+      if (!result.success) {
+        await this.answerCallbackQuery(id, `⚠️ ${result.message}`, true);
+        return { success: false, message: result.message };
       }
+
+      await this.answerCallbackQuery(id, `❌ অর্ডারটি বাতিল করা হয়েছে। কারণ: ${cancelReason}`, true);
+      return { success: true, message: `Order cancelled: ${cancelReason}` };
     }
 
     await this.answerCallbackQuery(id, 'Unknown action', false);
@@ -653,5 +752,259 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
     } catch (e) {
       console.error('Error editing message text:', e);
     }
+  },
+
+  /**
+   * Send a general HTML message to a chat (e.g. group or user)
+   */
+  async sendMessage(
+    chatId: string | number,
+    text: string,
+    options?: {
+      parse_mode?: string;
+      reply_markup?: unknown;
+      reply_to_message_id?: number;
+    }
+  ): Promise<{ ok: boolean; result?: { message_id: number } }> {
+    if (!env.telegram.isConfigured) return { ok: false };
+    try {
+      const response = await fetch(`${env.telegram.apiUrl}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: options?.parse_mode || 'HTML',
+          reply_markup: options?.reply_markup,
+          reply_to_message_id: options?.reply_to_message_id
+        })
+      });
+      return await response.json();
+    } catch (e) {
+      console.error('Error sending telegram message:', e);
+      return { ok: false };
+    }
+  },
+
+  /**
+   * Execute order cancellation with either preset or custom reason
+   */
+  async executeOrderCancellation(params: {
+    orderIdCode: string;
+    cancelReason: string;
+    workerTelegramId: number;
+    workerName: string;
+    workerUsername?: string;
+    chatId?: string | number;
+    messageId?: number;
+  }): Promise<{ success: boolean; message: string; order?: Order }> {
+    const { orderIdCode, cancelReason, workerTelegramId, workerName, workerUsername, chatId, messageId } = params;
+
+    const existingOrder = await db.getOrderByCode(orderIdCode);
+    if (!existingOrder) {
+      return { success: false, message: 'অর্ডারটি খুঁজে পাওয়া যায়নি।' };
+    }
+
+    if (existingOrder.status === 'CANCELLED') {
+      return { success: false, message: 'অর্ডারটি ইতোমধ্যে বাতিল করা হয়েছে।' };
+    }
+
+    const assignedWorker = existingOrder.current_worker ||
+      existingOrder.assignments?.find(a => ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY'].includes(a.status))?.worker;
+    const assignedTelegramId = assignedWorker?.telegram_user_id;
+    const assignedWorkerName = assignedWorker?.full_name || 'অন্য একজন কর্মী';
+
+    if (assignedTelegramId && assignedTelegramId !== workerTelegramId) {
+      return {
+        success: false,
+        message: `⛔ এই অর্ডারটি [${assignedWorkerName}] ক্লেইম করেছেন। শুধুমাত্র তিনি অথবা অ্যাডমিন এটি বাতিল করতে পারবেন।`
+      };
+    }
+
+    // If order was unclaimed, claim/record this worker so order history reflects who handled it
+    if (!assignedTelegramId && (existingOrder.status === 'PENDING_CLAIM' || existingOrder.status === 'PENDING_PAYMENT')) {
+      await db.claimOrderAtomic({
+        orderIdCode,
+        telegramUserId: workerTelegramId,
+        workerName,
+        telegramUsername: workerUsername
+      }).catch(err => console.warn('[Worker Cancel Claim Fallback]:', err));
+    }
+
+    const updateResult = await db.updateOrderStatus(orderIdCode, 'CANCELLED', {
+      workerTelegramId,
+      notes: cancelReason
+    });
+
+    if (!updateResult.success) {
+      return { success: false, message: updateResult.message };
+    }
+
+    const order = updateResult.order || existingOrder;
+    order.customer_notes = cancelReason;
+
+    // Update Telegram message card in group
+    const targetChatId = chatId || env.telegram.workerGroupId;
+    const targetMsgId = messageId || order.telegram_message_id;
+
+    if (targetChatId && targetMsgId) {
+      const { cardHtml, replyMarkup } = this.generateOrderCard(order, workerName);
+      await this.editMessageText(targetChatId, targetMsgId, cardHtml, replyMarkup);
+    }
+
+    // Trigger WhatsApp customer notification with custom reason
+    whatsappService.sendOrderCancelledNotification(order, cancelReason).catch(err => {
+      console.error('[Telegram->WhatsApp Notify Error on Custom Cancel]:', err);
+    });
+
+    // Clear pending cancellation state for this worker
+    this.clearPendingCancellation(workerTelegramId);
+
+    return { success: true, message: `Order #${orderIdCode} cancelled: ${cancelReason}`, order };
+  },
+
+  /**
+   * Handle incoming text messages from workers in the Telegram group
+   */
+  async handleWorkerTextMessage(message: {
+    message_id: number;
+    from: { id: number; first_name: string; last_name?: string; username?: string };
+    chat: { id: number | string };
+    text: string;
+    reply_to_message?: { message_id: number; text?: string };
+  }): Promise<{ handled: boolean; success?: boolean; message?: string }> {
+    const workerId = message.from.id;
+    const workerName = [message.from.first_name, message.from.last_name].filter(Boolean).join(' ') || message.from.username || `Worker-${workerId}`;
+    const text = message.text.trim();
+    const replyText = message.reply_to_message?.text || '';
+
+    // Ignore non-cancel slash commands
+    if (text === '/start' || text === '/help' || text === '/stats') {
+      return { handled: false };
+    }
+
+    // 1. Check for command /cancel [order_id] [reason]
+    const cancelCmdMatch = text.match(/^\/cancel(?:\s+([A-Za-z0-9-]+))?(?:\s+(.+))?$/i);
+    if (cancelCmdMatch) {
+      let targetOrderCode = cancelCmdMatch[1]?.trim();
+      let cmdReason = cancelCmdMatch[2]?.trim();
+
+      // If user replied to an order message with "/cancel <reason>"
+      if (!targetOrderCode || targetOrderCode.length < 5 || !targetOrderCode.toUpperCase().startsWith('WAP-')) {
+        const replyOrderMatch = replyText.match(/Order ID:\s*([A-Za-z0-9-]+)/i) || replyText.match(/#(WAP-[0-9]+-[0-9]+)/i);
+        if (replyOrderMatch) {
+          cmdReason = [targetOrderCode, cmdReason].filter(Boolean).join(' ');
+          targetOrderCode = replyOrderMatch[1];
+        }
+      }
+
+      // Check if user has an active pending cancellation
+      const pending = this.getPendingCancellation(workerId);
+      if (!targetOrderCode && pending) {
+        targetOrderCode = pending.orderIdCode;
+        cmdReason = [cancelCmdMatch[1], cancelCmdMatch[2]].filter(Boolean).join(' ');
+      }
+
+      // If worker just typed "/cancel" without any reason
+      if (!cmdReason && pending) {
+        this.clearPendingCancellation(workerId);
+        await this.sendMessage(message.chat.id, `✅ <b>[${workerName}]</b>, #${pending.orderIdCode} অর্ডার বাতিলের প্রক্রিয়া প্রত্যাহার করা হয়েছে।`);
+        return { handled: true, success: true, message: 'Cancellation aborted' };
+      }
+
+      if (targetOrderCode && cmdReason) {
+        const result = await this.executeOrderCancellation({
+          orderIdCode: targetOrderCode,
+          cancelReason: cmdReason,
+          workerTelegramId: workerId,
+          workerName,
+          workerUsername: message.from.username,
+          chatId: message.chat.id,
+          messageId: pending?.messageId
+        });
+
+        if (result.success) {
+          await this.sendMessage(
+            message.chat.id,
+            `❌ <b>অর্ডার #${targetOrderCode} বাতিল করা হয়েছে</b>\n\n⚠️ <b>কারণ:</b> ${cmdReason}\n👷 <b>কর্মী:</b> <b>${workerName}</b>\n\n<i>কাস্টমারকে হোয়াটসঅ্যাপে বাতিলের কারণ জানানো হয়েছে।</i>`,
+            { reply_to_message_id: message.message_id }
+          );
+        } else {
+          await this.sendMessage(
+            message.chat.id,
+            `⚠️ অর্ডার #${targetOrderCode} বাতিল করা যায়নি: ${result.message}`,
+            { reply_to_message_id: message.message_id }
+          );
+        }
+        return { handled: true, ...result };
+      }
+    }
+
+    // 2. Check for active pending cancellation session
+    const pending = this.getPendingCancellation(workerId);
+    if (pending) {
+      const cancelReason = text;
+
+      const result = await this.executeOrderCancellation({
+        orderIdCode: pending.orderIdCode,
+        cancelReason,
+        workerTelegramId: workerId,
+        workerName,
+        workerUsername: message.from.username,
+        chatId: message.chat.id,
+        messageId: pending.messageId
+      });
+
+      if (result.success) {
+        await this.sendMessage(
+          message.chat.id,
+          `❌ <b>অর্ডার #${pending.orderIdCode} বাতিল করা হয়েছে</b>\n\n⚠️ <b>কারণ:</b> ${cancelReason}\n👷 <b>কর্মী:</b> <b>${workerName}</b>\n\n<i>কাস্টমারকে হোয়াটসঅ্যাপে বাতিলের কারণ পাঠানো হয়েছে।</i>`,
+          { reply_to_message_id: message.message_id }
+        );
+      } else {
+        await this.sendMessage(
+          message.chat.id,
+          `⚠️ অর্ডার #${pending.orderIdCode} বাতিল করা যায়নি: ${result.message}`,
+          { reply_to_message_id: message.message_id }
+        );
+      }
+
+      return { handled: true, ...result };
+    }
+
+    // 3. Check if message is a direct reply to an order card prompt asking for cancellation reason
+    const replyOrderMatch = replyText.match(/Order ID:\s*([A-Za-z0-9-]+)/i) || replyText.match(/#(WAP-[0-9]+-[0-9]+)/i);
+    if (replyOrderMatch && (replyText.includes('WRITE CANCELLATION REASON') || replyText.includes('বাতিলের কারণ লিখুন'))) {
+      const orderIdCode = replyOrderMatch[1];
+      const cancelReason = text;
+
+      const result = await this.executeOrderCancellation({
+        orderIdCode,
+        cancelReason,
+        workerTelegramId: workerId,
+        workerName,
+        workerUsername: message.from.username,
+        chatId: message.chat.id,
+        messageId: message.reply_to_message?.message_id
+      });
+
+      if (result.success) {
+        await this.sendMessage(
+          message.chat.id,
+          `❌ <b>অর্ডার #${orderIdCode} বাতিল করা হয়েছে</b>\n\n⚠️ <b>কারণ:</b> ${cancelReason}\n👷 <b>কর্মী:</b> <b>${workerName}</b>`,
+          { reply_to_message_id: message.message_id }
+        );
+      } else {
+        await this.sendMessage(
+          message.chat.id,
+          `⚠️ অর্ডার বাতিল করা যায়নি: ${result.message}`,
+          { reply_to_message_id: message.message_id }
+        );
+      }
+
+      return { handled: true, ...result };
+    }
+
+    return { handled: false };
   }
 };

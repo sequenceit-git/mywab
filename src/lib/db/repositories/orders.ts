@@ -388,6 +388,20 @@ export const ordersRepository = {
     }
     order.updated_at = new Date().toISOString();
 
+    for (const o of mockStore.orders.values()) {
+      if (o.order_id.toUpperCase() === orderIdCode.toUpperCase() || o.id === order.id) {
+        o.status = status;
+        if (finalNotes) {
+          o.customer_notes = finalNotes;
+        }
+        o.updated_at = new Date().toISOString();
+        if (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT') {
+          o.current_worker = undefined;
+        }
+        break;
+      }
+    }
+
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
       const updatePayload: Record<string, any> = {
