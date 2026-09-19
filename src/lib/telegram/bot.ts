@@ -16,6 +16,67 @@ export interface PendingWorkerCancellation {
 // In-memory store for tracking active worker cancellation prompt sessions
 const pendingWorkerCancellations = new Map<number, PendingWorkerCancellation>();
 
+/**
+ * Resolve predefined cancellation reason codes to user-facing Bengali + English strings
+ */
+export function resolveCancelReason(
+  reasonCodeOrText: string,
+  order?: { items?: Array<{ product_name?: string }>; player_uid?: string; delivery_address?: any }
+): string {
+  if (!reasonCodeOrText) return 'Worker cancelled';
+
+  if (reasonCodeOrText === 'invalid_info') {
+    const firstItem = order?.items?.[0];
+    const prodName = firstItem?.product_name || '';
+    const playerUid = 
+      order?.player_uid || 
+      (order?.delivery_address as any)?.player_uid || 
+      (order?.delivery_address as any)?.name ||
+      order?.delivery_address?.address?.match(/(?:UID|Player UID|Email|Gmail|Account|ID):\s*([0-9a-zA-Z@._+-]+)/i)?.[1] ||
+      'N/A';
+    const accountInfo = getAccountFieldInfo(playerUid, prodName);
+    return `Invalid ${accountInfo.labelEn} (ভুল তথ্য)`;
+  }
+
+  if (reasonCodeOrText === 'fake_trxid') {
+    return 'Fake or Invalid TrxID (পেমেন্ট মেলেনি)';
+  }
+
+  if (reasonCodeOrText === 'stock_out') {
+    return 'Out of Stock / Server Error (স্টক শেষ)';
+  }
+
+  if (reasonCodeOrText === 'customer_req') {
+    return 'Customer Requested (গ্রাহকের অনুরোধ)';
+  }
+
+  return reasonCodeOrText;
+}
+
+/**
+ * Ensure no inline keyboard button callback_data exceeds Telegram's 64-byte UTF-8 limit.
+ * If any button exceeds 64 bytes, it is safely sliced so Telegram API never throws BUTTON_DATA_INVALID.
+ */
+export function sanitizeReplyMarkup(markup?: any): any {
+  if (!markup || !markup.inline_keyboard || !Array.isArray(markup.inline_keyboard)) return markup;
+  const newKeyboard = markup.inline_keyboard.map((row: any[]) =>
+    Array.isArray(row)
+      ? row.map((btn: any) => {
+          if (btn && typeof btn.callback_data === 'string' && Buffer.byteLength(btn.callback_data, 'utf8') > 64) {
+            console.error(`[Telegram Warning] Button callback_data exceeds 64 bytes (${Buffer.byteLength(btn.callback_data, 'utf8')}b): "${btn.callback_data}"`);
+            let truncated = btn.callback_data;
+            while (Buffer.byteLength(truncated, 'utf8') > 64) {
+              truncated = truncated.slice(0, -1);
+            }
+            return { ...btn, callback_data: truncated };
+          }
+          return btn;
+        })
+      : row
+  );
+  return { ...markup, inline_keyboard: newKeyboard };
+}
+
 export const telegramBot = {
   /**
    * Pending cancellation session helpers
@@ -215,10 +276,6 @@ ${itemsText}
             {
               text: '⚡ Claim Order (অর্ডার গ্রহণ করুন)',
               callback_data: `claim:${order.order_id}`
-            },
-            {
-              text: '❌ Cancel (বাতিল)',
-              callback_data: `cancel_prompt:${order.order_id}`
             }
           ]
         ]
@@ -505,8 +562,18 @@ ${itemsText}
 
     // 4. ACTION: CANCEL PROMPT (Show Cancellation Reasons)
     if (action === 'cancel_prompt') {
+      // Must be claimed first before cancellation
+      if (!assignedTelegramId || existingOrder.status === 'PENDING_CLAIM' || existingOrder.status === 'PENDING_PAYMENT') {
+        await this.answerCallbackQuery(
+          id,
+          `⚠️ প্রথমে 'Claim Order' বাটনে ক্লিক করে অর্ডারটি গ্রহণ করুন! ক্লেইম করার পরই কেবল বাতিল করা যাবে।`,
+          true
+        );
+        return { success: false, message: 'Order must be claimed first before cancellation' };
+      }
+
       // Check worker lock
-      if (assignedTelegramId && assignedTelegramId !== from.id) {
+      if (assignedTelegramId !== from.id) {
         await this.answerCallbackQuery(
           id,
           `⛔ একশন বাতিল!\nএই অর্ডারটি [${assignedWorkerName}] ক্লেইম করেছেন। শুধুমাত্র তিনি অথবা অ্যাডমিন প্যানেল এটি বাতিল করতে পারবেন।`,
@@ -540,19 +607,19 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
       const promptMarkup = {
         inline_keyboard: [
           [
-            { text: `🚫 ভুল ${accountInfo.labelBn} / Invalid`, callback_data: `cancel_confirm:${existingOrder.order_id}:Invalid ${accountInfo.labelEn} (ভুল তথ্য)` }
+            { text: `🚫 ভুল ${accountInfo.labelBn} / Invalid`, callback_data: `cancel_confirm:${existingOrder.order_id}:invalid_info` }
           ],
           [
-            { text: '💳 ভুয়া / ইনভ্যালিড TrxID', callback_data: `cancel_confirm:${existingOrder.order_id}:Fake or Invalid TrxID (পেমেন্ট মেলেনি)` }
+            { text: '💳 ভুয়া / ইনভ্যালিড TrxID', callback_data: `cancel_confirm:${existingOrder.order_id}:fake_trxid` }
           ],
           [
-            { text: '📉 স্টক শেষ / সার্ভার সমস্যা', callback_data: `cancel_confirm:${existingOrder.order_id}:Out of Stock / Server Error` }
+            { text: '📉 স্টক শেষ / সার্ভার সমস্যা', callback_data: `cancel_confirm:${existingOrder.order_id}:stock_out` }
           ],
           [
             { text: '✍️ নিজে কারণ লিখুন (Write Custom Reason)', callback_data: `cancel_custom_prompt:${existingOrder.order_id}` }
           ],
           [
-            { text: '👤 কাস্টমার রিকোয়েস্ট (Customer Requested)', callback_data: `cancel_confirm:${existingOrder.order_id}:Customer Requested` }
+            { text: '👤 কাস্টমার রিকোয়েস্ট (Customer Requested)', callback_data: `cancel_confirm:${existingOrder.order_id}:customer_req` }
           ],
           [
             { text: '🔙 ফিরে যান (Back to Order)', callback_data: `cancel_back:${existingOrder.order_id}` }
@@ -570,8 +637,18 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 
     // 4b. ACTION: CANCEL CUSTOM PROMPT (Worker wants to write custom reason)
     if (action === 'cancel_custom_prompt') {
+      // Must be claimed first before cancellation
+      if (!assignedTelegramId || existingOrder.status === 'PENDING_CLAIM' || existingOrder.status === 'PENDING_PAYMENT') {
+        await this.answerCallbackQuery(
+          id,
+          `⚠️ প্রথমে 'Claim Order' বাটনে ক্লিক করে অর্ডারটি গ্রহণ করুন! ক্লেইম করার পরই কেবল বাতিল করা যাবে।`,
+          true
+        );
+        return { success: false, message: 'Order must be claimed first before cancellation' };
+      }
+
       // Check worker lock
-      if (assignedTelegramId && assignedTelegramId !== from.id) {
+      if (assignedTelegramId !== from.id) {
         await this.answerCallbackQuery(
           id,
           `⛔ একশন বাতিল!\nএই অর্ডারটি [${assignedWorkerName}] ক্লেইম করেছেন। শুধুমাত্র তিনি অথবা অ্যাডমিন প্যানেল এটি বাতিল করতে পারবেন।`,
@@ -662,8 +739,18 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 
     // 6. ACTION: CANCEL CONFIRM (Execute cancellation with reason)
     if (action === 'cancel_confirm') {
+      // Must be claimed first before cancellation
+      if (!assignedTelegramId || existingOrder.status === 'PENDING_CLAIM' || existingOrder.status === 'PENDING_PAYMENT') {
+        await this.answerCallbackQuery(
+          id,
+          `⚠️ প্রথমে 'Claim Order' বাটনে ক্লিক করে অর্ডারটি গ্রহণ করুন! ক্লেইম করার পরই কেবল বাতিল করা যাবে।`,
+          true
+        );
+        return { success: false, message: 'Order must be claimed first before cancellation' };
+      }
+
       // Check worker lock
-      if (assignedTelegramId && assignedTelegramId !== from.id) {
+      if (assignedTelegramId !== from.id) {
         await this.answerCallbackQuery(
           id,
           `⛔ একশন বাতিল!\nএই অর্ডারটি [${assignedWorkerName}] ক্লেইম করেছেন। শুধুমাত্র তিনি অথবা অ্যাডমিন প্যানেল এটি বাতিল করতে পারবেন।`,
@@ -674,7 +761,8 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 
       const parts = data.split(':');
       const targetOrderIdCode = parts[1];
-      const cancelReason = parts.slice(2).join(':') || 'Worker cancelled';
+      const rawReason = parts.slice(2).join(':') || 'Worker cancelled';
+      const cancelReason = resolveCancelReason(rawReason, existingOrder);
 
       const result = await this.executeOrderCancellation({
         orderIdCode: targetOrderIdCode,
@@ -699,10 +787,10 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
     return { success: false, message: 'Unknown action' };
   },
 
-  async answerCallbackQuery(callbackQueryId: string, text: string, showAlert = false) {
-    if (!env.telegram.isConfigured) return;
+  async answerCallbackQuery(callbackQueryId: string, text: string, showAlert = false): Promise<boolean> {
+    if (!env.telegram.isConfigured) return false;
     try {
-      await fetch(`${env.telegram.apiUrl}/answerCallbackQuery`, {
+      const response = await fetch(`${env.telegram.apiUrl}/answerCallbackQuery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -711,8 +799,15 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
           show_alert: showAlert
         })
       });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        console.error('[Telegram answerCallbackQuery Error]:', response.status, data);
+        return false;
+      }
+      return true;
     } catch (e) {
       console.error('Error answering callback query:', e);
+      return false;
     }
   },
 
@@ -735,10 +830,11 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
     }
   },
 
-  async editMessageText(chatId: string | number, messageId: number, text: string, replyMarkup?: unknown) {
-    if (!env.telegram.isConfigured) return;
+  async editMessageText(chatId: string | number, messageId: number, text: string, replyMarkup?: unknown): Promise<boolean> {
+    if (!env.telegram.isConfigured) return false;
     try {
-      await fetch(`${env.telegram.apiUrl}/editMessageText`, {
+      const sanitizedMarkup = sanitizeReplyMarkup(replyMarkup);
+      const response = await fetch(`${env.telegram.apiUrl}/editMessageText`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -746,11 +842,34 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
           message_id: messageId,
           text,
           parse_mode: 'HTML',
-          reply_markup: replyMarkup
+          reply_markup: sanitizedMarkup
         })
       });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        console.error('[Telegram editMessageText Error]:', response.status, data);
+        if (data?.description?.includes("can't parse entities")) {
+          console.warn('[Telegram editMessageText] Retrying without parse_mode HTML...');
+          const plainText = text.replace(/<[^>]*>/g, '');
+          const retryRes = await fetch(`${env.telegram.apiUrl}/editMessageText`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              message_id: messageId,
+              text: plainText,
+              reply_markup: sanitizedMarkup
+            })
+          });
+          const retryData = await retryRes.json().catch(() => null);
+          return Boolean(retryRes.ok && retryData?.ok);
+        }
+        return false;
+      }
+      return true;
     } catch (e) {
       console.error('Error editing message text:', e);
+      return false;
     }
   },
 
@@ -768,6 +887,7 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
   ): Promise<{ ok: boolean; result?: { message_id: number } }> {
     if (!env.telegram.isConfigured) return { ok: false };
     try {
+      const sanitizedMarkup = sanitizeReplyMarkup(options?.reply_markup);
       const response = await fetch(`${env.telegram.apiUrl}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -775,11 +895,15 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
           chat_id: chatId,
           text,
           parse_mode: options?.parse_mode || 'HTML',
-          reply_markup: options?.reply_markup,
+          reply_markup: sanitizedMarkup,
           reply_to_message_id: options?.reply_to_message_id
         })
       });
-      return await response.json();
+      const data = await response.json().catch(() => ({ ok: false }));
+      if (!response.ok || !data.ok) {
+        console.error('[Telegram sendMessage Error]:', response.status, data);
+      }
+      return { ok: Boolean(data.ok), result: data.result };
     } catch (e) {
       console.error('Error sending telegram message:', e);
       return { ok: false };
@@ -814,21 +938,19 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
     const assignedTelegramId = assignedWorker?.telegram_user_id;
     const assignedWorkerName = assignedWorker?.full_name || 'অন্য একজন কর্মী';
 
-    if (assignedTelegramId && assignedTelegramId !== workerTelegramId) {
+    // Workers can only cancel the order after claim, not before the claim
+    if (!assignedTelegramId || existingOrder.status === 'PENDING_CLAIM' || existingOrder.status === 'PENDING_PAYMENT') {
+      return {
+        success: false,
+        message: 'অর্ডারটি বাতিল করতে হলে প্রথমে এটি ক্লেইম (Claim) করতে হবে।'
+      };
+    }
+
+    if (assignedTelegramId !== workerTelegramId) {
       return {
         success: false,
         message: `⛔ এই অর্ডারটি [${assignedWorkerName}] ক্লেইম করেছেন। শুধুমাত্র তিনি অথবা অ্যাডমিন এটি বাতিল করতে পারবেন।`
       };
-    }
-
-    // If order was unclaimed, claim/record this worker so order history reflects who handled it
-    if (!assignedTelegramId && (existingOrder.status === 'PENDING_CLAIM' || existingOrder.status === 'PENDING_PAYMENT')) {
-      await db.claimOrderAtomic({
-        orderIdCode,
-        telegramUserId: workerTelegramId,
-        workerName,
-        telegramUsername: workerUsername
-      }).catch(err => console.warn('[Worker Cancel Claim Fallback]:', err));
     }
 
     const updateResult = await db.updateOrderStatus(orderIdCode, 'CANCELLED', {
