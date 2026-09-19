@@ -3,63 +3,50 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import {
-  Database,
-  Sparkles,
-  MessageSquare,
-  Bot,
-  Key,
   CheckCircle2,
   AlertCircle,
   Copy,
   RefreshCw,
-  Globe,
   Server,
-  ShieldCheck,
-  Send,
-  ExternalLink
+  Send
 } from 'lucide-react';
 import { SupabaseIcon, WhatsAppIcon, TelegramIcon } from '@/components/BrandIcons';
 
 interface SystemStatus {
-  timestamp: string;
-  app: {
-    domain: string;
-    url: string;
-    nodeEnv: string;
+  timestamp?: string;
+  app?: {
+    domain?: string;
+    url?: string;
+    nodeEnv?: string;
   };
-  supabase: {
-    isConfigured: boolean;
-    connected: boolean;
-    url: string;
-    publishableKeyMasked: string;
-    serviceRoleKeyMasked: string;
-    stats: {
-      ordersCount: number;
-      workersCount: number;
-      conversationsCount: number;
-      faqsCount: number;
+  supabase?: {
+    isConfigured?: boolean;
+    connected?: boolean;
+    url?: string;
+    publishableKeyMasked?: string;
+    serviceRoleKeyMasked?: string;
+    stats?: {
+      ordersCount?: number;
+      workersCount?: number;
+      conversationsCount?: number;
+      faqsCount?: number;
     };
   };
-  openai: {
-    isConfigured: boolean;
-    model: string;
-    apiKeyMasked: string;
+  whatsapp?: {
+    isConfigured?: boolean;
+    phoneNumberId?: string;
+    verifyToken?: string;
+    accessTokenMasked?: string;
+    webhookUrl?: string;
   };
-  whatsapp: {
-    isConfigured: boolean;
-    phoneNumberId: string;
-    verifyToken: string;
-    accessTokenMasked: string;
-    webhookUrl: string;
+  telegram?: {
+    isConfigured?: boolean;
+    workerGroupId?: string;
+    botTokenMasked?: string;
+    webhookUrl?: string;
   };
-  telegram: {
-    isConfigured: boolean;
-    workerGroupId: string;
-    botTokenMasked: string;
-    webhookUrl: string;
-  };
-  admin: {
-    email: string;
+  admin?: {
+    email?: string;
   };
 }
 
@@ -184,14 +171,14 @@ export default function ConfigPage() {
   };
 
   // Safe client-side derived values
-  const currentDomain = status?.app.domain || (mounted && typeof window !== 'undefined' ? window.location.host : 'Loading...');
-  const currentWhatsAppWebhook = status?.whatsapp.webhookUrl || (mounted && typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp` : '');
+  const currentDomain = status?.app?.domain || (mounted && typeof window !== 'undefined' ? window.location.host : 'Loading...');
+  const currentWhatsAppWebhook = status?.whatsapp?.webhookUrl || (mounted && typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp` : '');
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-slate-950">
       <Header
         title="Live System Diagnostics & Configuration"
-        subtitle="Real-time status of database connections, AI engines, and external API webhooks"
+        subtitle="Real-time status of database connections, messaging gateways, and external API webhooks"
       />
 
       <main className="p-4 sm:p-6 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6 pb-20 lg:pb-6">
@@ -223,8 +210,8 @@ export default function ConfigPage() {
           </button>
         </div>
 
-        {/* 4 Connected Services Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        {/* 3 Connected Services Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* 1. Supabase Database Card */}
           <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
             <div className="flex items-center justify-between gap-2">
@@ -239,13 +226,13 @@ export default function ConfigPage() {
               </div>
               <span
                 className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0 ${
-                  status?.supabase.connected
+                  status?.supabase?.connected
                     ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                     : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                 }`}
               >
                 <CheckCircle2 className="w-3 h-3" />
-                {status?.supabase.connected ? 'Connected' : 'Disconnected'}
+                {status?.supabase?.connected ? 'Connected' : 'Disconnected'}
               </span>
             </div>
 
@@ -253,13 +240,13 @@ export default function ConfigPage() {
               <div className="flex items-center justify-between gap-2">
                 <span className="text-slate-400 shrink-0">Database URL:</span>
                 <span className="font-mono text-slate-200 text-[11px] truncate max-w-[200px] sm:max-w-[240px]">
-                  {status?.supabase.url}
+                  {status?.supabase?.url || 'Not set'}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-slate-400 shrink-0">Service Role Key:</span>
                 <span className="font-mono text-slate-400 text-[11px]">
-                  {status?.supabase.serviceRoleKeyMasked}
+                  {status?.supabase?.serviceRoleKeyMasked || 'Not Configured'}
                 </span>
               </div>
             </div>
@@ -269,62 +256,22 @@ export default function ConfigPage() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Live Table Row Counts</span>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-800/40">
-                  <div className="text-base font-extrabold text-white">{status?.supabase.stats.faqsCount ?? 0}</div>
+                  <div className="text-base font-extrabold text-white">{status?.supabase?.stats?.faqsCount ?? 0}</div>
                   <div className="text-[10px] text-slate-400">FAQs / Q&A</div>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-800/40">
-                  <div className="text-base font-extrabold text-brand-400">{status?.supabase.stats.ordersCount ?? 0}</div>
+                  <div className="text-base font-extrabold text-brand-400">{status?.supabase?.stats?.ordersCount ?? 0}</div>
                   <div className="text-[10px] text-slate-400">Orders</div>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-800/40">
-                  <div className="text-base font-extrabold text-telegram-500">{status?.supabase.stats.workersCount ?? 0}</div>
+                  <div className="text-base font-extrabold text-telegram-500">{status?.supabase?.stats?.workersCount ?? 0}</div>
                   <div className="text-[10px] text-slate-400">Workers</div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 2. OpenAI & LangChain Card */}
-          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-sm">OpenAI & LangChain Agent</h4>
-                  <p className="text-[11px] text-slate-400">Tool Calling & Conversational AI</p>
-                </div>
-              </div>
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 shrink-0">
-                {status?.openai.isConfigured ? 'Ready' : 'Pending Key'}
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-2 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-slate-400 shrink-0">Active Model:</span>
-                <span className="font-mono text-indigo-300 font-bold">{status?.openai.model || 'gpt-5-nano'}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-slate-400 shrink-0">OpenAI API Key:</span>
-                <span className="font-mono text-slate-400 text-[11px]">{status?.openai.apiKeyMasked}</span>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-slate-800/60 space-y-1.5 text-xs text-slate-400">
-              <div className="flex items-center justify-between text-[11px]">
-                <span>Registered Agent Tools:</span>
-                <span className="font-semibold text-slate-200">search_catalog, get_faq, create_order, track_order</span>
-              </div>
-              <div className="flex items-center justify-between text-[11px]">
-                <span>Language Support:</span>
-                <span className="font-semibold text-emerald-400">Bangla (বাংলা) & English</span>
-              </div>
-            </div>
-          </div>
-
-          {/* 3. WhatsApp Cloud API Webhook Card */}
+          {/* 2. WhatsApp Cloud API Webhook Card */}
           <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
@@ -337,7 +284,7 @@ export default function ConfigPage() {
                 </div>
               </div>
               <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 shrink-0">
-                {status?.whatsapp.isConfigured ? 'Configured' : 'Setup Required'}
+                {status?.whatsapp?.isConfigured ? 'Configured' : 'Setup Required'}
               </span>
             </div>
 
@@ -362,7 +309,7 @@ export default function ConfigPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Verify Token:</span>
                   <button
-                    onClick={() => handleCopy(status?.whatsapp.verifyToken || '', 'wa_token')}
+                    onClick={() => handleCopy(status?.whatsapp?.verifyToken || '', 'wa_token')}
                     className="text-[11px] font-mono text-brand-400 hover:text-brand-300 flex items-center gap-1"
                   >
                     <span>{copiedKey === 'wa_token' ? 'Copied!' : 'Copy Token'}</span>
@@ -370,13 +317,13 @@ export default function ConfigPage() {
                   </button>
                 </div>
                 <code className="block text-[11px] font-mono text-brand-400 font-bold">
-                  {status?.whatsapp.verifyToken || 'verify_token'}
+                  {status?.whatsapp?.verifyToken || 'verify_token'}
                 </code>
               </div>
 
               <div className="flex items-center justify-between px-1 text-slate-400 text-[11px]">
                 <span>Phone Number ID:</span>
-                <span className="font-mono text-slate-200">{status?.whatsapp.phoneNumberId}</span>
+                <span className="font-mono text-slate-200">{status?.whatsapp?.phoneNumberId || 'Not configured'}</span>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/50 space-y-1.5 text-[11px]">
@@ -405,7 +352,7 @@ export default function ConfigPage() {
 
               <button
                 onClick={handleSendWhatsAppTest}
-                disabled={waTestLoading || !status?.whatsapp.isConfigured}
+                disabled={waTestLoading || !status?.whatsapp?.isConfigured}
                 className="w-full py-2.5 px-4 rounded-xl bg-brand-500/15 hover:bg-brand-500/25 border border-brand-500/30 text-brand-400 font-bold text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {waTestLoading ? (
@@ -420,7 +367,7 @@ export default function ConfigPage() {
             </div>
           </div>
 
-          {/* 4. Telegram Worker Bot Card */}
+          {/* 3. Telegram Worker Bot Card */}
           <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
@@ -433,7 +380,7 @@ export default function ConfigPage() {
                 </div>
               </div>
               <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-telegram-500/10 text-telegram-500 border border-telegram-500/20 shrink-0">
-                {status?.telegram.isConfigured ? 'Active' : 'Setup Required'}
+                {status?.telegram?.isConfigured ? 'Active' : 'Setup Required'}
               </span>
             </div>
 
@@ -441,11 +388,11 @@ export default function ConfigPage() {
               <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Worker Group ID:</span>
-                  <span className="font-mono text-slate-200 font-bold">{status?.telegram.workerGroupId}</span>
+                  <span className="font-mono text-slate-200 font-bold">{status?.telegram?.workerGroupId || 'Not configured'}</span>
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-slate-400">Bot Token:</span>
-                  <span className="font-mono text-slate-400 text-[11px]">{status?.telegram.botTokenMasked}</span>
+                  <span className="font-mono text-slate-400 text-[11px]">{status?.telegram?.botTokenMasked || 'Not configured'}</span>
                 </div>
               </div>
 
@@ -465,7 +412,7 @@ export default function ConfigPage() {
               {/* 1-Click Telegram Webhook Auto-Registration */}
               <button
                 onClick={handleRegisterTelegramWebhook}
-                disabled={tgWebhookLoading || !status?.telegram.isConfigured}
+                disabled={tgWebhookLoading || !status?.telegram?.isConfigured}
                 className="w-full py-2.5 px-4 rounded-xl bg-telegram-500/15 hover:bg-telegram-500/25 border border-telegram-500/30 text-telegram-500 font-bold text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {tgWebhookLoading ? (

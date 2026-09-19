@@ -17,11 +17,13 @@ export function Header({ title = 'Operations Hub', subtitle }: HeaderProps) {
 
   const userInitials = user?.name
     ? user.name
-        .split(' ')
+        .trim()
+        .split(/\s+/)
         .map((n) => n[0])
+        .filter(Boolean)
         .join('')
         .slice(0, 2)
-        .toUpperCase()
+        .toUpperCase() || 'AD'
     : 'AD';
 
   return (
