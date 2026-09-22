@@ -76,15 +76,26 @@ export class ZiniPayClient {
     const cancelUrl = params.cancel_url || `${appUrl}/payment/cancel`;
     const webhookUrl = params.webhook_url || `${appUrl}/api/webhooks/zinipay`;
 
+    const rawPhone = (params.metadata?.customer_phone || '').toString().replace(/\D/g, '');
+    const rawUid = (params.metadata?.player_uid || params.cus_name || '').toString().replace(/[^a-zA-Z0-9]/g, '');
+    const idTag = rawPhone || rawUid || 'guest';
+
+    const cusName = (params.cus_name || (params.metadata?.player_uid ? `Player ${params.metadata.player_uid}` : `Customer ${idTag}`)).trim();
+    const cusEmail = (params.cus_email || `customer_${idTag}@sequenceit.software`).trim();
+
     const payload: Record<string, any> = {
       amount: Math.round(params.amount),
+      cus_name: cusName,
+      cus_email: cusEmail,
       redirect_url: redirectUrl,
       cancel_url: cancelUrl,
       webhook_url: webhookUrl
     };
 
-    if (params.cus_name) payload.cus_name = params.cus_name;
-    if (params.cus_email) payload.cus_email = params.cus_email;
+    if (rawPhone) {
+      payload.cus_phone = rawPhone;
+    }
+
     if (params.metadata && typeof params.metadata === 'object') {
       payload.metadata = params.metadata;
     }
@@ -96,7 +107,8 @@ export class ZiniPayClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'zini-api-key': this.apiKey
+          'zini-api-key': this.apiKey,
+          'zinipay-api-key': this.apiKey
         },
         body: JSON.stringify(payload)
       });
@@ -154,7 +166,8 @@ export class ZiniPayClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'zini-api-key': this.apiKey
+          'zini-api-key': this.apiKey,
+          'zinipay-api-key': this.apiKey
         },
         body: JSON.stringify({
           invoice_id: cleanInvoiceId

@@ -7,8 +7,8 @@ import { pinexClient } from '../pinex/client';
 import { zinipayClient } from '../zinipay/client';
 import { orderPaymentService } from '../services/order-payment';
 import { env } from '../config/env';
-import { GAME_CATEGORIES, GameCategory, GamePackage, PAYMENT_ACCOUNTS, findGameCategory, findPackage, formatWhatsAppRow, formatWhatsAppButton } from './game-catalog';
-import { extractCleanUid, extractPaymentProof, getAccountFieldInfo, getGameDeliveryConfig, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu, parseSlashCommand, isRefusalOrCancellation, isPriceInquiry } from './input-parser';
+import { GAME_CATEGORIES, GameCategory, GamePackage, findGameCategory, findPackage, formatWhatsAppRow, formatWhatsAppButton } from './game-catalog';
+import { extractCleanUid, getAccountFieldInfo, getGameDeliveryConfig, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu, parseSlashCommand, isRefusalOrCancellation, isPriceInquiry } from './input-parser';
 import { ConversationSessionState, OrderItem } from '@/types';
 
 export interface IncomingEvent {
@@ -96,35 +96,22 @@ export const stateBot = {
       }
     }
 
-    // 0.0 ZiniPay Check Payment Status trigger (Button or text inquiry)
+    // 0.0 ZiniPay Retry Pay trigger (Re-attempt invoice creation)
+    if (triggerId.startsWith('retry_pay:')) {
+      const targetUid = triggerId.split(':')[1]?.trim() || session.draftOrder?.playerUid;
+      if (targetUid && targetUid !== 'new') {
+        await this.handleUidInput(phone, conversationId, targetUid, session, userId);
+        return;
+      }
+    }
+
+    // 0.1 ZiniPay Check Payment Status trigger (Button or text inquiry)
     const isCheckPayTrigger = triggerId.startsWith('check_pay:') ||
-      (session.step === 'AWAITING_PAYMENT' && ['check', 'check payment', 'check pay', 'paid', 'পেমেন্ট করেছি', 'পেমেন্ট শেষ', 'টাকা দিয়েছি', 'টাকা দিছি', 'পেমেন্ট চেক'].includes(normalizedText));
+      (session.step === 'AWAITING_PAYMENT' && ['check', 'check payment', 'check pay', 'paid', 'পেমেন্ট করেছি', 'পেমেন্ট শেষ', 'টাকা দিয়েছি', 'টাকা দিছি', 'পেমেন্ট চেক', 'done', 'yes', 'hoise', 'diyechi', 'send koresi'].includes(normalizedText));
 
     if (isCheckPayTrigger) {
       await this.handleCheckPayment(phone, conversationId, triggerId, rawText, session);
       return;
-    }
-
-    // 0. If in AWAITING_PAYMENT and user entered valid payment proof (TrxID / last 4 digits / phone), process payment immediately!
-    if (session.step === 'AWAITING_PAYMENT' && rawText && !triggerId.startsWith('game_') && !triggerId.startsWith('pkg_')) {
-      const isMenuBtn = ['btn_menu', 'btn_restart', 'btn_change_game', 'btn_main_menu', 'btn_game_list', 'btn_cancel'].includes(triggerId);
-      if (!isMenuBtn) {
-        const item = session.draftOrder.items?.[0];
-        const amount = session.draftOrder.totalAmount || item?.unitPrice || 0;
-        const selectedMethod = session.draftOrder.paymentMethod || 'BKASH';
-        const accountNumber = PAYMENT_ACCOUNTS[selectedMethod.toLowerCase() as keyof typeof PAYMENT_ACCOUNTS] || PAYMENT_ACCOUNTS.bkash;
-
-        const paymentProof = extractPaymentProof(rawText, {
-          expectedAmount: amount,
-          recipientAccount: accountNumber,
-          playerUid: session.draftOrder.playerUid
-        });
-
-        if (paymentProof.isValid && paymentProof.rawProof) {
-          await this.handleTrxIdInput(phone, conversationId, userId, rawText, session);
-          return;
-        }
-      }
     }
 
     // 1. Refusal, Cancellation or Change of mind ("No kinbo na", "pore nibo", "lagbe na", "thak", "দরকার নেই", etc.)
@@ -199,11 +186,11 @@ export const stateBot = {
       return;
     }
 
-    // 7. If awaiting payment and user entered payment proof or text (without clicking a game button)
+    // 7. If awaiting payment and user entered text (without clicking a game button), check payment automatically!
     if (session.step === 'AWAITING_PAYMENT' && !triggerId.startsWith('game_') && !triggerId.startsWith('pkg_')) {
       const isExplicitGameSwitch = ['movie', 'netflix', 'pubg', 'freefire', 'free fire', 'efootball', 'pes'].includes(normalizedText);
       if (!isExplicitGameSwitch) {
-        await this.handleTrxIdInput(phone, conversationId, userId, rawText, session);
+        await this.handleCheckPayment(phone, conversationId, triggerId, rawText, session);
         return;
       }
     }
@@ -252,7 +239,7 @@ export const stateBot = {
         break;
 
       case 'AWAITING_PAYMENT':
-        await this.handleTrxIdInput(phone, conversationId, userId, rawText, session);
+        await this.handleCheckPayment(phone, conversationId, triggerId, rawText, session);
         break;
 
       case 'ORDER_PLACED':
@@ -530,95 +517,91 @@ ${game.inputPrompt}`;
     const accountInfo = getAccountFieldInfo(cleanUid, gameLabel);
     const effectiveUserId = userId || (await db.getOrCreateUser(phone)).id;
 
-    // Check if ZiniPay Automatic Payment is enabled
-    const isZiniPayEnabled = db.isZiniPayAutoPaymentEnabled() && zinipayClient.isConfigured();
+    try {
+      // 1. Create order in Database with PENDING_PAYMENT
+      const pendingOrder = await db.createOrder({
+        userId: effectiveUserId,
+        deliveryPhone: phone,
+        playerUid: cleanUid,
+        paymentMethod: 'ZINIPAY',
+        status: 'PENDING_PAYMENT',
+        items: [
+          {
+            product_name: `${gameLabel} (${pkgName})`,
+            unit_price: amount,
+            quantity: 1
+          }
+        ],
+        customerNotes: `State Bot Order | Game: ${gameLabel} | ${accountInfo.labelEn}: ${cleanUid} | Mode: Auto ZiniPay`
+      });
 
-    if (isZiniPayEnabled && amount > 0) {
-      try {
-        // 1. Create order in Database with PENDING_PAYMENT
-        const pendingOrder = await db.createOrder({
-          userId: effectiveUserId,
-          deliveryPhone: phone,
-          playerUid: cleanUid,
-          paymentMethod: 'ZINIPAY',
-          status: 'PENDING_PAYMENT',
-          items: [
-            {
-              product_name: `${gameLabel} (${pkgName})`,
-              unit_price: amount,
-              quantity: 1
-            }
-          ],
-          customerNotes: `State Bot Order | Game: ${gameLabel} | ${accountInfo.labelEn}: ${cleanUid} | Mode: Auto ZiniPay`
-        });
+      // 2. Create Hosted Invoice via ZiniPay API
+      const invoiceRes = await zinipayClient.createInvoice({
+        amount,
+        cus_name: `Player ${cleanUid}`,
+        cus_email: `customer_${phone.replace(/\D/g, '') || cleanUid}@sequenceit.software`,
+        metadata: {
+          order_id: pendingOrder.order_id,
+          customer_phone: phone,
+          player_uid: cleanUid,
+          service: gameLabel,
+          package: pkgName
+        },
+        redirect_url: `${env.app.url}/payment/success?order_id=${pendingOrder.order_id}`,
+        cancel_url: `${env.app.url}/payment/cancel?order_id=${pendingOrder.order_id}`
+      });
 
-        // 2. Create Hosted Invoice via ZiniPay API
-        const invoiceRes = await zinipayClient.createInvoice({
-          amount,
-          cus_name: cleanUid,
-          metadata: {
-            order_id: pendingOrder.order_id,
-            customer_phone: phone,
-            player_uid: cleanUid,
-            service: gameLabel,
-            package: pkgName
-          },
-          redirect_url: `${env.app.url}/payment/success?order_id=${pendingOrder.order_id}`,
-          cancel_url: `${env.app.url}/payment/cancel?order_id=${pendingOrder.order_id}`
-        });
+      if (invoiceRes.status && invoiceRes.payment_url) {
+        await db.attachInvoiceToOrder(
+          pendingOrder.order_id,
+          invoiceRes.invoice_id || '',
+          invoiceRes.payment_url
+        );
 
-        if (invoiceRes.status && invoiceRes.payment_url) {
-          await db.attachInvoiceToOrder(
-            pendingOrder.order_id,
-            invoiceRes.invoice_id || '',
-            invoiceRes.payment_url
-          );
-
-          db.setSessionState(conversationId, {
-            step: 'AWAITING_PAYMENT',
-            draftOrder: {
-              ...session.draftOrder,
-              playerUid: cleanUid,
-              pendingOrderId: pendingOrder.order_id,
-              invoiceId: invoiceRes.invoice_id,
-              paymentUrl: invoiceRes.payment_url
-            }
-          });
-
-          await whatsappService.sendPaymentInvoicePrompt({
-            toPhone: phone,
-            orderIdCode: pendingOrder.order_id,
-            paymentUrl: invoiceRes.payment_url,
-            amount,
-            gameLabel,
-            packageName: pkgName,
+        db.setSessionState(conversationId, {
+          step: 'AWAITING_PAYMENT',
+          draftOrder: {
+            ...session.draftOrder,
             playerUid: cleanUid,
-            accountLabelBn: accountInfo.labelBn
-          });
+            pendingOrderId: pendingOrder.order_id,
+            invoiceId: invoiceRes.invoice_id,
+            paymentUrl: invoiceRes.payment_url
+          }
+        });
 
-          await db.addMessage({
-            conversationId,
-            sender: 'BOT',
-            content: `⚡ পেমেন্ট লিংক তৈরি হয়েছে: ${invoiceRes.payment_url}`,
-            metadata: {
-              step: 'AWAITING_PAYMENT',
-              orderId: pendingOrder.order_id,
-              invoiceId: invoiceRes.invoice_id,
-              paymentUrl: invoiceRes.payment_url,
-              amount
-            }
-          });
+        await whatsappService.sendPaymentInvoicePrompt({
+          toPhone: phone,
+          orderIdCode: pendingOrder.order_id,
+          paymentUrl: invoiceRes.payment_url,
+          amount,
+          gameLabel,
+          packageName: pkgName,
+          playerUid: cleanUid,
+          accountLabelBn: accountInfo.labelBn
+        });
 
-          return;
-        } else {
-          console.warn('[ZiniPay Invoice Error]: Falling back to manual payment:', invoiceRes.error);
-        }
-      } catch (err) {
-        console.error('[ZiniPay Creation Exception]:', err);
+        await db.addMessage({
+          conversationId,
+          sender: 'BOT',
+          content: `⚡ পেমেন্ট লিংক তৈরি হয়েছে: ${invoiceRes.payment_url}`,
+          metadata: {
+            step: 'AWAITING_PAYMENT',
+            orderId: pendingOrder.order_id,
+            invoiceId: invoiceRes.invoice_id,
+            paymentUrl: invoiceRes.payment_url,
+            amount
+          }
+        });
+
+        return;
+      } else {
+        console.error('[ZiniPay Invoice Error]:', invoiceRes.error);
       }
+    } catch (err) {
+      console.error('[ZiniPay Creation Exception]:', err);
     }
 
-    // Fallback: Manual Send Money Payment Flow
+    // In case of any unexpected gateway communication error, provide instant retry
     db.setSessionState(conversationId, {
       step: 'AWAITING_PAYMENT',
       draftOrder: {
@@ -627,39 +610,17 @@ ${game.inputPrompt}`;
       }
     });
 
-    const paymentMessage = 
-`📝 *অর্ডার সামারি:*
-• গেম / সার্ভিস: *${gameLabel}*
-• প্যাকেজ: *${pkgName}*
-• ${accountInfo.emoji} ${accountInfo.labelBn}: \`${cleanUid}\`
-• মোট মূল্য: *৳${amount} Tk*
-
-💳 *পেমেন্ট নম্বরসমূহ (Personal Send Money / Cash In):*
-• *bKash:* \`${PAYMENT_ACCOUNTS.bkash}\`
-• *Nagad:* \`${PAYMENT_ACCOUNTS.nagad}\`
-• *Rocket:* \`${PAYMENT_ACCOUNTS.rocket}\`
-
-👇 *টাকা পাঠানোর জন্য নিচের মাধ্যম সিলেক্ট করুন:*`;
-
-    const buttons = [
-      { id: 'pay_bkash', title: '🟢 bKash' },
-      { id: 'pay_nagad', title: '🟠 Nagad' },
-      { id: 'pay_rocket', title: '🟣 Rocket' }
+    const retryButtons = [
+      { id: `retry_pay:${cleanUid}`, title: '🔄 আবার চেষ্টা করুন' },
+      { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
     ];
 
     await whatsappService.sendInteractiveButtons(
       phone,
-      paymentMessage,
-      buttons,
-      'পেমেন্ট মাধ্যম বাছুন'
+      `⚠️ *পেমেন্ট গেটওয়েতে সংযোগ করতে সমস্যা হয়েছে!*\n\n• গেম: *${gameLabel}*\n• প্যাকেজ: *${pkgName}*\n• মূল্য: *৳${amount} Tk*\n\nঅনুগ্রহ করে নিচের বাটনে ক্লিক করে আবার চেষ্টা করুন:`,
+      retryButtons,
+      'পেমেন্ট লিংক সমস্যা'
     );
-
-    await db.addMessage({
-      conversationId,
-      sender: 'BOT',
-      content: paymentMessage,
-      metadata: { step: 'AWAITING_PAYMENT', playerUid: cleanUid, amount }
-    });
   },
 
   /**
@@ -692,9 +653,32 @@ ${game.inputPrompt}`;
     }
 
     if (!invoiceId) {
-      await whatsappService.sendMessage(
+      const payUrl = order?.payment_url || session.draftOrder?.paymentUrl;
+      if (payUrl) {
+        await whatsappService.sendMessage(
+          phone,
+          `⚡ *আপনার পেমেন্ট লিংক:*\n${payUrl}\n\nঅনুগ্রহ করে লিংকে গিয়ে বিকাশ/নগদ/রকেটে পেমেন্ট সম্পন্ন করুন।`
+        );
+        const buttons = [
+          { id: `check_pay:${order?.order_id || session.draftOrder?.pendingOrderId || ''}`, title: '🔄 পেমেন্ট চেক করুন' },
+          { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
+        ];
+        await whatsappService.sendInteractiveButtons(phone, `পেমেন্ট সম্পন্ন করার পর নিচের বাটন চাপুন:`, buttons, 'পেমেন্ট চেক');
+        return;
+      }
+
+      if (session.draftOrder?.playerUid) {
+        await this.handleUidInput(phone, conversationId, session.draftOrder.playerUid, session);
+        return;
+      }
+
+      await whatsappService.sendInteractiveButtons(
         phone,
-        `⚠️ পেমেন্ট ভেরিফাই করার জন্য কোনো সক্রিয় ইনভয়েস পাওয়া যায়নি।\n\nআপনি যদি ম্যানুয়ালি টাকা পাঠিয়ে থাকেন, তবে অনুগ্রহ করে আপনার TrxID মেসেজে লিখে পাঠান:`
+        `⚠️ *কোনো সক্রিয় পেমেন্ট ইনভয়েস পাওয়া যায়নি!*\n\nঅনুগ্রহ করে নতুন অর্ডার করতে নিচের বাটনে চাপ দিন:`,
+        [
+          { id: 'btn_main_menu', title: '🎮 নতুন অর্ডার' }
+        ],
+        'নতুন অর্ডার'
       );
       return;
     }
@@ -735,7 +719,7 @@ ${game.inputPrompt}`;
 🔗 *পেমেন্ট লিংক:*
 ${payUrl || 'https://secure.zinipay.com'}
 
-*(পেমেন্ট সম্পন্ন করার ১–২ মিনিট পর আবার নিচের বাটনে চাপ দিন)*`;
+*(পেমেন্ট সম্পন্ন করার পর নিচের বাটনে চাপ দিন)*`;
 
       const buttons = [
         { id: `check_pay:${order?.order_id || ''}`, title: '🔄 আবার চেক করুন' },
@@ -750,9 +734,10 @@ ${payUrl || 'https://secure.zinipay.com'}
     const failedMsg = 
 `❌ *পেমেন্ট সম্পন্ন হয়নি বা বাতিল হয়েছে।*
 
-আপনার আগের পেমেন্ট সেশনটি সফল হয়নি। অনুগ্রহ করে নতুন করে চেষ্টা করুন অথবা অন্য মাধ্যমে টাকা পাঠান।`;
+আপনার আগের পেমেন্ট সেশনটি সফল হয়নি। অনুগ্রহ করে নতুন করে চেষ্টা করুন:`;
 
     const buttons = [
+      { id: `retry_pay:${session.draftOrder?.playerUid || 'new'}`, title: '🔄 আবার চেষ্টা করুন' },
       { id: 'btn_main_menu', title: '🎮 নতুন অর্ডার' }
     ];
 
@@ -760,7 +745,7 @@ ${payUrl || 'https://secure.zinipay.com'}
   },
 
   /**
-   * Handle Payment Method Selection (bKash, Nagad, Rocket)
+   * Handle Payment Method Selection -> Route to ZiniPay Gateway
    */
   async handlePaymentMethodSelection(
     phone: string,
@@ -768,63 +753,30 @@ ${payUrl || 'https://secure.zinipay.com'}
     methodInput: string,
     session: ConversationSessionState
   ): Promise<void> {
-    let method = 'BKASH';
-    let methodName = 'bKash (বিকাশ)';
-    let accountNumber = PAYMENT_ACCOUNTS.bkash;
-
-    const lower = methodInput.toLowerCase();
-    if (lower.includes('nagad') || lower.includes('নগদ')) {
-      method = 'NAGAD';
-      methodName = 'Nagad (নগদ)';
-      accountNumber = PAYMENT_ACCOUNTS.nagad;
-    } else if (lower.includes('rocket') || lower.includes('রকেট')) {
-      method = 'ROCKET';
-      methodName = 'Rocket (রকেট)';
-      accountNumber = PAYMENT_ACCOUNTS.rocket;
+    const payUrl = session.draftOrder?.paymentUrl;
+    if (payUrl) {
+      await whatsappService.sendMessage(
+        phone,
+        `⚡ *স্বয়ংক্রিয় পেমেন্ট গেটওয়ে*\n\nবিকাশ, নগদ বা রকেটে পেমেন্ট সম্পন্ন করতে নিচের লিংকে ক্লিক করুন:\n👉 ${payUrl}\n\nপেমেন্ট সম্পন্ন হওয়ার পর অটোমেটিক অর্ডার ডেলিভারি হয়ে যাবে।`
+      );
+      const buttons = [
+        { id: `check_pay:${session.draftOrder?.pendingOrderId || ''}`, title: '🔄 পেমেন্ট চেক করুন' },
+        { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
+      ];
+      await whatsappService.sendInteractiveButtons(phone, `পেমেন্ট সম্পন্ন করার পর নিচের বাটন চাপুন:`, buttons, 'পেমেন্ট চেক');
+      return;
     }
 
-    db.setSessionState(conversationId, {
-      step: 'AWAITING_PAYMENT',
-      draftOrder: {
-        ...session.draftOrder,
-        paymentMethod: method
-      }
-    });
+    if (session.draftOrder?.playerUid) {
+      await this.handleUidInput(phone, conversationId, session.draftOrder.playerUid, session);
+      return;
+    }
 
-    const item = session.draftOrder.items?.[0];
-    const amount = session.draftOrder.totalAmount || item?.unitPrice || 0;
-    const playerUid = session.draftOrder.playerUid || 'N/A';
-
-    const guideMessage = 
-`💳 *${methodName} পেমেন্ট নির্দেশিকা (Personal Send Money / Cash In)*
-
-• একাউন্ট নম্বর: \`${accountNumber}\` *(ট্যাপ করে কপি করুন)*
-• প্রদেয় টাকার পরিমাণ: *৳${amount} Tk*
-• রেফারেন্স (যদি চায়): \`${playerUid}\`
-
-👉 টাকা পাঠানোর পর আপনার *TrxID* অথবা নম্বরের *লাস্ট ৪ ডিজিট* লিখে মেসেজ পাঠান:`;
-
-    const buttons = [
-      { id: 'btn_main_menu', title: '❌ বাতিল করুন' }
-    ];
-
-    await whatsappService.sendInteractiveButtons(
-      phone,
-      guideMessage,
-      buttons,
-      'টাকা পাঠিয়ে TrxID দিন'
-    );
-
-    await db.addMessage({
-      conversationId,
-      sender: 'BOT',
-      content: guideMessage,
-      metadata: { step: 'AWAITING_PAYMENT', selectedMethod: method, accountNumber }
-    });
+    await this.sendWelcomeAndGameList(phone, conversationId);
   },
 
   /**
-   * Step 4 -> Complete: Collect TrxID, create order in DB, send Order Confirmation, dispatch to Telegram
+   * Auto Payment verification for any payment check text or inquiries
    */
   async handleTrxIdInput(
     phone: string,
@@ -833,276 +785,7 @@ ${payUrl || 'https://secure.zinipay.com'}
     rawText: string,
     session: ConversationSessionState
   ) {
-    const item = session.draftOrder.items?.[0];
-    const amount = session.draftOrder.totalAmount || item?.unitPrice || 0;
-    const selectedMethod = session.draftOrder.paymentMethod || 'BKASH';
-    const methodName = selectedMethod === 'NAGAD' ? 'Nagad (নগদ)' : selectedMethod === 'ROCKET' ? 'Rocket (রকেট)' : 'bKash (বিকাশ)';
-    const accountNumber = PAYMENT_ACCOUNTS[selectedMethod.toLowerCase() as keyof typeof PAYMENT_ACCOUNTS] || PAYMENT_ACCOUNTS.bkash;
-
-    const extracted = extractPaymentProof(rawText, {
-      expectedAmount: amount,
-      recipientAccount: accountNumber,
-      playerUid: session.draftOrder.playerUid
-    });
-
-    // If customer did not provide a valid TrxID or Last 4 digits (e.g. sent "Baksh e send koreci", "taka disi", "done")
-    if (!extracted.isValid || !extracted.rawProof) {
-      if (isRefusalOrCancellation(rawText)) {
-        await this.handleCancellation(phone, conversationId);
-        return;
-      }
-
-      if (isGreetingOrMenu(rawText)) {
-        await this.sendWelcomeAndGameList(phone, conversationId);
-        return;
-      }
-      const promptText = 
-`⚠️ *সঠিক TrxID অথবা লাস্ট ৪ ডিজিট পাওয়া যায়নি!*
-
-টাকা পাঠিয়ে থাকলে অনুগ্রহ করে আপনার *TrxID* (যেমন: \`BK9827361\`) অথবা সেন্ডার নম্বরের *লাস্ট ৪ ডিজিট* (যেমন: \`4591\`) লিখে মেসেজ পাঠান।
-
-💳 *${methodName} নম্বর:* \`${accountNumber}\`
-💰 *প্রদেয় টাকার পরিমাণ:* ৳${amount} Tk
-
-*(বাতিল করতে চাইলে নিচে 'বাতিল করুন' বাটনে চাপ দিন)*`;
-
-      const buttons = [
-        { id: 'btn_main_menu', title: '❌ বাতিল করুন' }
-      ];
-
-      await whatsappService.sendInteractiveButtons(phone, promptText, buttons, 'সঠিক TrxID দিন');
-      return;
-    }
-
-    const paymentMethod = (extracted.paymentMethod !== 'BKASH/NAGAD/ROCKET' ? extracted.paymentMethod : session.draftOrder.paymentMethod) || 'BKASH';
-    const cleanTrx = extracted.rawProof;
-    const unitPrice = item?.unitPrice || amount;
-    const productName = item?.productName || `${session.draftOrder.selectedGameLabel || 'Game'} (${item?.skuOrName || 'Top-Up'})`;
-    const playerUid = session.draftOrder.playerUid || 'N/A';
-    const accountInfo = getAccountFieldInfo(playerUid, session.draftOrder.selectedGameLabel);
-
-    try {
-      // 1. Create order in Database
-      const order = await db.createOrder({
-        userId,
-        deliveryPhone: phone,
-        playerUid,
-        trxId: cleanTrx,
-        paymentMethod,
-        items: [
-          {
-            product_name: productName,
-            unit_price: unitPrice,
-            quantity: 1
-          }
-        ],
-        customerNotes: `State Bot Order | Game: ${session.draftOrder.selectedGameLabel || 'N/A'} | ${accountInfo.labelEn}: ${playerUid} | Proof: ${cleanTrx} | Pay: ${paymentMethod}`
-      });
-
-      // 2. Clear draft and update session state
-      db.clearSessionDraft(conversationId, order.order_id);
-      db.setSessionState(conversationId, {
-        step: 'ORDER_PLACED'
-      });
-
-      const selectedGame = session.draftOrder.selectedGame || '';
-      const isPubgUid = selectedGame === 'game_pubg_uid' || (session.draftOrder.selectedGameLabel || '').toLowerCase().includes('pubg');
-      const isKokosEnabled = db.isKokosAutoFulfillEnabled() && kokosClient.isConfigured();
-
-      // Check if this order is eligible for Kokos API Auto-Fulfillment
-      if (isPubgUid && isKokosEnabled) {
-        // Extract numeric denomination (e.g. 60, 325, 660, 1800, 3850, 8100)
-        const denomMatch = (item?.skuOrName || productName).match(/\d+/);
-        const denomination = denomMatch ? parseInt(denomMatch[0], 10) : null;
-
-        if (denomination && playerUid && playerUid !== 'N/A') {
-          console.log(`[Kokos Auto-Fulfill] Attempting redemption for Player ${playerUid}, Denomination ${denomination} UC...`);
-
-          const kokosResult = await kokosClient.redeemCode({
-            playerId: playerUid,
-            denomination,
-            gameId: 'pubg_mobile',
-            requireReceipt: true
-          });
-
-          if (kokosResult.success && kokosResult.receipt) {
-            const receipt = kokosResult.receipt;
-            console.log(`[Kokos Auto-Fulfill Success] Receipt #${receipt.id} delivered in ${receipt.took}ms to "${receipt.name}"`);
-
-            // Mark order delivered in database with receipt details
-            await db.updateOrderStatus(
-              order.order_id,
-              'DELIVERED',
-              {
-                isAdminOverride: true,
-                notes: `Kokos Auto-Fulfilled | Receipt #${receipt.id} | Player: ${receipt.name || playerUid} | Took: ${receipt.took}ms`
-              }
-            );
-
-            // Automated delivery message to customer on WhatsApp
-            const deliveryMsg = `🎉 *PUBG Mobile UC টপ-আপ সফলভাবে সম্পন্ন হয়েছে!*
-
-🎮 *সার্ভিস:* PUBG Mobile (UID Top-Up)
-👤 *Player Name:* \`${receipt.name || 'In-Game Player'}\`
-🆔 *Player ID:* \`${playerUid}\`
-💎 *পরিমাণ:* *${denomination} UC*
-🧾 *Kokos Receipt ID:* \`#${receipt.id}\`
-⏱️ *ডেলিভারি সময়:* ${(receipt.took / 1000).toFixed(1)} সেকেন্ড
-💰 *অর্ডার আইডি:* \`#${order.order_id}\`
-
-আপনার অ্যাকাউন্টে UC যোগ হয়ে গেছে। ধন্যবাদ সাথে থাকার জন্য! ❤️`;
-
-            const buttons = [
-              { id: 'btn_main_menu', title: '🎮 নতুন অর্ডার করুন' },
-              { id: `track:${order.order_id}`, title: '📦 অর্ডার বিস্তারিত' }
-            ];
-
-            await whatsappService.sendInteractiveButtons(phone, deliveryMsg, buttons, 'টপ-আপ ডেলিভারি সম্পন্ন');
-
-            await db.addMessage({
-              conversationId,
-              sender: 'BOT',
-              content: deliveryMsg,
-              metadata: { orderId: order.order_id, kokosReceipt: receipt, step: 'DELIVERED' }
-            });
-
-            return;
-          } else {
-            console.warn('[Kokos Auto-Fulfill Error]:', kokosResult.error);
-            // Log fallback in customer notes
-            order.customer_notes = `${order.customer_notes} | ⚠️ Kokos Auto-Fulfill Failed: ${kokosResult.error?.errorCode || 'Error'}`;
-            // Fallback to Telegram Worker Bot Queue so humans can fulfill in order
-            telegramQueue.enqueueOrder(order).catch(err => {
-              console.warn('[Telegram Worker Queue Enqueue Warning]:', err);
-            });
-
-            // Send standard order confirmation to customer
-            await whatsappService.sendOrderConfirmation(order);
-
-            await db.addMessage({
-              conversationId,
-              sender: 'BOT',
-              content: `🎉 অর্ডার #${order.order_id} সফলভাবে তৈরি হয়েছে। আমাদের টিম দ্রুত প্রসেস করছে।`,
-              metadata: { orderId: order.order_id, kokosError: kokosResult.error, step: 'ORDER_PLACED' }
-            });
-
-            return;
-          }
-        }
-      }
-
-      // Check if this order is eligible for Pinex API Auto-Fulfillment (Free Fire)
-      const isFreeFire = selectedGame === 'game_ff' ||
-        (session.draftOrder.selectedGameLabel || '').toLowerCase().includes('free fire') ||
-        (session.draftOrder.selectedGameLabel || '').toLowerCase().includes('ff') ||
-        (productName || '').toLowerCase().includes('diamond');
-      const isPinexEnabled = db.isPinexAutoFulfillEnabled() && pinexClient.isConfigured();
-
-      if (isFreeFire && isPinexEnabled) {
-        if (playerUid && playerUid !== 'N/A') {
-          console.log(`[Pinex Auto-Fulfill] Processing Free Fire Order #${order.order_id} for Player ${playerUid}...`);
-
-          const pinexResult = await pinexClient.autoRedeemFreeFire({
-            playerId: playerUid,
-            packageNameOrAmount: item?.skuOrName || productName,
-            orderId: order.order_id
-          });
-
-          if (pinexResult.success) {
-            console.log(`[Pinex Auto-Fulfill Success] Free Fire Order #${order.order_id} delivered immediately.`);
-
-            // Mark order delivered in database with Pinex details
-            await db.updateOrderStatus(
-              order.order_id,
-              'DELIVERED',
-              {
-                isAdminOverride: true,
-                notes: `Pinex Auto-Fulfilled | TRX: ${pinexResult.trxIdOrContent || 'COMPLETED'} | Player: ${pinexResult.nickname || playerUid}`
-              }
-            );
-
-            // Automated delivery message to customer on WhatsApp
-            const deliveryMsg = `🎉 *Free Fire ডায়মন্ড টপ-আপ সফলভাবে সম্পন্ন হয়েছে!*
-
-🔥 *সার্ভিস:* Free Fire (Direct UID Top-Up)
-👤 *Player Name:* \`${pinexResult.nickname || 'In-Game Player'}\`
-🆔 *Player UID:* \`${playerUid}\`
-💎 *প্যাকেজ:* *${item?.skuOrName || productName}*
-🧾 *Pinex TRX ID:* \`${pinexResult.trxIdOrContent || 'COMPLETED'}\`
-💰 *অর্ডার আইডি:* \`#${order.order_id}\`
-
-আপনার অ্যাকাউন্টে ডায়মন্ড যোগ হয়ে গেছে। ধন্যবাদ সাথে থাকার জন্য! ❤️`;
-
-            const buttons = [
-              { id: 'btn_main_menu', title: '🎮 নতুন অর্ডার করুন' },
-              { id: `track:${order.order_id}`, title: '📦 অর্ডার বিস্তারিত' }
-            ];
-
-            await whatsappService.sendInteractiveButtons(phone, deliveryMsg, buttons, 'টপ-আপ ডেলিভারি সম্পন্ন');
-
-            await db.addMessage({
-              conversationId,
-              sender: 'BOT',
-              content: deliveryMsg,
-              metadata: { orderId: order.order_id, pinexResult, step: 'DELIVERED' }
-            });
-
-            // NO Telegram bot needed for Free Fire auto-fulfillment as requested!
-            return;
-          } else {
-            console.log(`[Pinex Auto-Fulfill Response] Order #${order.order_id} status: ${pinexResult.status}`);
-
-            // Send confirmation that order is accepted and being processed via Pinex
-            const processingMsg = `🎉 *অর্ডার #${order.order_id} গ্রহণ করা হয়েছে!*
-
-🔥 *সার্ভিস:* Free Fire (Direct UID Top-Up)
-🆔 *Player UID:* \`${playerUid}\`
-💎 *প্যাকেজ:* *${item?.skuOrName || productName}*
-⚡ *স্ট্যাটাস:* স্বয়ংক্রিয়ভাবে টপ-আপ প্রসেস হচ্ছে...
-
-কিছুক্ষণের মধ্যে আপনার ফ্রি ফায়ার আইডিতে ডায়মন্ড যুক্ত হয়ে যাবে।`;
-
-            const buttons = [
-              { id: `track:${order.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
-              { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
-            ];
-
-            await whatsappService.sendInteractiveButtons(phone, processingMsg, buttons, 'অর্ডার প্রসেস হচ্ছে');
-
-            await db.addMessage({
-              conversationId,
-              sender: 'BOT',
-              content: processingMsg,
-              metadata: { orderId: order.order_id, pinexResult, step: 'ORDER_PLACED' }
-            });
-
-            // NO Telegram bot needed for Free Fire auto-fulfillment as requested!
-            return;
-          }
-        }
-      }
-
-      // Default Flow: Enqueue to Telegram Worker Group (for other games like PUBG Login/QR, Efootball, Subscriptions, etc.)
-      telegramQueue.enqueueOrder(order).catch(err => {
-        console.warn('[Telegram Worker Queue Enqueue Warning]:', err);
-      });
-
-      // Send WhatsApp structured order confirmation
-      await whatsappService.sendOrderConfirmation(order);
-
-      await db.addMessage({
-        conversationId,
-        sender: 'BOT',
-        content: `🎉 অর্ডার #${order.order_id} সফলভাবে তৈরি হয়েছে।`,
-        metadata: { orderId: order.order_id, step: 'ORDER_PLACED' }
-      });
-    } catch (err) {
-      console.error('[StateBot handleTrxIdInput Error]:', err);
-      await whatsappService.sendMessage(
-        phone,
-        '⚠️ অর্ডার প্রসেস করতে একটি সমস্যা হয়েছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন অথবা আমাদের সরাসরি কল করুন।'
-      );
-    }
+    await this.handleCheckPayment(phone, conversationId, '', rawText, session);
   },
 
   /**
