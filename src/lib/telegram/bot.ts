@@ -569,6 +569,23 @@ ${queueBadge}${pendingQrHint}`,
 
     // QR Interactive Hints
     if (action === 'qr_hint') {
+      const hasQrSent = 
+        (existingOrder.customer_notes || '').includes('QR Code forwarded') || 
+        (existingOrder.customer_notes || '').includes('Storage:') ||
+        existingOrder.status === 'PROCESSING' ||
+        existingOrder.status === 'DELIVERED';
+
+      // If the screenshot has already been dropped/sent, suppress the modal completely!
+      if (hasQrSent) {
+        await this.answerCallbackQuery(
+          id,
+          '✅ QR কোড ইতোমধ্যে পাঠানো হয়েছে! কাস্টমার স্ক্যান করার অপেক্ষায় রয়েছে।',
+          false
+        );
+        return { success: true, message: 'QR already sent, hint suppressed' };
+      }
+
+      // Only show popup modal if admin has NOT dropped the image yet and clicks send screenshot button
       await this.answerCallbackQuery(
         id,
         '📸 অনুগ্রহ করে এই মেসেজে রিপ্লাই করে লগইন QR কোডের ছবি/স্ক্রিনশট পাঠান। বট সাথে সাথে কাস্টমারের WhatsApp-এ পাঠিয়ে দেবে।',
@@ -581,7 +598,7 @@ ${queueBadge}${pendingQrHint}`,
       await this.answerCallbackQuery(
         id,
         '⏳ কাস্টমারের WhatsApp-এ QR কোড পাঠানো হয়েছে (৫ মিনিট মেয়াদ)। কাস্টমার স্ক্যান করলে আপনাকে সাথে সাথে এখানে নোটিফাই করা হবে।',
-        true
+        false
       );
       return { success: true, message: 'QR waiting info shown' };
     }
@@ -590,7 +607,7 @@ ${queueBadge}${pendingQrHint}`,
       await this.answerCallbackQuery(
         id,
         '🔄 নতুন QR পাঠাতে এই কার্ডে রিপ্লাই করে আরেকটি স্ক্রিনশট সেন্ড করুন।',
-        true
+        false
       );
       return { success: true, message: 'QR resend hint shown' };
     }
