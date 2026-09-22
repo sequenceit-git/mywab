@@ -151,11 +151,108 @@ export const telegramBot = {
       (order.customer_notes || '').toLowerCase().includes('login uc');
 
     const qrBanner = isQrOrder ? `\n📲 <b>[PUBG QR LOGIN ORDER]</b>\n` : '';
+    const hasQrSent = (order.customer_notes || '').includes('QR Code forwarded') || (order.customer_notes || '').includes('Storage:');
+    const hasQrScanned = (order.customer_notes || '').includes('Customer Scanned') || (order.customer_notes || '').includes('QR_SCANNED');
 
     if (order.status === 'CLAIMED' || order.status === 'PROCESSING') {
-      const qrInstruction = isQrOrder
-        ? `\n📸 <b>ACTION REQUIRED:</b> অনুগ্রহ করে এই মেসেজে <b>Login QR কোডের ছবি/স্ক্রিনশট</b> রিপ্লাই বা সেন্ড করুন। বট স্বয়ংক্রিয়ভাবে কাস্টমারের WhatsApp-এ পাঠিয়ে দেবে (৫ মিনিট মেয়াদ)।\n`
-        : `\n<i>Worker: Process the order and click below when complete or cancel if invalid:</i>`;
+      if (isQrOrder) {
+        if (hasQrScanned) {
+          // Stage 3: Customer Scanned QR -> Worker should finish and click Completed
+          return {
+            cardHtml: 
+`🎯 <b>CUSTOMER SCANNED QR! / গ্রাহক স্ক্যান সম্পন্ন করেছেন</b>${qrBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>
+${proofLines}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+
+💎 <b>Packages:</b>
+${itemsText}
+
+✅ <b>গ্রাহক QR কোড স্ক্যান করেছেন!</b>
+এখন Midasbuy বা গেমে লগইন করে টপ-আপ সম্পন্ন করুন এবং নিচের <b>"✅ Order Completed"</b> বাটনে চাপ দিন।`,
+            replyMarkup: {
+              inline_keyboard: [
+                [
+                  { text: '✅ Order Completed (ডেলিভারি সম্পন্ন)', callback_data: `status_delivered:${order.order_id}` }
+                ],
+                [
+                  { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+                ]
+              ]
+            }
+          };
+        } else if (hasQrSent) {
+          // Stage 2: QR Code Sent to WhatsApp -> Waiting for customer scan
+          return {
+            cardHtml: 
+`📤 <b>QR CODE SENT TO WHATSAPP / কিউআর পাঠানো হয়েছে</b>${qrBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>
+${proofLines}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+
+💎 <b>Packages:</b>
+${itemsText}
+
+⏱️ <b>মেয়াদ:</b> ৫ মিনিট কাউন্টডাউন শুরু হয়েছে।
+<i>গ্রাহক WhatsApp থেকে স্ক্যান করার পর বা নতুন QR চাইলে সাথে সাথে আপডেট দেখতে পাবেন।</i>`,
+            replyMarkup: {
+              inline_keyboard: [
+                [
+                  { text: '⏳ Waiting for Scan (স্ক্যানের অপেক্ষায়)', callback_data: `qr_waiting:${order.order_id}` }
+                ],
+                [
+                  { text: '🔄 Resend QR (নতুন QR পাঠান)', callback_data: `qr_resend_hint:${order.order_id}` },
+                  { text: '✅ Order Completed', callback_data: `status_delivered:${order.order_id}` }
+                ],
+                [
+                  { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+                ]
+              ]
+            }
+          };
+        } else {
+          // Stage 1: Claimed, waiting for worker to send QR screenshot
+          return {
+            cardHtml: 
+`✅ <b>ORDER CLAIMED — SEND QR CODE / কিউআর পাঠান</b>${qrBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>
+${proofLines}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+📝 <b>Notes:</b> ${order.customer_notes || 'None'}
+
+💎 <b>Packages:</b>
+${itemsText}
+
+📸 <b>ACTION REQUIRED:</b>
+অনুগ্রহ করে এই মেসেজে রিপ্লাই করে <b>Login QR কোডের স্ক্রিনশট/ছবি</b> পাঠান। বট সাথে সাথে কাস্টমারের WhatsApp-এ পাঠিয়ে দেবে (৫ মিনিট মেয়াদ)।`,
+            replyMarkup: {
+              inline_keyboard: [
+                [
+                  { text: '📸 Send QR Screenshot (ছবি পাঠান)', callback_data: `qr_hint:${order.order_id}` }
+                ],
+                [
+                  { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+                ]
+              ]
+            }
+          };
+        }
+      }
 
       return {
         cardHtml: 
@@ -172,7 +269,8 @@ ${proofLines}
 
 💎 <b>Packages:</b>
 ${itemsText}
-${qrInstruction}`,
+
+<i>Worker: Process the order and click below when complete or cancel if invalid:</i>`,
         replyMarkup: {
           inline_keyboard: [
             [
@@ -431,6 +529,34 @@ ${pendingQrHint}`,
       existingOrder.assignments?.find(a => ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY'].includes(a.status))?.worker;
     const assignedTelegramId = assignedWorker?.telegram_user_id;
     const assignedWorkerName = assignedWorker?.full_name || 'অন্য একজন কর্মী';
+
+    // QR Interactive Hints
+    if (action === 'qr_hint') {
+      await this.answerCallbackQuery(
+        id,
+        '📸 অনুগ্রহ করে এই মেসেজে রিপ্লাই করে লগইন QR কোডের ছবি/স্ক্রিনশট পাঠান। বট সাথে সাথে কাস্টমারের WhatsApp-এ পাঠিয়ে দেবে।',
+        true
+      );
+      return { success: true, message: 'QR hint shown' };
+    }
+
+    if (action === 'qr_waiting') {
+      await this.answerCallbackQuery(
+        id,
+        '⏳ কাস্টমারের WhatsApp-এ QR কোড পাঠানো হয়েছে (৫ মিনিট মেয়াদ)। কাস্টমার স্ক্যান করলে আপনাকে সাথে সাথে এখানে নোটিফাই করা হবে।',
+        true
+      );
+      return { success: true, message: 'QR waiting info shown' };
+    }
+
+    if (action === 'qr_resend_hint') {
+      await this.answerCallbackQuery(
+        id,
+        '🔄 নতুন QR পাঠাতে এই কার্ডে রিপ্লাই করে আরেকটি স্ক্রিনশট সেন্ড করুন।',
+        true
+      );
+      return { success: true, message: 'QR resend hint shown' };
+    }
 
     // 1. ACTION: CLAIM ORDER
     if (action === 'claim') {
@@ -1267,9 +1393,22 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
       }
 
       // 5. Update order notes & status to PROCESSING
+      const updatedNotes = `QR Code forwarded to WhatsApp at ${new Date().toLocaleTimeString()} (5m expiry timer) | Storage: ${finalImageUrl}`;
+      targetOrder.status = 'PROCESSING';
+      targetOrder.customer_notes = `${targetOrder.customer_notes || ''} | ${updatedNotes}`;
       await db.updateOrderStatus(targetOrder.id, 'PROCESSING', {
-        notes: `QR Code forwarded to WhatsApp at ${new Date().toLocaleTimeString()} (5m expiry timer) | Storage: ${finalImageUrl}`
+        notes: updatedNotes
       });
+
+      // Update the main Telegram order card in the worker group to show Stage 2 (Waiting for Scan & Resend QR)
+      if (targetOrder.telegram_message_id) {
+        try {
+          const { cardHtml, replyMarkup } = this.generateOrderCard(targetOrder, workerName);
+          await this.editMessageText(env.telegram.workerGroupId, targetOrder.telegram_message_id, cardHtml, replyMarkup);
+        } catch (syncErr) {
+          console.warn('[Telegram Card UI Update Warning]:', syncErr);
+        }
+      }
 
       // 6. Notify worker in Telegram
       await this.sendMessage(
@@ -1302,6 +1441,22 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
     const workerName = order.current_worker?.full_name || 'Worker';
 
     if (action === 'SCANNED') {
+      order.status = 'PROCESSING';
+      order.customer_notes = `${order.customer_notes || ''} | Customer Scanned QR`;
+      await db.updateOrderStatus(order.id, 'PROCESSING', {
+        notes: 'Customer Scanned QR'
+      });
+
+      // Update the main Telegram card to Stage 3 (Scanned & Complete button ready)
+      if (order.telegram_message_id) {
+        try {
+          const { cardHtml, replyMarkup } = this.generateOrderCard(order, workerName);
+          await this.editMessageText(env.telegram.workerGroupId, order.telegram_message_id, cardHtml, replyMarkup);
+        } catch (syncErr) {
+          console.warn('[Telegram Card Scanned Sync Warning]:', syncErr);
+        }
+      }
+
       const msg = 
 `🎯 <b>[Order #${order.order_id}] CUSTOMER SCANNED QR CODE! / স্ক্যান সম্পন্ন</b>
 
