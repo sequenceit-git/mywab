@@ -28,6 +28,16 @@ export async function PATCH(
     const body = await request.json();
     const { status, action, telegramUserId, workerName } = body;
 
+    // Handle manual re-dispatch to Telegram Worker Group
+    if (action === 'redispatch') {
+      const order = await db.getOrderByCode(id);
+      if (!order) {
+        return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
+      }
+      const dispatchResult = await telegramBot.dispatchNewOrder(order);
+      return NextResponse.json(dispatchResult);
+    }
+
     // Handle claim action from web/API
     if (action === 'claim' && telegramUserId && workerName) {
       const claimResult = await db.claimOrderAtomic({

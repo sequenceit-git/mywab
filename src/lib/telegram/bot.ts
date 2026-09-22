@@ -43,6 +43,10 @@ export function resolveCancelReason(
     return 'Fake or Invalid TrxID (পেমেন্ট মেলেনি)';
   }
 
+  if (reasonCodeOrText === 'refund_needed') {
+    return 'Refund Needed (অটো-পেইড অর্ডার / গ্রাহককে রিফান্ড প্রযোজ্য)';
+  }
+
   if (reasonCodeOrText === 'stock_out') {
     return 'Out of Stock / Server Error (স্টক শেষ)';
   }
@@ -145,8 +149,14 @@ export const telegramBot = {
       order.payments?.[0]?.method ||
       'bKash/Nagad/Rocket';
 
+    const invoiceId = 
+      order.invoice_id || 
+      (order.delivery_address as any)?.invoice_id || 
+      order.customer_notes?.match(/Invoice:\s*([a-zA-Z0-9_-]+)/i)?.[1] || 
+      '';
+
     const accountInfo = getAccountFieldInfo(playerUid, gameTitle);
-    const { methodLabel, proofLines } = formatPaymentDisplayForTelegram(trxId, paymentMethod);
+    const { methodLabel, proofLines, isAutoVerified } = formatPaymentDisplayForTelegram(trxId, paymentMethod, invoiceId);
 
     const isQrOrder = 
       gameTitle.toLowerCase().includes('qr') || 
@@ -258,9 +268,13 @@ ${itemsText}
         }
       }
 
+      const claimedTitle = isAutoVerified 
+        ? `✅ <b>ORDER CLAIMED [AUTO-PAID] / অর্ডার গ্রহণ করা হয়েছে</b>` 
+        : `✅ <b>ORDER CLAIMED / অর্ডার গ্রহণ করা হয়েছে</b>`;
+
       return {
         cardHtml: 
-`✅ <b>ORDER CLAIMED / অর্ডার গ্রহণ করা হয়েছে</b>${qrBanner}
+`${claimedTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
@@ -289,9 +303,13 @@ ${itemsText}
     }
 
     if (order.status === 'OUT_FOR_DELIVERY') {
+      const processingTitle = isAutoVerified 
+        ? `⚡ <b>PROCESSING [AUTO-PAID] / প্রসেসিং চলছে</b>` 
+        : `⚡ <b>PROCESSING ORDER / প্রসেসিং চলছে</b>`;
+
       return {
         cardHtml: 
-`⚡ <b>PROCESSING ORDER / প্রসেসিং চলছে</b>${qrBanner}
+`${processingTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
@@ -316,9 +334,13 @@ ${proofLines}
     }
 
     if (order.status === 'DELIVERED') {
+      const deliveredTitle = isAutoVerified 
+        ? `🎉 <b>ORDER COMPLETED & DELIVERED [AUTO-PAID]</b>` 
+        : `🎉 <b>ORDER COMPLETED & DELIVERED / সম্পন্ন হয়েছে</b>`;
+
       return {
         cardHtml: 
-`🎉 <b>ORDER COMPLETED & DELIVERED / সম্পন্ন হয়েছে</b>${qrBanner}
+`${deliveredTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
 ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
@@ -341,6 +363,9 @@ ${itemsText}
       if (order.customer_notes && !order.customer_notes.match(/^(?:PUBG UID|Free Fire UID|UID|Player UID|Account|Email|State Bot Order):/i)) {
         cancelReason = order.customer_notes;
       }
+      const refundNotice = isAutoVerified 
+        ? `\n💸 <b>রিফান্ড স্ট্যাটাস:</b> অটো-পেইড অর্ডার — অ্যাডমিন প্যানেল থেকে কাস্টমারকে রিফান্ড প্রদান করতে হবে।` 
+        : '';
       return {
         cardHtml: 
 `❌ <b>ORDER CANCELLED / অর্ডার বাতিল করা হয়েছে</b>${qrBanner}
@@ -348,7 +373,7 @@ ${itemsText}
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
 ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 👷 <b>Handled by:</b> <b>${workerName}</b>
-⚠️ <b>Reason / কারণ:</b> ${cancelReason}
+⚠️ <b>Reason / কারণ:</b> ${cancelReason}${refundNotice}
 💰 <b>Total Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>
 ${proofLines}
@@ -371,9 +396,13 @@ ${proofLines}
       ? `\n📬 <b>Queue:</b> <b>${queueCount} more order${queueCount > 1 ? 's' : ''} waiting in line</b>\n`
       : '';
 
+    const newOrderTitle = isAutoVerified 
+      ? `🟢 <b>NEW ORDER [AUTO-PAID] / নতুন পেইড অর্ডার</b>` 
+      : `🚨 <b>NEW ORDER / নতুন অর্ডার</b>`;
+
     return {
       cardHtml: 
-`🚨 <b>NEW ORDER / নতুন অর্ডার</b>${qrBanner}
+`${newOrderTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
 ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
@@ -749,13 +778,29 @@ ${queueBadge}${pendingQrHint}`,
         'N/A';
       const accountInfo = getAccountFieldInfo(playerUid, prodName);
 
+      const invoiceId = 
+        existingOrder.invoice_id || 
+        (existingOrder.delivery_address as any)?.invoice_id || 
+        existingOrder.customer_notes?.match(/Invoice:\s*([a-zA-Z0-9_-]+)/i)?.[1] || 
+        '';
+
+      const isAutoVerified = Boolean(
+        invoiceId ||
+        existingOrder.payment_method?.toUpperCase().includes('ZINIPAY') || 
+        existingOrder.trx_id?.toUpperCase().startsWith('ZINI') ||
+        existingOrder.customer_notes?.includes('Payment Verified via ZiniPay')
+      );
+
+      const autoPaidWarning = isAutoVerified 
+        ? `\n🟢 <b>পেমেন্ট:</b> ZiniPay অটো-পেইড (Invoice: <code>${invoiceId || 'VERIFIED'}</code>)\n⚠️ <i>(সতর্কতা: এই অর্ডার বাতিল করলে গ্রাহককে অ্যাডমিন প্যানেল থেকে ম্যানুয়াল রিফান্ড দিতে হবে)</i>\n` 
+        : '';
+
       const promptHtml = 
 `⚠️ <b>CANCEL ORDER / অর্ডার বাতিলের কারণ নির্বাচন করুন</b>
 
 📦 <b>Order ID:</b> <code>${existingOrder.order_id}</code>
 ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
-👷 <b>Worker:</b> <b>${workerName}</b>
-
+👷 <b>Worker:</b> <b>${workerName}</b>${autoPaidWarning}
 <i>অনুগ্রহ করে নিচে থেকে বাতিলের সুনির্দিষ্ট কারণ নির্বাচন করুন অথবা নিজে কারণ লিখুন:</i>`;
 
       const promptMarkup = {
@@ -764,7 +809,9 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
             { text: `🚫 ভুল ${accountInfo.labelBn} / Invalid`, callback_data: `cancel_confirm:${existingOrder.order_id}:invalid_info` }
           ],
           [
-            { text: '💳 ভুয়া / ইনভ্যালিড TrxID', callback_data: `cancel_confirm:${existingOrder.order_id}:fake_trxid` }
+            isAutoVerified
+              ? { text: '💸 রিফান্ড প্রয়োজন (Refund Needed)', callback_data: `cancel_confirm:${existingOrder.order_id}:refund_needed` }
+              : { text: '💳 ভুয়া / ইনভ্যালিড TrxID', callback_data: `cancel_confirm:${existingOrder.order_id}:fake_trxid` }
           ],
           [
             { text: '📉 স্টক শেষ / সার্ভার সমস্যা', callback_data: `cancel_confirm:${existingOrder.order_id}:stock_out` }
@@ -1159,9 +1206,124 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
     const text = message.text.trim();
     const replyText = message.reply_to_message?.text || '';
 
-    // Ignore non-cancel slash commands
-    if (text === '/start' || text === '/help' || text === '/stats') {
-      return { handled: false };
+    // Command: /start or /help
+    if (text === '/start' || text === '/help') {
+      const helpText = 
+`👋 <b>WapBusiness Worker Bot Commands</b>
+
+• <b>/stats</b> - আপনার ডেলিভারি পরিসংখ্যান
+• <b>/check &lt;order_id&gt;</b> - অর্ডারের বিস্তারিত ও পেমেন্ট স্ট্যাটাস (Auto-Paid or Manual)
+• <b>/gateway</b> - ZiniPay অটো-পেমেন্ট গেটওয়ের বর্তমান অবস্থা
+• <b>/cancel &lt;order_id&gt; &lt;reason&gt;</b> - ক্লেইমকৃত অর্ডার বাতিল করুন
+• <b>/help</b> - কমান্ড সহায়িকা
+
+💡 <i>গ্রাহক ZiniPay দিয়ে পেমেন্ট করলে গ্রুপে সরাসরি 🟢 <b>[AUTO-PAID]</b> অর্ডার আসে। পেমেন্ট ১০০% নিশ্চিত হওয়ায় ম্যানুয়াল SMS চেক করার প্রয়োজন নেই।</i>`;
+
+      await this.sendMessage(message.chat.id, helpText, { reply_to_message_id: message.message_id });
+      return { handled: true, success: true, message: 'Help sent' };
+    }
+
+    // Command: /stats
+    if (text === '/stats') {
+      const workers = await db.getWorkers();
+      const worker = workers.find(w => w.telegram_user_id === workerId || (message.from.username && w.telegram_username?.toLowerCase() === message.from.username.toLowerCase()));
+
+      let statsText = '';
+      if (worker) {
+        statsText = 
+`📊 <b>ডেলিভারি পরিসংখ্যান / Worker Stats</b>
+
+👷 <b>কর্মী:</b> <b>${worker.full_name}</b> (@${worker.telegram_username || 'n/a'})
+🆔 <b>Telegram ID:</b> <code>${worker.telegram_user_id}</code>
+🛡️ <b>ভূমিকা:</b> <code>${worker.role}</code>
+
+⚡ <b>অ্যাক্টিভ ক্লেইম:</b> <b>${worker.active_orders || 0} টি</b>
+✅ <b>মোট সম্পন্ন ডেলিভারি:</b> <b>${worker.total_completed_orders || 0} টি</b>
+
+🟢 <i>অর্ডার ক্লেইম করতে নোটিফিকেশন আসলে [⚡ Claim Order] চাপুন।</i>`;
+      } else {
+        statsText = 
+`ℹ️ <b>Worker Profile Status</b>
+
+আপনার Telegram ID (<code>${workerId}</code>) দিয়ে ডাটাবেজে কোনো রেজিস্টার্ড কর্মী প্রোফাইল পাওয়া যায়নি।
+গ্রুপে নতুন অর্ডার আসলে <b>[⚡ Claim Order]</b> বাটনে চাপ দিলে আপনার প্রোফাইল স্বয়ংক্রিয়ভাবে সক্রিয় হবে।`;
+      }
+
+      await this.sendMessage(message.chat.id, statsText, { reply_to_message_id: message.message_id });
+      return { handled: true, success: true, message: 'Stats sent' };
+    }
+
+    // Command: /check <order_id_or_invoice_id> or /order <id>
+    const checkCmdMatch = text.match(/^\/(?:check|order)(?:\s+([A-Za-z0-9_-]+))?$/i);
+    if (checkCmdMatch) {
+      let targetCode = checkCmdMatch[1]?.trim();
+      if (!targetCode) {
+        const replyOrderMatch = replyText.match(/Order ID:\s*([A-Za-z0-9-]+)/i) || replyText.match(/#(WAP-[0-9]+-[0-9]+)/i);
+        if (replyOrderMatch) {
+          targetCode = replyOrderMatch[1];
+        }
+      }
+
+      if (!targetCode) {
+        await this.sendMessage(
+          message.chat.id,
+          `⚠️ অনুগ্রহ করে Order ID বা Invoice ID উল্লেখ করুন।\nউদাহরণ: <code>/check WAP-20260923-0001</code> অথবা <code>/check INV-12345</code>`,
+          { reply_to_message_id: message.message_id }
+        );
+        return { handled: true, success: false, message: 'Order ID required' };
+      }
+
+      const order = (await db.getOrderByCode(targetCode)) || (await db.getOrderByInvoiceId(targetCode));
+      if (!order) {
+        await this.sendMessage(
+          message.chat.id,
+          `❌ <code>${targetCode}</code> দিয়ে কোনো অর্ডার পাওয়া যায়নি। অনুগ্রহ করে সঠিক আইডি চেক করুন।`,
+          { reply_to_message_id: message.message_id }
+        );
+        return { handled: true, success: false, message: 'Order not found' };
+      }
+
+      const firstItem = order.items?.[0];
+      const gameTitle = order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || firstItem?.product_name || 'Top-Up Service';
+      const playerUid = order.player_uid || (order.delivery_address as any)?.player_uid || (order.delivery_address as any)?.name || 'N/A';
+      const isAuto = Boolean(order.invoice_id || order.payment_method?.toUpperCase().includes('ZINIPAY') || order.trx_id?.startsWith('ZINI'));
+
+      const checkReply = 
+`🔍 <b>Order Status / অর্ডার বিবরণ</b>
+
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🕹️ <b>সার্ভিস:</b> <b>${gameTitle}</b>
+🆔 <b>Player UID:</b> <code>${playerUid}</code>
+💰 <b>মূল্য:</b> ৳${order.total_amount}
+
+🚦 <b>স্ট্যাটাস:</b> <b>${order.status}</b>
+💳 <b>পেমেন্ট মাধ্যম:</b> <b>${order.payment_method || 'bKash/Nagad'}</b>
+🧾 <b>Invoice ID:</b> <code>${order.invoice_id || 'N/A'}</code>
+🔢 <b>TrxID:</b> <code>${order.trx_id || 'N/A'}</code>
+⚡ <b>পেমেন্ট টাইপ:</b> ${isAuto ? '🟢 <b>100% Auto-Verified (ZiniPay)</b>' : '🟡 <b>Manual TrxID</b>'}
+👷 <b>অ্যাসাইন কর্মী:</b> <b>${order.current_worker?.full_name || 'অ্যাসাইন হয়নি'}</b>
+🕒 <b>অর্ডারের তারিখ:</b> ${new Date(order.created_at).toLocaleString()}`;
+
+      await this.sendMessage(message.chat.id, checkReply, { reply_to_message_id: message.message_id });
+      return { handled: true, success: true, message: 'Order checked' };
+    }
+
+    // Command: /gateway or /zinipay
+    if (text === '/gateway' || text === '/zinipay') {
+      const isAuto = await db.isZiniPayAutoPaymentEnabled();
+      const maskedKey = env.zinipay.apiKey ? `${env.zinipay.apiKey.slice(0, 6)}...${env.zinipay.apiKey.slice(-4)}` : 'Not configured';
+
+      const gatewayReply = 
+`💳 <b>ZiniPay Payment Gateway Status</b>
+
+⚙️ <b>Auto-Payment Gateway:</b> ${isAuto ? '🟢 <b>ACTIVE (স্বয়ংক্রিয় পেমেন্ট চালু)</b>' : '🟡 <b>INACTIVE (ম্যানুয়াল মোড)</b>'}
+🌐 <b>API URL:</b> <code>${env.zinipay.apiUrl}</code>
+🔑 <b>API Key:</b> <code>${maskedKey}</code>
+
+ℹ️ <i>গ্রাহকরা চেকআউট লিংক পেলে পেমেন্ট সম্পন্ন হওয়ামাত্রই টেলিগ্রাম ওয়ার্কার গ্রুপে 🟢 <b>[AUTO-PAID]</b> হিসেবে নোটিফিকেশন চলে আসে।</i>`;
+
+      await this.sendMessage(message.chat.id, gatewayReply, { reply_to_message_id: message.message_id });
+      return { handled: true, success: true, message: 'Gateway status sent' };
     }
 
     // 1. Check for command /cancel [order_id] [reason]

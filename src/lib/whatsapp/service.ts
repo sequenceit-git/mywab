@@ -564,7 +564,127 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
       console.warn('[WhatsApp markAsReadAndType Error]:', err);
       return await this.markAsRead(messageId);
     }
+  },
+
+  /**
+   * Send an interactive CTA URL button (opens a webpage in browser directly from WhatsApp)
+   */
+  async sendInteractiveCtaUrl(
+    toPhone: string,
+    bodyText: string,
+    buttonText: string,
+    url: string,
+    headerText?: string,
+    footerText = 'DS Dukan — 24/7 Gaming Shop'
+  ): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+
+    if (!env.whatsapp.isConfigured) {
+      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
+      console.error(errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
+    try {
+      const payload: Record<string, any> = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanPhone,
+        type: 'interactive',
+        interactive: {
+          type: 'cta_url',
+          body: { text: bodyText },
+          footer: { text: footerText },
+          action: {
+            name: 'cta_url',
+            parameters: {
+              display_text: buttonText.slice(0, 20),
+              url
+            }
+          }
+        }
+      };
+
+      if (headerText) {
+        payload.interactive.header = { type: 'text', text: headerText.slice(0, 60) };
+      }
+
+      console.log(`[WhatsApp sendInteractiveCtaUrl] Dispatching CTA URL button to ${cleanPhone}...`);
+
+      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.messages?.[0]?.id) {
+        return { success: true, messageId: data.messages[0].id };
+      }
+
+      console.warn('[WhatsApp CTA URL API Error]: Falling back to standard message with link:', JSON.stringify(data));
+      return await this.sendMessage(toPhone, `${bodyText}\n\n👉 *পেমেন্ট করতে এখানে চাপ দিন:*\n${url}`);
+    } catch (err) {
+      console.error('[WhatsApp CTA URL Exception]:', err);
+      return await this.sendMessage(toPhone, `${bodyText}\n\n👉 *পেমেন্ট করতে এখানে চাপ দিন:*\n${url}`);
+    }
+  },
+
+  /**
+   * Send comprehensive Payment Request Prompt with ZiniPay link and Check Payment buttons
+   */
+  async sendPaymentInvoicePrompt(params: {
+    toPhone: string;
+    orderIdCode: string;
+    paymentUrl: string;
+    amount: number;
+    gameLabel: string;
+    packageName: string;
+    playerUid: string;
+    accountLabelBn?: string;
+  }): Promise<SendMessageResult> {
+    const { toPhone, orderIdCode, paymentUrl, amount, gameLabel, packageName, playerUid, accountLabelBn } = params;
+
+    const messageText = 
+`📝 *অর্ডার সামারি:*
+• গেম / সার্ভিস: *${gameLabel}*
+• প্যাকেজ: *${packageName}*
+• 🆔 ${accountLabelBn || 'Player ID'}: \`${playerUid}\`
+• প্রদেয় মূল্য: *৳${amount} Tk*
+
+⚡ *পেমেন্ট সম্পন্ন করতে নিচের লিংকে ক্লিক করুন:*
+${paymentUrl}
+
+*(bKash, Nagad, Rocket বা Card দিয়ে ১ ক্লিকে নিরাপদ পেমেন্ট করুন। পেমেন্ট শেষ হওয়ামাত্রই আপনার অর্ডারটি স্বয়ংক্রিয়ভাবে ডেলিভারি হয়ে যাবে)*`;
+
+    // 1. Send interactive CTA button message
+    const ctaRes = await this.sendInteractiveCtaUrl(
+      toPhone,
+      messageText,
+      '💳 Pay Now',
+      paymentUrl,
+      'DS Dukan Instant Checkout'
+    );
+
+    // 2. Also send Quick Action Buttons for "Check Payment" & "Cancel"
+    const actionButtons = [
+      { id: `check_pay:${orderIdCode}`, title: '🔄 পেমেন্ট চেক করুন' },
+      { id: 'btn_main_menu', title: '❌ বাতিল করুন' }
+    ];
+
+    await this.sendInteractiveButtons(
+      toPhone,
+      `👉 *পেমেন্ট সম্পন্ন করার পর নিচের বাটন চাপুন অথবা মেসেজের জন্য অপেক্ষা করুন:*`,
+      actionButtons,
+      'Payment Verification'
+    );
+
+    return ctaRes;
   }
 };
+
 
 

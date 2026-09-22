@@ -4,6 +4,9 @@ import { telegramBot } from '../telegram/bot';
 import { telegramQueue } from '../telegram/queue';
 import { kokosClient } from '../kokos/client';
 import { pinexClient } from '../pinex/client';
+import { zinipayClient } from '../zinipay/client';
+import { orderPaymentService } from '../services/order-payment';
+import { env } from '../config/env';
 import { GAME_CATEGORIES, GameCategory, GamePackage, PAYMENT_ACCOUNTS, findGameCategory, findPackage, formatWhatsAppRow, formatWhatsAppButton } from './game-catalog';
 import { extractCleanUid, extractPaymentProof, getAccountFieldInfo, getGameDeliveryConfig, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu, parseSlashCommand, isRefusalOrCancellation, isPriceInquiry } from './input-parser';
 import { ConversationSessionState, OrderItem } from '@/types';
@@ -91,6 +94,15 @@ export const stateBot = {
           await this.sendHelpInfo(phone, conversationId);
           return;
       }
+    }
+
+    // 0.0 ZiniPay Check Payment Status trigger (Button or text inquiry)
+    const isCheckPayTrigger = triggerId.startsWith('check_pay:') ||
+      (session.step === 'AWAITING_PAYMENT' && ['check', 'check payment', 'check pay', 'paid', 'পেমেন্ট করেছি', 'পেমেন্ট শেষ', 'টাকা দিয়েছি', 'টাকা দিছি', 'পেমেন্ট চেক'].includes(normalizedText));
+
+    if (isCheckPayTrigger) {
+      await this.handleCheckPayment(phone, conversationId, triggerId, rawText, session);
+      return;
     }
 
     // 0. If in AWAITING_PAYMENT and user entered valid payment proof (TrxID / last 4 digits / phone), process payment immediately!
@@ -200,7 +212,7 @@ export const stateBot = {
     if (session.step === 'COLLECTING_UID' && !triggerId.startsWith('game_') && !triggerId.startsWith('pkg_')) {
       const cleanUid = extractCleanUid(rawText, session.draftOrder.selectedGame || session.draftOrder.selectedGameLabel);
       if (cleanUid) {
-        await this.handleUidInput(phone, conversationId, rawText, session);
+        await this.handleUidInput(phone, conversationId, rawText, session, userId);
         return;
       }
     }
@@ -236,7 +248,7 @@ export const stateBot = {
     // 11. Step-specific text input routing
     switch (session.step) {
       case 'COLLECTING_UID':
-        await this.handleUidInput(phone, conversationId, rawText, session);
+        await this.handleUidInput(phone, conversationId, rawText, session, userId);
         break;
 
       case 'AWAITING_PAYMENT':
@@ -481,7 +493,8 @@ ${game.inputPrompt}`;
     phone: string,
     conversationId: string,
     rawText: string,
-    session: ConversationSessionState
+    session: ConversationSessionState,
+    userId?: string
   ): Promise<void> {
     if (isRefusalOrCancellation(rawText)) {
       await this.handleCancellation(phone, conversationId);
@@ -514,7 +527,98 @@ ${game.inputPrompt}`;
     const amount = session.draftOrder.totalAmount || item?.unitPrice || 0;
     const gameLabel = session.draftOrder.selectedGameLabel || 'গেম টপ-আপ';
     const pkgName = item?.skuOrName || 'প্যাকেজ';
+    const accountInfo = getAccountFieldInfo(cleanUid, gameLabel);
+    const effectiveUserId = userId || (await db.getOrCreateUser(phone)).id;
 
+    // Check if ZiniPay Automatic Payment is enabled
+    const isZiniPayEnabled = db.isZiniPayAutoPaymentEnabled() && zinipayClient.isConfigured();
+
+    if (isZiniPayEnabled && amount > 0) {
+      try {
+        // 1. Create order in Database with PENDING_PAYMENT
+        const pendingOrder = await db.createOrder({
+          userId: effectiveUserId,
+          deliveryPhone: phone,
+          playerUid: cleanUid,
+          paymentMethod: 'ZINIPAY',
+          status: 'PENDING_PAYMENT',
+          items: [
+            {
+              product_name: `${gameLabel} (${pkgName})`,
+              unit_price: amount,
+              quantity: 1
+            }
+          ],
+          customerNotes: `State Bot Order | Game: ${gameLabel} | ${accountInfo.labelEn}: ${cleanUid} | Mode: Auto ZiniPay`
+        });
+
+        // 2. Create Hosted Invoice via ZiniPay API
+        const invoiceRes = await zinipayClient.createInvoice({
+          amount,
+          cus_name: cleanUid,
+          metadata: {
+            order_id: pendingOrder.order_id,
+            customer_phone: phone,
+            player_uid: cleanUid,
+            service: gameLabel,
+            package: pkgName
+          },
+          redirect_url: `${env.app.url}/payment/success?order_id=${pendingOrder.order_id}`,
+          cancel_url: `${env.app.url}/payment/cancel?order_id=${pendingOrder.order_id}`
+        });
+
+        if (invoiceRes.status && invoiceRes.payment_url) {
+          await db.attachInvoiceToOrder(
+            pendingOrder.order_id,
+            invoiceRes.invoice_id || '',
+            invoiceRes.payment_url
+          );
+
+          db.setSessionState(conversationId, {
+            step: 'AWAITING_PAYMENT',
+            draftOrder: {
+              ...session.draftOrder,
+              playerUid: cleanUid,
+              pendingOrderId: pendingOrder.order_id,
+              invoiceId: invoiceRes.invoice_id,
+              paymentUrl: invoiceRes.payment_url
+            }
+          });
+
+          await whatsappService.sendPaymentInvoicePrompt({
+            toPhone: phone,
+            orderIdCode: pendingOrder.order_id,
+            paymentUrl: invoiceRes.payment_url,
+            amount,
+            gameLabel,
+            packageName: pkgName,
+            playerUid: cleanUid,
+            accountLabelBn: accountInfo.labelBn
+          });
+
+          await db.addMessage({
+            conversationId,
+            sender: 'BOT',
+            content: `⚡ পেমেন্ট লিংক তৈরি হয়েছে: ${invoiceRes.payment_url}`,
+            metadata: {
+              step: 'AWAITING_PAYMENT',
+              orderId: pendingOrder.order_id,
+              invoiceId: invoiceRes.invoice_id,
+              paymentUrl: invoiceRes.payment_url,
+              amount
+            }
+          });
+
+          return;
+        } else {
+          console.warn('[ZiniPay Invoice Error]: Falling back to manual payment:', invoiceRes.error);
+        }
+      } catch (err) {
+        console.error('[ZiniPay Creation Exception]:', err);
+      }
+    }
+
+    // Fallback: Manual Send Money Payment Flow
     db.setSessionState(conversationId, {
       step: 'AWAITING_PAYMENT',
       draftOrder: {
@@ -522,8 +626,6 @@ ${game.inputPrompt}`;
         playerUid: cleanUid
       }
     });
-
-    const accountInfo = getAccountFieldInfo(cleanUid, gameLabel);
 
     const paymentMessage = 
 `📝 *অর্ডার সামারি:*
@@ -558,6 +660,103 @@ ${game.inputPrompt}`;
       content: paymentMessage,
       metadata: { step: 'AWAITING_PAYMENT', playerUid: cleanUid, amount }
     });
+  },
+
+  /**
+   * Real-time Check Payment status via ZiniPay API
+   */
+  async handleCheckPayment(
+    phone: string,
+    conversationId: string,
+    triggerId: string,
+    rawText: string,
+    session: ConversationSessionState
+  ): Promise<void> {
+    const orderId = triggerId.startsWith('check_pay:')
+      ? triggerId.split(':')[1]?.trim()
+      : session.draftOrder?.pendingOrderId || session.lastOrderId;
+
+    let invoiceId = session.draftOrder?.invoiceId;
+
+    let order = orderId ? await db.getOrderByCode(orderId) : null;
+    if (!order && invoiceId) {
+      order = await db.getOrderByInvoiceId(invoiceId);
+    }
+
+    if (order && !invoiceId && order.invoice_id) {
+      invoiceId = order.invoice_id;
+    }
+
+    if (!invoiceId && order?.payment_url) {
+      invoiceId = zinipayClient.extractInvoiceId(order.payment_url);
+    }
+
+    if (!invoiceId) {
+      await whatsappService.sendMessage(
+        phone,
+        `⚠️ পেমেন্ট ভেরিফাই করার জন্য কোনো সক্রিয় ইনভয়েস পাওয়া যায়নি।\n\nআপনি যদি ম্যানুয়ালি টাকা পাঠিয়ে থাকেন, তবে অনুগ্রহ করে আপনার TrxID মেসেজে লিখে পাঠান:`
+      );
+      return;
+    }
+
+    // Call ZiniPay verify
+    const verifyRes = await zinipayClient.verifyInvoice(invoiceId);
+
+    if (verifyRes.status === 'COMPLETED') {
+      const trxId = verifyRes.transaction_id || `ZINI-${Date.now()}`;
+      const paymentMethod = verifyRes.payment_method || 'bKash';
+      const amount = Number(verifyRes.amount) || order?.total_amount || 0;
+
+      // Clear draft
+      if (order) {
+        db.clearSessionDraft(conversationId, order.order_id);
+      }
+      db.setSessionState(conversationId, { step: 'ORDER_PLACED' });
+
+      await orderPaymentService.handlePaymentVerified({
+        orderIdCode: order?.order_id,
+        invoiceId,
+        trxId,
+        paymentMethod,
+        amount,
+        customerName: verifyRes.cus_name
+      });
+      return;
+    }
+
+    if (verifyRes.status === 'PENDING') {
+      const payUrl = order?.payment_url || session.draftOrder?.paymentUrl;
+      const pendingMsg = 
+`⏳ *পেমেন্ট এখনও পেন্ডিং রয়েছে!*
+
+আপনার পেমেন্টটি এখনও আমাদের গেটওয়েতে জমা পড়েনি। 
+আপনি যদি এখনও টাকা না পাঠিয়ে থাকেন, তবে নিচের লিংকে গিয়ে পেমেন্ট সম্পন্ন করুন:
+
+🔗 *পেমেন্ট লিংক:*
+${payUrl || 'https://secure.zinipay.com'}
+
+*(পেমেন্ট সম্পন্ন করার ১–২ মিনিট পর আবার নিচের বাটনে চাপ দিন)*`;
+
+      const buttons = [
+        { id: `check_pay:${order?.order_id || ''}`, title: '🔄 আবার চেক করুন' },
+        { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
+      ];
+
+      await whatsappService.sendInteractiveButtons(phone, pendingMsg, buttons, 'পেমেন্ট পেন্ডিং');
+      return;
+    }
+
+    // FAILED or other
+    const failedMsg = 
+`❌ *পেমেন্ট সম্পন্ন হয়নি বা বাতিল হয়েছে।*
+
+আপনার আগের পেমেন্ট সেশনটি সফল হয়নি। অনুগ্রহ করে নতুন করে চেষ্টা করুন অথবা অন্য মাধ্যমে টাকা পাঠান।`;
+
+    const buttons = [
+      { id: 'btn_main_menu', title: '🎮 নতুন অর্ডার' }
+    ];
+
+    await whatsappService.sendInteractiveButtons(phone, failedMsg, buttons, 'পেমেন্ট ব্যর্থ');
   },
 
   /**

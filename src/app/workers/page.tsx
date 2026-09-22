@@ -63,10 +63,21 @@ export default function WorkersPage() {
               <TelegramIcon className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">How Workers Connect via Telegram</h3>
-              <p className="text-xs text-slate-300 mt-1 max-w-2xl">
-                Workers join the designated <b>Telegram Worker Group</b> where your bot is added. When a new order arrives, workers tap <b>[⚡ Claim Order]</b> directly in Telegram. The system atomically locks the order to their account and prevents any duplicate claims.
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-bold text-white">How Workers Connect via Telegram</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  Auto-Payment Integrated
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1 max-w-3xl">
+                Workers join the designated <b>Telegram Worker Group</b>. Orders paid through <b>ZiniPay Gateway</b> are automatically marked as <b className="text-emerald-400">🟢 [AUTO-PAID]</b> with their Invoice ID so workers know payment is 100% verified without checking SMS. Workers tap <b>[⚡ Claim Order]</b> to lock and fulfill.
               </p>
+              <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px] text-slate-400 font-mono">
+                <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">/stats</span>
+                <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">/check &lt;order_id&gt;</span>
+                <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">/gateway</span>
+                <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">/cancel &lt;id&gt; &lt;reason&gt;</span>
+              </div>
             </div>
           </div>
         </div>

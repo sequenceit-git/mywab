@@ -21,7 +21,8 @@ import {
   ShieldAlert,
   Ban,
   X,
-  ExternalLink
+  ExternalLink,
+  CreditCard
 } from 'lucide-react';
 import { Order, OrderStatus } from '@/types';
 import { getAccountFieldInfo } from '@/lib/chat/input-parser';
@@ -44,6 +45,8 @@ export default function OrdersPage() {
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
   const [cancellationReason, setCancellationReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
+  const [redispatchingId, setRedispatchingId] = useState<string | null>(null);
+  const [redispatchSuccess, setRedispatchSuccess] = useState<string | null>(null);
 
   const fetchOrders = async () => {
     try {
@@ -121,6 +124,33 @@ export default function OrdersPage() {
     }
   };
 
+  const handleRedispatchTelegram = async (orderIdCode: string) => {
+    setRedispatchingId(orderIdCode);
+    setRedispatchSuccess(null);
+    try {
+      const res = await fetch(`/api/orders/${orderIdCode}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: JSON.stringify({ action: 'redispatch' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRedispatchSuccess(orderIdCode);
+        setTimeout(() => setRedispatchSuccess(null), 3000);
+      } else {
+        alert(data.error || data.message || 'Failed to dispatch to Telegram');
+      }
+    } catch (e) {
+      console.error('Failed to redispatch:', e);
+      alert('Network error while dispatching to Telegram');
+    } finally {
+      setRedispatchingId(null);
+    }
+  };
+
   const filteredOrders = orders.filter(o => {
     const matchesFilter = filterStatus === 'ALL' || o.status === filterStatus;
     const matchesSearch =
@@ -128,6 +158,7 @@ export default function OrdersPage() {
       o.delivery_phone.includes(searchQuery) ||
       (o.player_uid && o.player_uid.includes(searchQuery)) ||
       (o.trx_id && o.trx_id.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (o.invoice_id && o.invoice_id.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (o.customer?.name && o.customer.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (o.delivery_address?.address && o.delivery_address.address.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesFilter && matchesSearch;
@@ -141,10 +172,12 @@ export default function OrdersPage() {
 
   const getPaymentIcon = (method?: string) => {
     const m = (method || '').toLowerCase();
+    if (m.includes('zinipay')) return <CreditCard className="w-3.5 h-3.5 text-cyan-400" />;
     if (m.includes('bkash')) return <BkashIcon className="w-3.5 h-3.5" />;
     if (m.includes('nagad')) return <NagadIcon className="w-3.5 h-3.5" />;
     if (m.includes('rocket')) return <RocketIcon className="w-3.5 h-3.5" />;
-    return <BkashIcon className="w-3.5 h-3.5" />;
+    if (m.includes('card')) return <CreditCard className="w-3.5 h-3.5 text-cyan-400" />;
+    return <CreditCard className="w-3.5 h-3.5 text-cyan-400" />;
   };
 
   const renderDetailPanel = (isModal = false) => {
@@ -209,6 +242,15 @@ export default function OrdersPage() {
               <span>TrxID: </span>
               <b className="font-mono text-emerald-400 font-semibold">{selectedOrder.trx_id || 'N/A'}</b>
             </div>
+            {selectedOrder.invoice_id && (
+              <>
+                <span className="text-slate-600">|</span>
+                <div className="flex items-center gap-1">
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">ZiniPay Auto</span>
+                  <span className="font-mono text-slate-400 text-[10px]">#{selectedOrder.invoice_id}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -252,14 +294,39 @@ export default function OrdersPage() {
 
         {/* Worker Assignment */}
         <div className="space-y-2 pt-2 border-t border-slate-800 text-xs">
-          <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Telegram Dispatch</h4>
-          <div className="p-3 rounded-xl bg-telegram-500/10 border border-telegram-500/20 text-xs space-y-1">
-            <div className="text-telegram-500 font-semibold flex items-center gap-1.5">
-              <TelegramIcon className="w-3.5 h-3.5 shrink-0" />
-              <span>{selectedOrder.current_worker ? `Claimed by: ${selectedOrder.current_worker.full_name}` : 'Dispatched to Worker Group (Pending Claim)'}</span>
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Telegram Dispatch</h4>
+            {selectedOrder.invoice_id && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                🟢 Auto-Paid (ZiniPay)
+              </span>
+            )}
+          </div>
+          <div className="p-3 rounded-xl bg-telegram-500/10 border border-telegram-500/20 text-xs space-y-2">
+            <div className="text-telegram-500 font-semibold flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <TelegramIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>{selectedOrder.current_worker ? `Claimed by: ${selectedOrder.current_worker.full_name}` : 'Dispatched to Worker Group (Pending Claim)'}</span>
+              </div>
             </div>
             {selectedOrder.current_worker?.telegram_username && (
               <div className="text-[11px] text-slate-400 font-mono">@{selectedOrder.current_worker.telegram_username}</div>
+            )}
+            {selectedOrder.status !== 'DELIVERED' && selectedOrder.status !== 'CANCELLED' && (
+              <div className="pt-2 border-t border-telegram-500/20 flex items-center justify-between gap-2">
+                <span className="text-[10px] text-slate-400">
+                  {redispatchSuccess === selectedOrder.order_id ? '✅ Re-sent to Telegram!' : 'Worker group card:'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleRedispatchTelegram(selectedOrder.order_id)}
+                  disabled={redispatchingId === selectedOrder.order_id}
+                  className="px-2.5 py-1 rounded-lg bg-telegram-500/20 hover:bg-telegram-500/30 text-telegram-400 text-[10px] font-bold flex items-center gap-1 transition disabled:opacity-50"
+                >
+                  <Send className="w-3 h-3" />
+                  <span>{redispatchingId === selectedOrder.order_id ? 'Sending...' : 'Re-dispatch Card'}</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -437,7 +504,7 @@ export default function OrdersPage() {
                         <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span>{order.delivery_phone}</span>
                       </div>
-                      <div className="sm:col-span-2 flex items-center gap-2 text-[11px] text-slate-300">
+                      <div className="sm:col-span-2 flex items-center gap-2 flex-wrap text-[11px] text-slate-300">
                         <div className="flex items-center gap-1.5 shrink-0">
                           {getPaymentIcon(order.payment_method)}
                           <span className="font-semibold text-slate-200">{order.payment_method || 'bKash/Nagad/Rocket'}</span>
@@ -447,6 +514,12 @@ export default function OrdersPage() {
                           <span>TrxID: </span>
                           <b className="font-mono text-emerald-400 font-semibold">{order.trx_id || 'N/A'}</b>
                         </div>
+                        {order.invoice_id && (
+                          <>
+                            <span className="text-slate-600">|</span>
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">ZiniPay Auto</span>
+                          </>
+                        )}
                       </div>
                     </div>
 

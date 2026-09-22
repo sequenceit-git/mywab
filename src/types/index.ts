@@ -97,6 +97,8 @@ export interface Order {
   player_uid?: string;
   trx_id?: string;
   payment_method?: PaymentMethod | string;
+  invoice_id?: string;
+  payment_url?: string;
   telegram_message_id?: number | null;
   created_at: string;
   updated_at?: string;
@@ -140,6 +142,7 @@ export interface Payment {
   method: PaymentMethod;
   status: PaymentStatus;
   transaction_id: string | null;
+  invoice_id?: string | null;
   screenshot_url?: string | null;
   created_at: string;
   verified_at?: string | null;
@@ -169,6 +172,10 @@ export interface ConversationDraftOrder {
   trxId?: string;
   customerNotes?: string;
   totalAmount?: number;
+  // ZiniPay Payment info
+  invoiceId?: string;
+  paymentUrl?: string;
+  pendingOrderId?: string;
   // State-bot specific
   selectedGame?: string;       // e.g. 'pubg_uid', 'ff', 'efb_android'
   selectedGameLabel?: string;  // e.g. 'PUBG Mobile UID Top-Up'

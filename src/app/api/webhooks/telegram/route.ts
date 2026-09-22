@@ -49,6 +49,8 @@ export async function POST(request: NextRequest) {
 
 Commands:
 • /stats - আপনার ডেলিভারি পরিসংখ্যান
+• /check &lt;order_id&gt; - অর্ডারের বিস্তারিত ও পেমেন্ট স্ট্যাটাস
+• /gateway - ZiniPay অটো-পেমেন্ট গেটওয়ে অবস্থা
 • /cancel &lt;order_id&gt; &lt;reason&gt; - অর্ডার বাতিল
 • /help - সহায়তা`;
 

@@ -62,6 +62,17 @@ export const env = {
       return Boolean(process.env.KOKOS_API_TOKEN);
     },
   },
+  zinipay: {
+    get apiKey() {
+      return process.env.ZINIPAY_API_KEY || '';
+    },
+    get apiUrl() {
+      return (process.env.ZINIPAY_API_URL || 'https://api.zinipay.com').replace(/\/$/, '');
+    },
+    get isConfigured() {
+      return Boolean(process.env.ZINIPAY_API_KEY);
+    },
+  },
   auth: {
     get adminEmail() {
       return process.env.ADMIN_EMAIL || 'admin@sequenceit.software';

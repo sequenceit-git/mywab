@@ -47,6 +47,20 @@ export function hydrateOrder(data: any): Order {
     paymentMethod = data.payments[0].payment_method || data.payments[0].method;
   }
 
+  // Extract invoice_id and payment_url for ZiniPay integration
+  let invoiceId = data.invoice_id;
+  if (!invoiceId && data.delivery_address && typeof data.delivery_address === 'object') {
+    invoiceId = data.delivery_address.invoice_id;
+  }
+  if (!invoiceId && Array.isArray(data.payments) && data.payments.length > 0) {
+    invoiceId = data.payments[0].invoice_id;
+  }
+
+  let paymentUrl = data.payment_url;
+  if (!paymentUrl && data.delivery_address && typeof data.delivery_address === 'object') {
+    paymentUrl = data.delivery_address.payment_url;
+  }
+
   const assignments = Array.isArray(data.assignments) ? data.assignments : [];
   const assignedWorker = 
     data.current_worker || 
@@ -59,6 +73,8 @@ export function hydrateOrder(data: any): Order {
     player_uid: playerUid || undefined,
     trx_id: trxId || undefined,
     payment_method: paymentMethod || 'bKash/Nagad/Rocket',
+    invoice_id: invoiceId || undefined,
+    payment_url: paymentUrl || undefined,
     current_worker: assignedWorker
   };
 }
@@ -90,12 +106,16 @@ export const ordersRepository = {
     playerUid?: string;
     trxId?: string;
     paymentMethod?: string;
+    status?: OrderStatus;
+    invoiceId?: string;
+    paymentUrl?: string;
   }): Promise<Order> {
     const totalAmount = params.items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const orderIdCode = `WAP-${dateStr}-${randomSuffix}`;
     const orderUuid = crypto.randomUUID();
+    const orderStatus: OrderStatus = params.status || (params.invoiceId ? 'PENDING_PAYMENT' : 'PENDING_CLAIM');
 
     const productName = params.items?.[0]?.product_name || '';
     const accountInfo = getAccountFieldInfo(params.playerUid || '', productName);
@@ -106,6 +126,8 @@ export const ordersRepository = {
       player_uid: params.playerUid || null,
       trx_id: params.trxId || null,
       payment_method: params.paymentMethod || 'BKASH',
+      invoice_id: params.invoiceId || null,
+      payment_url: params.paymentUrl || null,
       name: params.playerUid || null,
       phone: params.deliveryPhone,
       ...(params.deliveryAddress || {})
@@ -114,18 +136,25 @@ export const ordersRepository = {
     const client = getDbClient();
     if (isSupabaseConfigured() && client) {
       // 1. Insert order record
-      const orderPayload = {
+      const orderPayload: Record<string, any> = {
         id: orderUuid,
         order_id: orderIdCode,
         user_id: params.userId,
         total_amount: totalAmount,
-        status: 'PENDING_CLAIM',
+        status: orderStatus,
         delivery_address: deliveryAddressObj,
         delivery_phone: params.deliveryPhone,
         customer_notes: params.customerNotes || (params.playerUid ? `${accountLabel}: ${params.playerUid} | Trx: ${params.trxId || 'N/A'} | Pay: ${params.paymentMethod || 'BKASH'}` : null),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
+
+      if (params.invoiceId) {
+        orderPayload.invoice_id = params.invoiceId;
+      }
+      if (params.paymentUrl) {
+        orderPayload.payment_url = params.paymentUrl;
+      }
 
       const { data: createdOrder, error: orderErr } = await client
         .from('orders')
@@ -155,17 +184,21 @@ export const ordersRepository = {
       }
 
       // 3. Insert payment record
-      if (params.trxId) {
+      if (params.trxId || params.invoiceId) {
         try {
-          await client.from('payments').insert({
+          const payPayload: Record<string, any> = {
             id: crypto.randomUUID(),
             order_id: orderUuid,
-            payment_method: params.paymentMethod || 'BKASH',
-            trx_id: params.trxId,
+            payment_method: params.paymentMethod || (params.invoiceId ? 'ZINIPAY' : 'BKASH'),
+            trx_id: params.trxId || null,
             amount: totalAmount,
-            status: 'VERIFYING',
+            status: params.trxId ? 'VERIFYING' : 'UNPAID',
             created_at: new Date().toISOString()
-          });
+          };
+          if (params.invoiceId) {
+            payPayload.invoice_id = params.invoiceId;
+          }
+          await client.from('payments').insert(payPayload);
         } catch (payErr) {
           console.warn('Payment record insert non-fatal error:', payErr);
         }
@@ -189,7 +222,7 @@ export const ordersRepository = {
       order_id: orderIdCode,
       user_id: params.userId,
       total_amount: totalAmount,
-      status: 'PENDING_CLAIM',
+      status: orderStatus,
       delivery_address: params.deliveryAddress || {
         address: `${accountLabel}: ${params.playerUid || 'N/A'}`
       },
@@ -197,7 +230,9 @@ export const ordersRepository = {
       customer_notes: params.customerNotes || (params.playerUid ? `${accountLabel}: ${params.playerUid} | Trx: ${params.trxId || 'N/A'} | Pay: ${params.paymentMethod || 'BKASH'}` : undefined),
       player_uid: params.playerUid,
       trx_id: params.trxId,
-      payment_method: params.paymentMethod || 'BKASH',
+      payment_method: params.paymentMethod || (params.invoiceId ? 'ZINIPAY' : 'BKASH'),
+      invoice_id: params.invoiceId,
+      payment_url: params.paymentUrl,
       created_at: new Date().toISOString(),
       items: params.items.map(i => ({
         ...i,
@@ -557,5 +592,224 @@ export const ordersRepository = {
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
     return active[0] ? hydrateOrder(active[0]) : null;
+  },
+
+  /**
+   * ZiniPay Integration: Find order by ZiniPay invoice_id
+   */
+  async getOrderByInvoiceId(invoiceId: string): Promise<Order | null> {
+    const clean = (invoiceId || '').trim();
+    if (!clean) return null;
+
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      try {
+        const { data, error } = await client
+          .from('orders')
+          .select(`
+            *,
+            customer:users(*),
+            items:order_items(*),
+            payments:payments(*),
+            assignments:order_assignments(
+              id,
+              status,
+              claimed_at,
+              worker:workers(*)
+            )
+          `)
+          .eq('invoice_id', clean)
+          .maybeSingle();
+
+        if (!error && data) {
+          return hydrateOrder(data);
+        }
+
+        // Secondary search in delivery_address jsonb if column wasn't populated
+        const { data: fallbackData } = await client
+          .from('orders')
+          .select(`
+            *,
+            customer:users(*),
+            items:order_items(*),
+            payments:payments(*),
+            assignments:order_assignments(
+              id,
+              status,
+              claimed_at,
+              worker:workers(*)
+            )
+          `)
+          .contains('delivery_address', { invoice_id: clean })
+          .maybeSingle();
+
+        if (fallbackData) {
+          return hydrateOrder(fallbackData);
+        }
+      } catch (err) {
+        console.error('[getOrderByInvoiceId Exception]:', err);
+      }
+    }
+
+    // In-memory fallback
+    for (const o of mockStore.orders.values()) {
+      if (
+        o.invoice_id === clean || 
+        (o.delivery_address as any)?.invoice_id === clean ||
+        o.payments?.some(p => p.invoice_id === clean)
+      ) {
+        return hydrateOrder(o);
+      }
+    }
+
+    return null;
+  },
+
+  /**
+   * ZiniPay Integration: Attach invoice ID and payment URL to an existing order
+   */
+  async attachInvoiceToOrder(
+    orderIdCode: string,
+    invoiceId: string,
+    paymentUrl: string
+  ): Promise<{ success: boolean; order?: Order }> {
+    const order = await this.getOrderByCode(orderIdCode);
+    if (!order) return { success: false };
+
+    const client = getDbClient();
+    if (isSupabaseConfigured() && client) {
+      try {
+        const updatedDelivery = {
+          ...(order.delivery_address || {}),
+          invoice_id: invoiceId,
+          payment_url: paymentUrl
+        };
+
+        await client
+          .from('orders')
+          .update({
+            invoice_id: invoiceId,
+            payment_url: paymentUrl,
+            delivery_address: updatedDelivery,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', order.id);
+
+        // Also update or insert payment record
+        await client
+          .from('payments')
+          .update({ invoice_id: invoiceId })
+          .eq('order_id', order.id);
+      } catch (err) {
+        console.warn('[attachInvoiceToOrder Supabase warn]:', err);
+      }
+    }
+
+    // Update in-memory
+    order.invoice_id = invoiceId;
+    order.payment_url = paymentUrl;
+    if (order.delivery_address) {
+      (order.delivery_address as any).invoice_id = invoiceId;
+      (order.delivery_address as any).payment_url = paymentUrl;
+    }
+    for (const o of mockStore.orders.values()) {
+      if (o.order_id.toUpperCase() === orderIdCode.toUpperCase() || o.id === order.id) {
+        o.invoice_id = invoiceId;
+        o.payment_url = paymentUrl;
+      }
+    }
+
+    return { success: true, order: hydrateOrder(order) };
+  },
+
+  /**
+   * ZiniPay Integration: Mark order and payment as verified upon successful payment
+   */
+  async updateOrderPaymentSuccess(
+    orderIdCode: string,
+    details: {
+      trxId: string;
+      paymentMethod: string;
+      invoiceId?: string;
+      amount?: number;
+    }
+  ): Promise<{ success: boolean; order?: Order }> {
+    const order = await this.getOrderByCode(orderIdCode);
+    if (!order) return { success: false };
+
+    const client = getDbClient();
+    const verifiedAt = new Date().toISOString();
+
+    if (isSupabaseConfigured() && client) {
+      try {
+        const updatedDelivery = {
+          ...(order.delivery_address || {}),
+          trx_id: details.trxId,
+          payment_method: details.paymentMethod,
+          ...(details.invoiceId ? { invoice_id: details.invoiceId } : {})
+        };
+
+        await client
+          .from('orders')
+          .update({
+            trx_id: details.trxId,
+            payment_method: details.paymentMethod,
+            delivery_address: updatedDelivery,
+            updated_at: verifiedAt
+          })
+          .eq('id', order.id);
+
+        // Update existing payment record or insert new verified payment
+        const { data: existingPay } = await client
+          .from('payments')
+          .select('id')
+          .eq('order_id', order.id)
+          .maybeSingle();
+
+        if (existingPay?.id) {
+          await client
+            .from('payments')
+            .update({
+              status: 'VERIFIED',
+              trx_id: details.trxId,
+              payment_method: details.paymentMethod,
+              ...(details.invoiceId ? { invoice_id: details.invoiceId } : {}),
+              verified_at: verifiedAt
+            })
+            .eq('id', existingPay.id);
+        } else {
+          await client.from('payments').insert({
+            id: crypto.randomUUID(),
+            order_id: order.id,
+            payment_method: details.paymentMethod,
+            trx_id: details.trxId,
+            invoice_id: details.invoiceId || null,
+            amount: details.amount || order.total_amount,
+            status: 'VERIFIED',
+            verified_at: verifiedAt,
+            created_at: verifiedAt
+          });
+        }
+      } catch (err) {
+        console.error('[updateOrderPaymentSuccess Supabase error]:', err);
+      }
+    }
+
+    // In-memory update
+    order.trx_id = details.trxId;
+    order.payment_method = details.paymentMethod;
+    if (details.invoiceId) order.invoice_id = details.invoiceId;
+    order.updated_at = verifiedAt;
+
+    for (const o of mockStore.orders.values()) {
+      if (o.order_id.toUpperCase() === orderIdCode.toUpperCase() || o.id === order.id) {
+        o.trx_id = details.trxId;
+        o.payment_method = details.paymentMethod;
+        if (details.invoiceId) o.invoice_id = details.invoiceId;
+        o.updated_at = verifiedAt;
+      }
+    }
+
+    return { success: true, order: hydrateOrder(order) };
   }
 };

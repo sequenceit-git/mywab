@@ -422,19 +422,36 @@ export function formatPaymentDisplayForWhatsApp(
  */
 export function formatPaymentDisplayForTelegram(
   proofText?: string,
-  methodName?: string
-): { methodLabel: string; proofLines: string } {
+  methodName?: string,
+  invoiceId?: string
+): { methodLabel: string; proofLines: string; isAutoVerified: boolean } {
   let methodLabel = methodName || 'bKash/Nagad/Rocket';
   if (methodLabel.toUpperCase() === 'BKASH') methodLabel = 'bKash';
   if (methodLabel.toUpperCase() === 'NAGAD') methodLabel = 'Nagad';
   if (methodLabel.toUpperCase() === 'ROCKET') methodLabel = 'Rocket';
 
   const proof = (proofText || '').trim();
+  const isAuto = Boolean(
+    invoiceId ||
+    methodName?.toUpperCase().includes('ZINIPAY') ||
+    proof.toUpperCase().includes('ZINI')
+  );
+
+  if (isAuto) {
+    const invLine = invoiceId ? `\n🧾 <b>Invoice:</b> <code>${invoiceId}</code>` : '';
+    const cleanMethod = methodName?.toUpperCase().includes('ZINIPAY') ? 'ZiniPay Gateway' : `${methodLabel} (Auto-Paid)`;
+    return {
+      methodLabel: `🟢 Auto-Verified (${cleanMethod})`,
+      proofLines: `🔢 <b>TrxID:</b> <code>${proof || 'VERIFIED'}</code>${invLine}\n⚡ <b>Status:</b> <b>✅ Paid via Gateway (SMS চেক দরকার নেই)</b>`,
+      isAutoVerified: true
+    };
+  }
 
   if (!proof || proof === 'N/A') {
     return {
       methodLabel,
-      proofLines: `🔢 <b>Payment Proof:</b> <code>N/A</code>`
+      proofLines: `🔢 <b>Payment Proof:</b> <code>N/A</code>`,
+      isAutoVerified: false
     };
   }
 
@@ -444,7 +461,8 @@ export function formatPaymentDisplayForTelegram(
     const lastPart = proof.match(/Last 4:\s*([^|]+)/i)?.[1]?.trim() || '';
     return {
       methodLabel,
-      proofLines: `🔢 <b>TrxID:</b> <code>${trxPart}</code>\n📱 <b>Sender Last 4:</b> <code>${lastPart}</code>`
+      proofLines: `🔢 <b>TrxID:</b> <code>${trxPart}</code>\n📱 <b>Sender Last 4:</b> <code>${lastPart}</code>`,
+      isAutoVerified: false
     };
   }
 
@@ -452,7 +470,8 @@ export function formatPaymentDisplayForTelegram(
   if (/^\d{3,6}$/.test(proof)) {
     return {
       methodLabel,
-      proofLines: `📱 <b>Sender Last 4:</b> <code>${proof}</code>`
+      proofLines: `📱 <b>Sender Last 4:</b> <code>${proof}</code>`,
+      isAutoVerified: false
     };
   }
 
@@ -460,14 +479,16 @@ export function formatPaymentDisplayForTelegram(
   if (/^01[3-9]\d{8}$/.test(proof)) {
     return {
       methodLabel,
-      proofLines: `📱 <b>Sender Phone:</b> <code>${proof}</code>`
+      proofLines: `📱 <b>Sender Phone:</b> <code>${proof}</code>`,
+      isAutoVerified: false
     };
   }
 
   // Default alphanumeric TrxID
   return {
     methodLabel,
-    proofLines: `🔢 <b>TrxID:</b> <code>${proof}</code>`
+    proofLines: `🔢 <b>TrxID:</b> <code>${proof}</code>`,
+    isAutoVerified: false
   };
 }
 

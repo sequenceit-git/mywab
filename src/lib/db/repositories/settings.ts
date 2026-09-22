@@ -4,7 +4,8 @@ import { getDbClient } from '../client';
 const settingsCache: Map<string, any> = new Map([
   ['kokos_pubg_auto_fulfill', false],
   ['kokos_fallback_to_telegram', true],
-  ['pinex_ff_auto_fulfill', true]
+  ['pinex_ff_auto_fulfill', true],
+  ['zinipay_auto_payment', true]
 ]);
 
 let isInitialized = false;
@@ -56,6 +57,13 @@ export const settingsRepository = {
    */
   isPinexAutoFulfillEnabled(): boolean {
     return Boolean(this.getCachedSetting('pinex_ff_auto_fulfill', true));
+  },
+
+  /**
+   * Helper: Check if ZiniPay Automatic Payment Link & Verification is active
+   */
+  isZiniPayAutoPaymentEnabled(): boolean {
+    return Boolean(this.getCachedSetting('zinipay_auto_payment', true));
   },
 
   /**
