@@ -72,20 +72,19 @@ function SuccessContent() {
     };
   }, [orderId, invoiceId]);
 
-  // Automated WhatsApp Redirect Timer
+  // Automated WhatsApp Instant Redirect
   useEffect(() => {
-    if (isRedirectCancelled) return;
+    // Instantly open WhatsApp so customer never remains on the main website domain
+    const timer = setTimeout(() => {
+      try {
+        window.location.replace(whatsappUrl);
+      } catch {
+        window.location.href = whatsappUrl;
+      }
+    }, 500);
 
-    if (countdown > 0) {
-      const timer = setTimeout(() => {
-        setCountdown(prev => prev - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    } else if (countdown === 0) {
-      // Auto redirect to WhatsApp
-      window.location.href = whatsappUrl;
-    }
-  }, [countdown, isRedirectCancelled, whatsappUrl]);
+    return () => clearTimeout(timer);
+  }, [whatsappUrl]);
 
   const isDelivered = order?.status === 'DELIVERED';
   const isProcessing = order?.status === 'PROCESSING' || order?.status === 'CLAIMED';

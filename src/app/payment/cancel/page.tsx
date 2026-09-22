@@ -8,6 +8,8 @@ import { WhatsAppIcon } from '@/components/BrandIcons';
 function CancelContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get('order_id') || searchParams.get('orderId');
+  const botPhone = process.env.NEXT_PUBLIC_WHATSAPP_PHONE || '15551419791';
+  const whatsappUrl = botPhone ? `https://wa.me/${botPhone.replace(/\D/g, '')}` : 'https://wa.me';
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4 selection:bg-rose-500 selection:text-white">
@@ -53,7 +55,7 @@ function CancelContent() {
         {/* Actions */}
         <div className="flex flex-col gap-3">
           <a
-            href="https://wa.me"
+            href={whatsappUrl}
             className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all"
           >
             <WhatsAppIcon className="w-5 h-5" />
