@@ -54,6 +54,14 @@ export const env = {
       return Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WORKER_GROUP_ID);
     },
   },
+  kokos: {
+    get apiToken() {
+      return process.env.KOKOS_API_TOKEN || '';
+    },
+    get isConfigured() {
+      return Boolean(process.env.KOKOS_API_TOKEN);
+    },
+  },
   auth: {
     get adminEmail() {
       return process.env.ADMIN_EMAIL || 'admin@sequenceit.software';

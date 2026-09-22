@@ -18,19 +18,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(result, { status: 200 });
     }
 
-    // 2. Handle Text Messages in Worker Group (Commands & Custom Cancellation Reasons)
+    // 2. Handle Photo Messages in Worker Group (QR code screenshots for PUBG QR login orders)
+    if (update.message?.photo && update.message.photo.length > 0) {
+      console.log(`📸 [Telegram Webhook] Processing photo message from ${update.message.from?.id}...`);
+      const photoResult = await telegramBot.handleWorkerPhotoMessage(update.message);
+      if (photoResult.handled) {
+        console.log(`✅ [Telegram Webhook] Handled worker photo message:`, photoResult);
+        return NextResponse.json(photoResult, { status: 200 });
+      }
+    }
+
+    // 3. Handle Text Messages in Worker Group (Commands & Custom Cancellation Reasons)
     if (update.message?.text) {
       const text = update.message.text.trim();
       const chatId = update.message.chat.id;
 
-      // 2a. Check if message is a cancellation reason or worker command
+      // 3a. Check if message is a cancellation reason or worker command
       const workerMsgResult = await telegramBot.handleWorkerTextMessage(update.message);
       if (workerMsgResult.handled) {
         console.log(`✅ [Telegram Webhook] Handled worker text message:`, workerMsgResult);
         return NextResponse.json(workerMsgResult, { status: 200 });
       }
 
-      // 2b. Standard Commands: /start, /help
+      // 3b. Standard Commands: /start, /help
       if (text === '/start' || text === '/help') {
         const welcomeText = 
 `👋 <b>WapBusiness Worker Bot</b>

@@ -222,3 +222,33 @@ export interface TelegramClaimCallback {
   action: 'claim' | 'status_processing' | 'status_delivered' | 'release';
   order_id: string;
 }
+
+// Game Packages & Dynamic Catalog Types
+export interface GamePackageItem {
+  id: string;
+  category_id: string;
+  name: string;
+  amount: string;
+  price: number;
+  base_price: number;
+  profit?: number;
+  margin_percent?: number;
+  description?: string;
+  is_active: boolean;
+  sort_order: number;
+  updated_at?: string;
+  created_at?: string;
+}
+
+export interface GameCategoryItem {
+  id: string;
+  code: string;
+  title: string;
+  fullName: string;
+  emoji: string;
+  requiresUid: boolean;
+  inputPrompt: string;
+  inputLabel: string;
+  packages: GamePackageItem[];
+}
+

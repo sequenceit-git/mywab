@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { whatsappService } from '../whatsapp/service';
 import { telegramBot } from '../telegram/bot';
+import { kokosClient } from '../kokos/client';
 import { GAME_CATEGORIES, GameCategory, GamePackage, PAYMENT_ACCOUNTS, findGameCategory, findPackage, formatWhatsAppRow, formatWhatsAppButton } from './game-catalog';
 import { extractCleanUid, extractPaymentProof, getAccountFieldInfo, getGameDeliveryConfig, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu, parseSlashCommand, isRefusalOrCancellation, isPriceInquiry } from './input-parser';
 import { ConversationSessionState, OrderItem } from '@/types';
@@ -129,13 +130,24 @@ export const stateBot = {
       return;
     }
 
-    // 3. Track Order button or text
+    // 3. PUBG QR Code actions (Done or Need New QR)
+    if (triggerId.startsWith('qr_done:') || ['qr done', 'scan done', 'scan sesh', 'স্ক্যান করেছি', 'স্ক্যান সম্পন্ন', 'qr scan done'].includes(normalizedText)) {
+      await this.handleQrAction(phone, conversationId, triggerId, rawText, 'DONE');
+      return;
+    }
+
+    if (triggerId.startsWith('qr_refresh:') || ['new qr', 'notun qr', 'qr expired', 'need qr', 'নতুন qr', 'নতুন qr কোড দিন', 'qr expire', 'expire'].includes(normalizedText)) {
+      await this.handleQrAction(phone, conversationId, triggerId, rawText, 'REFRESH');
+      return;
+    }
+
+    // 4. Track Order button or text
     if (triggerId === 'btn_track_order' || triggerId.startsWith('track:') || /^(?:track|অর্ডার\s*ট্র্যাক|ট্র্যাক|track\s*order)/i.test(normalizedText)) {
       await this.handleTrackOrder(phone, conversationId, triggerId, rawText);
       return;
     }
 
-    // 4. Website button or text
+    // 5. Website button or text
     if (triggerId === 'btn_website' || /^(?:website|ওয়েবসাইট|ওয়েবসাইট\s*তথ্য)/i.test(normalizedText)) {
       await this.sendWebsiteInfo(phone, conversationId);
       return;
@@ -192,7 +204,8 @@ export const stateBot = {
     }
 
     // 9. Check if trigger or text is selecting one of the game categories (supported in any step!)
-    const matchedGame = findGameCategory(triggerId) || findGameCategory(rawText);
+    const baseGame = findGameCategory(triggerId) || findGameCategory(rawText);
+    const matchedGame = baseGame ? (db.getCachedCategory(baseGame.id) || baseGame) : undefined;
     if (matchedGame) {
       // Check if user also directly specified a package in the same message (e.g. "Netflix 1 month", "PUBG 60 UC")
       const directPackage = findPackage(matchedGame, triggerId) || findPackage(matchedGame, rawText);
@@ -206,7 +219,9 @@ export const stateBot = {
 
     // 10. Check if trigger or text is selecting a package for the currently selected game
     if (session.step === 'SELECTING_PACKAGE' || triggerId.startsWith('pkg_')) {
-      const currentGame = session.draftOrder.selectedGame ? findGameCategory(session.draftOrder.selectedGame) : undefined;
+      const selectedGameId = session.draftOrder.selectedGame;
+      const baseCurrentGame = selectedGameId ? findGameCategory(selectedGameId) : undefined;
+      const currentGame = baseCurrentGame ? (db.getCachedCategory(baseCurrentGame.id) || baseCurrentGame) : undefined;
       if (currentGame) {
         const matchedPackage = findPackage(currentGame, triggerId) || findPackage(currentGame, rawText);
         if (matchedPackage) {
@@ -242,7 +257,8 @@ export const stateBot = {
 
       case 'SELECTING_PACKAGE':
         // User typed something unrecognized while package selection is active
-        const game = session.draftOrder.selectedGame ? findGameCategory(session.draftOrder.selectedGame) : undefined;
+        const fallbackBaseGame = session.draftOrder.selectedGame ? findGameCategory(session.draftOrder.selectedGame) : undefined;
+        const game = fallbackBaseGame ? (db.getCachedCategory(fallbackBaseGame.id) || fallbackBaseGame) : undefined;
         if (game) {
           await whatsappService.sendMessage(
             phone,
@@ -280,10 +296,12 @@ export const stateBot = {
 
 💡 *কমান্ড টিপস:* যেকোনো সময় মেনু দেখতে */menu*, অর্ডার ট্র্যাক করতে */track* বা সহায়তার জন্য */help* লিখুন।`;
 
+    const categories = db.getCachedCategories();
+
     const sections = [
       {
         title: 'DS Dukan Game Catalog',
-        rows: GAME_CATEGORIES.map(cat => ({
+        rows: categories.map(cat => ({
           id: cat.id,
           title: `${cat.emoji} ${cat.title}`,
           description: cat.fullName
@@ -312,10 +330,12 @@ export const stateBot = {
    * Resend only the game list
    */
   async sendGameList(phone: string, conversationId: string): Promise<void> {
+    const categories = db.getCachedCategories();
+
     const sections = [
       {
         title: 'DS Dukan Games',
-        rows: GAME_CATEGORIES.map(cat => ({
+        rows: categories.map(cat => ({
           id: cat.id,
           title: `${cat.emoji} ${cat.title}`,
           description: cat.fullName
@@ -337,46 +357,51 @@ export const stateBot = {
    * Step 1 -> Step 2: Handle game category choice and show price list + package options
    */
   async handleGameSelection(phone: string, conversationId: string, game: GameCategory): Promise<void> {
+    const liveGame = db.getCachedCategory(game.id) || game;
+
     db.setSessionState(conversationId, {
       step: 'SELECTING_PACKAGE',
       draftOrder: {
         items: [],
-        selectedGame: game.code,
-        selectedGameLabel: game.fullName
+        selectedGame: liveGame.code,
+        selectedGameLabel: liveGame.fullName
       }
     });
 
-    await this.sendPackageList(phone, conversationId, game);
+    await this.sendPackageList(phone, conversationId, liveGame);
   },
 
   /**
    * Send the price list and package selection buttons / list for a specific game
    */
   async sendPackageList(phone: string, conversationId: string, game: GameCategory): Promise<void> {
+    const liveGame = db.getCachedCategory(game.id) || game;
+    const activePackages = liveGame.packages.filter(p => p.isActive !== false);
+
     // Build price list text
-    let priceListText = `🎮 *${game.fullName} — PRICE LIST*\n\n`;
-    game.packages.forEach((pkg) => {
+    let priceListText = `🎮 *${liveGame.fullName} — PRICE LIST*\n\n`;
+    activePackages.forEach((pkg) => {
       priceListText += `• *${pkg.name}* : ৳${pkg.price} Tk\n`;
     });
     priceListText += `\n⚡ ডেলিভারি সময়: ৫–১৫ মিনিট\n🎁 ওয়েবসাইট থেকে কিনলে ২% ইনস্ট্যান্ট ডিসকাউন্ট!`;
 
     // If game has 3 or fewer packages, send interactive quick-reply buttons
-    if (game.packages.length <= 3) {
-      const buttons = game.packages.map(p => formatWhatsAppButton(p));
+    if (activePackages.length <= 3) {
+      const buttons = activePackages.map(p => formatWhatsAppButton(p));
 
       await whatsappService.sendInteractiveButtons(
         phone,
         `${priceListText}\n\nআপনার প্যাকেজটি বেছে নিন:`,
         buttons,
-        `${game.emoji} ${game.title}`,
+        `${liveGame.emoji} ${liveGame.title}`,
         'DS Dukan'
       );
     } else {
       // If game has >3 packages, send an Interactive List Message (supports up to 10 rows)
       const sections = [
         {
-          title: `${game.title} Packages`.slice(0, 24),
-          rows: game.packages.slice(0, 10).map(pkg => formatWhatsAppRow(pkg))
+          title: `${liveGame.title} Packages`.slice(0, 24),
+          rows: activePackages.slice(0, 10).map(pkg => formatWhatsAppRow(pkg))
         }
       ];
 
@@ -385,7 +410,7 @@ export const stateBot = {
         `${priceListText}\n\nনিচের বাটন থেকে আপনার কাঙ্ক্ষিত প্যাকেজটি সিলেক্ট করুন:`,
         'প্যাকেজ বেছে নিন 💎',
         sections,
-        `${game.emoji} ${game.title}`,
+        `${liveGame.emoji} ${liveGame.title}`,
         'DS Dukan'
       );
     }
@@ -394,7 +419,7 @@ export const stateBot = {
       conversationId,
       sender: 'BOT',
       content: priceListText,
-      metadata: { type: 'price_list', game: game.code }
+      metadata: { type: 'price_list', game: liveGame.code }
     });
   },
 
@@ -679,12 +704,98 @@ ${game.inputPrompt}`;
         step: 'ORDER_PLACED'
       });
 
-      // 3. Dispatch new order to Telegram Worker Group for instant worker claim
+      const selectedGame = session.draftOrder.selectedGame || '';
+      const isPubgUid = selectedGame === 'game_pubg_uid' || (session.draftOrder.selectedGameLabel || '').toLowerCase().includes('pubg');
+      const isKokosEnabled = db.isKokosAutoFulfillEnabled() && kokosClient.isConfigured();
+
+      // Check if this order is eligible for Kokos API Auto-Fulfillment
+      if (isPubgUid && isKokosEnabled) {
+        // Extract numeric denomination (e.g. 60, 325, 660, 1800, 3850, 8100)
+        const denomMatch = (item?.skuOrName || productName).match(/\d+/);
+        const denomination = denomMatch ? parseInt(denomMatch[0], 10) : null;
+
+        if (denomination && playerUid && playerUid !== 'N/A') {
+          console.log(`[Kokos Auto-Fulfill] Attempting redemption for Player ${playerUid}, Denomination ${denomination} UC...`);
+
+          const kokosResult = await kokosClient.redeemCode({
+            playerId: playerUid,
+            denomination,
+            gameId: 'pubg_mobile',
+            requireReceipt: true
+          });
+
+          if (kokosResult.success && kokosResult.receipt) {
+            const receipt = kokosResult.receipt;
+            console.log(`[Kokos Auto-Fulfill Success] Receipt #${receipt.id} delivered in ${receipt.took}ms to "${receipt.name}"`);
+
+            // Mark order delivered in database with receipt details
+            await db.updateOrderStatus(
+              order.order_id,
+              'DELIVERED',
+              {
+                isAdminOverride: true,
+                notes: `Kokos Auto-Fulfilled | Receipt #${receipt.id} | Player: ${receipt.name || playerUid} | Took: ${receipt.took}ms`
+              }
+            );
+
+            // Automated delivery message to customer on WhatsApp
+            const deliveryMsg = `🎉 *PUBG Mobile UC টপ-আপ সফলভাবে সম্পন্ন হয়েছে!*
+
+🎮 *সার্ভিস:* PUBG Mobile (UID Top-Up)
+👤 *Player Name:* \`${receipt.name || 'In-Game Player'}\`
+🆔 *Player ID:* \`${playerUid}\`
+💎 *পরিমাণ:* *${denomination} UC*
+🧾 *Kokos Receipt ID:* \`#${receipt.id}\`
+⏱️ *ডেলিভারি সময়:* ${(receipt.took / 1000).toFixed(1)} সেকেন্ড
+💰 *অর্ডার আইডি:* \`#${order.order_id}\`
+
+আপনার অ্যাকাউন্টে UC যোগ হয়ে গেছে। ধন্যবাদ সাথে থাকার জন্য! ❤️`;
+
+            const buttons = [
+              { id: 'btn_main_menu', title: '🎮 নতুন অর্ডার করুন' },
+              { id: `track:${order.order_id}`, title: '📦 অর্ডার বিস্তারিত' }
+            ];
+
+            await whatsappService.sendInteractiveButtons(phone, deliveryMsg, buttons, 'টপ-আপ ডেলিভারি সম্পন্ন');
+
+            await db.addMessage({
+              conversationId,
+              sender: 'BOT',
+              content: deliveryMsg,
+              metadata: { orderId: order.order_id, kokosReceipt: receipt, step: 'DELIVERED' }
+            });
+
+            return;
+          } else {
+            console.warn('[Kokos Auto-Fulfill Error]:', kokosResult.error);
+            // Log fallback in customer notes
+            order.customer_notes = `${order.customer_notes} | ⚠️ Kokos Auto-Fulfill Failed: ${kokosResult.error?.errorCode || 'Error'}`;
+            // Fallback to Telegram Worker Bot so humans can fulfill
+            telegramBot.dispatchNewOrder(order).catch(err => {
+              console.warn('[Telegram Worker Dispatch Warning]:', err);
+            });
+
+            // Send standard order confirmation to customer
+            await whatsappService.sendOrderConfirmation(order);
+
+            await db.addMessage({
+              conversationId,
+              sender: 'BOT',
+              content: `🎉 অর্ডার #${order.order_id} সফলভাবে তৈরি হয়েছে। আমাদের টিম দ্রুত প্রসেস করছে।`,
+              metadata: { orderId: order.order_id, kokosError: kokosResult.error, step: 'ORDER_PLACED' }
+            });
+
+            return;
+          }
+        }
+      }
+
+      // Default Flow (Kokos Auto-Fulfill is OFF or other game category): Dispatch to Telegram Worker Bot
       telegramBot.dispatchNewOrder(order).catch(err => {
         console.warn('[Telegram Worker Dispatch Warning]:', err);
       });
 
-      // 4. Send WhatsApp structured order confirmation
+      // Send WhatsApp structured order confirmation
       await whatsappService.sendOrderConfirmation(order);
 
       await db.addMessage({
@@ -699,6 +810,84 @@ ${game.inputPrompt}`;
         phone,
         '⚠️ অর্ডার প্রসেস করতে একটি সমস্যা হয়েছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন অথবা আমাদের সরাসরি কল করুন।'
       );
+    }
+  },
+
+  /**
+   * Handle PUBG QR customer action (QR Scanned vs Need New QR)
+   */
+  async handleQrAction(
+    phone: string,
+    conversationId: string,
+    triggerId: string,
+    rawText: string,
+    actionType: 'DONE' | 'REFRESH'
+  ): Promise<void> {
+    let orderIdCode = '';
+    if (triggerId.startsWith('qr_done:')) {
+      orderIdCode = triggerId.replace('qr_done:', '').trim();
+    } else if (triggerId.startsWith('qr_refresh:')) {
+      orderIdCode = triggerId.replace('qr_refresh:', '').trim();
+    }
+
+    // If order ID not in trigger, lookup recent active order for this phone
+    if (!orderIdCode) {
+      const activeOrders = await db.getOrders({ limit: 10 });
+      const cleanPhone = phone.replace(/\D/g, '');
+      const recentOrder = activeOrders.find(o => 
+        o.delivery_phone.replace(/\D/g, '').includes(cleanPhone) &&
+        ['PROCESSING', 'CLAIMED', 'PENDING_CLAIM'].includes(o.status)
+      );
+      if (recentOrder) {
+        orderIdCode = recentOrder.order_id;
+      }
+    }
+
+    if (actionType === 'DONE') {
+      const replyMsg = 
+`✅ *ধন্যবাদ! আপনার QR কোড স্ক্যান সম্পন্ন হয়েছে।*
+
+আমাদের এজেন্ট এখন আপনার অ্যাকাউন্টে লগইন করে UC টপ-আপ সম্পন্ন করছেন। কিছুক্ষণের মধ্যেই আপনি নিশ্চিতকরণ মেসেজ পাবেন। ⏳✨`;
+
+      const buttons = [
+        { id: `track:${orderIdCode || ''}`, title: '📦 অর্ডার স্ট্যাটাস' },
+        { id: 'btn_main_menu', title: '🎮 মেইন মেনু' }
+      ];
+
+      await whatsappService.sendInteractiveButtons(phone, replyMsg, buttons, 'QR স্ক্যান নিশ্চিত');
+      await db.addMessage({
+        conversationId,
+        sender: 'BOT',
+        content: replyMsg,
+        metadata: { step: 'QR_SCANNED', orderId: orderIdCode }
+      });
+
+      if (orderIdCode) {
+        await telegramBot.notifyWorkerQrAction(orderIdCode, 'SCANNED');
+      }
+    } else {
+      // REFRESH
+      const replyMsg = 
+`🔄 *নতুন QR কোডের জন্য রিকোয়েস্ট পাঠানো হয়েছে।*
+
+আমাদের এজেন্ট কিছুক্ষণের মধ্যেই একটি নতুন Login QR কোড পাঠাচ্ছেন। দয়া করে একটু অপেক্ষা করুন... ⏳`;
+
+      const buttons = [
+        { id: `track:${orderIdCode || ''}`, title: '📦 অর্ডার স্ট্যাটাস' },
+        { id: 'btn_main_menu', title: '❌ বাতিল করুন' }
+      ];
+
+      await whatsappService.sendInteractiveButtons(phone, replyMsg, buttons, 'নতুন QR রিকোয়েস্ট');
+      await db.addMessage({
+        conversationId,
+        sender: 'BOT',
+        content: replyMsg,
+        metadata: { step: 'QR_REFRESH_REQUESTED', orderId: orderIdCode }
+      });
+
+      if (orderIdCode) {
+        await telegramBot.notifyWorkerQrAction(orderIdCode, 'REFRESH_REQUESTED');
+      }
     }
   },
 

@@ -366,6 +366,88 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
   },
 
   /**
+   * Send an image with optional caption to customer's WhatsApp
+   */
+  async sendImage(toPhone: string, imageUrl: string, caption?: string): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+
+    if (!env.whatsapp.isConfigured) {
+      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
+      console.error(errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
+    try {
+      const payload: Record<string, any> = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanPhone,
+        type: 'image',
+        image: {
+          link: imageUrl,
+          ...(caption ? { caption } : {})
+        }
+      };
+
+      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.messages?.[0]?.id) {
+        return { success: true, messageId: data.messages[0].id };
+      }
+      console.error('WhatsApp Send Image Error:', JSON.stringify(data));
+      return { success: false, error: JSON.stringify(data) };
+    } catch (err) {
+      console.error('WhatsApp Send Image Network Exception:', err);
+      return { success: false, error: String(err) };
+    }
+  },
+
+  /**
+   * Send PUBG Login QR Code prompt to customer with interactive buttons (Done & Need New QR)
+   */
+  async sendQrCodePrompt(
+    toPhone: string,
+    imageUrl: string,
+    orderId: string,
+    packageName?: string
+  ): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+
+    const caption = 
+`📲 *PUBG Mobile Login QR Code / লগইন কিউআর কোড*
+
+📦 *অর্ডার আইডি:* \`#${orderId}\`${packageName ? `\n💎 *প্যাকেজ:* ${packageName}` : ''}
+⏱️ *মেয়াদ (Expiry):* *৫ মিনিট (5 Minutes)*
+
+📌 *নির্দেশনা:*
+১. অন্য ফোন বা ক্যামেরা দিয়ে স্ক্যান করুন, অথবা PUBG Mobile গেমের Scan অপশন ব্যবহার করুন।
+২. স্ক্যান সম্পন্ন হলে নিচের *"✅ QR স্ক্যান করেছি"* বাটনে চাপ দিন।
+৩. কোডের মেয়াদ শেষ হলে *"🔄 নতুন QR কোড দিন"* বাটনে চাপ দিন।`;
+
+    // 1. Send the QR Code Image
+    const imageResult = await this.sendImage(cleanPhone, imageUrl, caption);
+
+    // 2. Send interactive action buttons for quick customer response
+    const buttons: WhatsAppButton[] = [
+      { id: `qr_done:${orderId}`, title: '✅ QR স্ক্যান করেছি' },
+      { id: `qr_refresh:${orderId}`, title: '🔄 নতুন QR কোড দিন' }
+    ];
+
+    const buttonBody = `👉 *স্ক্যান শেষ হলে বা নতুন QR লাগলে সিলেক্ট করুন:*`;
+    await this.sendInteractiveButtons(cleanPhone, buttonBody, buttons, 'PUBG QR Login');
+
+    return imageResult;
+  },
+
+  /**
    * Send typing indicator and mark as read (shows "typing..." to customer in WhatsApp chat)
    */
   async markAsReadAndType(messageId: string): Promise<boolean> {
@@ -403,4 +485,5 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
     }
   }
 };
+
 

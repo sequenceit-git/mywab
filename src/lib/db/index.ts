@@ -5,6 +5,12 @@ import { workersRepository } from './repositories/workers';
 import { chatRepository } from './repositories/chat';
 import { analyticsRepository } from './repositories/analytics';
 import { pricingRepository } from './repositories/pricing';
+import { settingsRepository } from './repositories/settings';
+
+// Initialize in-memory cache
+if (typeof window === 'undefined') {
+  settingsRepository.initSettings().catch(() => {});
+}
 
 export { mockStore } from './mock-store';
 export {
@@ -32,6 +38,9 @@ export const db = {
   ...analyticsRepository,
 
   // Pricing & Profit Catalog
-  ...pricingRepository
+  ...pricingRepository,
+
+  // System Settings (Kokos & Runtime)
+  ...settingsRepository
 };
 

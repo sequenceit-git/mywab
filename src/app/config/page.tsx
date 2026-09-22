@@ -8,9 +8,17 @@ import {
   Copy,
   RefreshCw,
   Server,
-  Send
+  Send,
+  Zap,
+  ToggleLeft,
+  ToggleRight,
+  Search,
+  Layers,
+  Package,
+  ShieldCheck,
+  Bot
 } from 'lucide-react';
-import { SupabaseIcon, WhatsAppIcon, TelegramIcon } from '@/components/BrandIcons';
+import { SupabaseIcon, WhatsAppIcon, TelegramIcon, PubgUidIcon } from '@/components/BrandIcons';
 
 interface SystemStatus {
   timestamp?: string;
@@ -58,6 +66,32 @@ export default function ConfigPage() {
   const [tgWebhookLoading, setTgWebhookLoading] = useState(false);
   const [tgWebhookMsg, setTgWebhookMsg] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Kokos Activator API State
+  const [kokosConfigured, setKokosConfigured] = useState<boolean>(false);
+  const [kokosAutoFulfill, setKokosAutoFulfill] = useState<boolean>(false);
+  const [kokosInventory, setKokosInventory] = useState<Record<string, number> | null>(null);
+  const [kokosInvLoading, setKokosInvLoading] = useState<boolean>(false);
+  const [kokosToggling, setKokosToggling] = useState<boolean>(false);
+  const [kokosLookupUid, setKokosLookupUid] = useState<string>('');
+  const [kokosLookupLoading, setKokosLookupLoading] = useState<boolean>(false);
+  const [kokosLookupResult, setKokosLookupResult] = useState<{ name?: string; error?: string } | null>(null);
+  const [kokosToggleMsg, setKokosToggleMsg] = useState<string | null>(null);
+
+  const fetchKokosStatus = async () => {
+    try {
+      const res = await fetch('/api/system/kokos');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setKokosConfigured(data.configured);
+          setKokosAutoFulfill(data.autoFulfillEnabled);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch Kokos status:', e);
+    }
+  };
+
   const fetchStatus = async () => {
     setLoading(true);
     try {
@@ -70,6 +104,7 @@ export default function ConfigPage() {
           setStatus(data);
         }
       }
+      await fetchKokosStatus();
     } catch (err) {
       console.error('Failed to fetch system status:', err);
     } finally {
@@ -154,11 +189,6 @@ export default function ConfigPage() {
             message: data.results?.testMessage?.error || data.error || 'Failed to deliver message'
           });
         }
-      } else {
-        setWaTestMsg({
-          success: false,
-          message: 'Non-JSON response from server'
-        });
       }
     } catch (e) {
       setWaTestMsg({
@@ -170,6 +200,76 @@ export default function ConfigPage() {
     }
   };
 
+  const handleToggleKokos = async () => {
+    setKokosToggling(true);
+    setKokosToggleMsg(null);
+    try {
+      const nextState = !kokosAutoFulfill;
+      const res = await fetch('/api/system/kokos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'TOGGLE_AUTO_FULFILL',
+          enabled: nextState
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setKokosAutoFulfill(data.autoFulfillEnabled);
+        setKokosToggleMsg(data.message);
+        setTimeout(() => setKokosToggleMsg(null), 4000);
+      }
+    } catch (e) {
+      console.error('Failed to toggle Kokos auto-fulfillment:', e);
+    } finally {
+      setKokosToggling(false);
+    }
+  };
+
+  const handleCheckInventory = async () => {
+    setKokosInvLoading(true);
+    try {
+      const res = await fetch('/api/system/kokos?inventory=true');
+      const data = await res.json();
+      if (data.success && data.inventory) {
+        setKokosInventory(data.inventory);
+      } else {
+        setKokosInventory({});
+      }
+    } catch (e) {
+      console.error('Failed to fetch inventory:', e);
+    } finally {
+      setKokosInvLoading(false);
+    }
+  };
+
+  const handleLookupPlayer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!kokosLookupUid.trim()) return;
+    setKokosLookupLoading(true);
+    setKokosLookupResult(null);
+    try {
+      const res = await fetch('/api/system/kokos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'TEST_LOOKUP',
+          playerId: kokosLookupUid.trim()
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setKokosLookupResult({ name: data.name });
+      } else {
+        setKokosLookupResult({ error: data.error || 'Player not found' });
+      }
+    } catch (e) {
+      setKokosLookupResult({ error: 'Network lookup error' });
+    } finally {
+      setKokosLookupLoading(false);
+    }
+  };
+
   // Safe client-side derived values
   const currentDomain = status?.app?.domain || (mounted && typeof window !== 'undefined' ? window.location.host : 'Loading...');
   const currentWhatsAppWebhook = status?.whatsapp?.webhookUrl || (mounted && typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp` : '');
@@ -178,7 +278,7 @@ export default function ConfigPage() {
     <div className="flex-1 flex flex-col min-h-screen bg-slate-950">
       <Header
         title="Live System Diagnostics & Configuration"
-        subtitle="Real-time status of database connections, messaging gateways, and external API webhooks"
+        subtitle="Real-time status of database connections, messaging gateways, external API webhooks, and auto-fulfillment engines"
       />
 
       <main className="p-4 sm:p-6 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6 pb-20 lg:pb-6">
@@ -210,8 +310,8 @@ export default function ConfigPage() {
           </button>
         </div>
 
-        {/* 3 Connected Services Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+        {/* 4 Connected Services Grid (2x2 on desktop) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           {/* 1. Supabase Database Card */}
           <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
             <div className="flex items-center justify-between gap-2">
@@ -271,7 +371,146 @@ export default function ConfigPage() {
             </div>
           </div>
 
-          {/* 2. WhatsApp Cloud API Webhook Card */}
+          {/* 2. Kokos Activator API Card (PUBG UID Auto-Fulfillment) */}
+          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-brand-500/30 space-y-4 shadow-lg relative overflow-hidden">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+                  <PubgUidIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm flex items-center gap-1.5">
+                    <span>Kokos Activator API</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold">PUBG UID</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400">Instant UC Code Redemption & Auto-Fulfillment</p>
+                </div>
+              </div>
+              <span
+                className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0 ${
+                  kokosConfigured
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                }`}
+              >
+                {kokosConfigured ? 'API Key Configured' : 'Missing KOKOS_API_TOKEN'}
+              </span>
+            </div>
+
+            {/* Auto-Fulfillment Master Toggle Switch */}
+            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+              <div>
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-brand-400" />
+                  <span>PUBG UID Auto-Fulfill Mode</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {kokosAutoFulfill
+                    ? '🟢 ON: Orders redeem instantly via Kokos API & notify on WhatsApp'
+                    : '🔵 OFF: Orders dispatch to Telegram Worker Bot for manual claims'}
+                </p>
+              </div>
+
+              <button
+                onClick={handleToggleKokos}
+                disabled={kokosToggling}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+                  kokosAutoFulfill
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-dark-950 shadow-md shadow-emerald-500/20'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                }`}
+              >
+                {kokosAutoFulfill ? (
+                  <>
+                    <ToggleRight className="w-4 h-4" />
+                    <span>ON</span>
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="w-4 h-4" />
+                    <span>OFF</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {kokosToggleMsg && (
+              <div className="p-2.5 rounded-xl bg-brand-500/10 border border-brand-500/20 text-brand-300 text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{kokosToggleMsg}</span>
+              </div>
+            )}
+
+            {/* Live Kokos Inventory Check */}
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Database Code Stock</span>
+                </span>
+                <button
+                  onClick={handleCheckInventory}
+                  disabled={kokosInvLoading || !kokosConfigured}
+                  className="text-[11px] text-brand-400 hover:underline flex items-center gap-1 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${kokosInvLoading ? 'animate-spin' : ''}`} />
+                  <span>{kokosInventory ? 'Refresh Stock' : 'Check Stock'}</span>
+                </button>
+              </div>
+
+              {kokosInventory && (
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 pt-1">
+                  {['60', '325', '660', '1800', '3850', '8100'].map((uc) => (
+                    <div key={uc} className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-center">
+                      <div className="text-[10px] text-slate-400">{uc} UC</div>
+                      <div className={`text-xs font-mono font-bold ${
+                        (kokosInventory[uc] || 0) > 0 ? 'text-emerald-400' : 'text-slate-500'
+                      }`}>
+                        {kokosInventory[uc] ?? 0}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Test Player Character Lookup */}
+            <form onSubmit={handleLookupPlayer} className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Test Player UID (e.g. 51709255708)"
+                  value={kokosLookupUid}
+                  onChange={(e) => setKokosLookupUid(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={kokosLookupLoading || !kokosConfigured}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold disabled:opacity-50"
+              >
+                {kokosLookupLoading ? 'Checking...' : 'Verify'}
+              </button>
+            </form>
+
+            {kokosLookupResult && (
+              <div className={`p-2 rounded-xl text-xs flex items-center gap-2 ${
+                kokosLookupResult.name
+                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
+                  : 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
+              }`}>
+                {kokosLookupResult.name ? (
+                  <span>✅ Player In-Game Name: <b className="font-bold text-white">{kokosLookupResult.name}</b></span>
+                ) : (
+                  <span>❌ {kokosLookupResult.error}</span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 3. WhatsApp Cloud API Webhook Card */}
           <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
@@ -321,22 +560,6 @@ export default function ConfigPage() {
                 </code>
               </div>
 
-              <div className="flex items-center justify-between px-1 text-slate-400 text-[11px]">
-                <span>Phone Number ID:</span>
-                <span className="font-mono text-slate-200">{status?.whatsapp?.phoneNumberId || 'Not configured'}</span>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/50 space-y-1.5 text-[11px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Webhook Field:</span>
-                  <span className="font-mono text-brand-400 font-semibold">messages</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Token Permissions:</span>
-                  <span className="font-mono text-slate-300 truncate max-w-[180px]">whatsapp_business_messaging</span>
-                </div>
-              </div>
-
               {waTestMsg && (
                 <div
                   className={`p-3 rounded-xl text-xs flex items-start gap-2 ${
@@ -367,7 +590,7 @@ export default function ConfigPage() {
             </div>
           </div>
 
-          {/* 3. Telegram Worker Bot Card */}
+          {/* 4. Telegram Worker Bot Card */}
           <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">

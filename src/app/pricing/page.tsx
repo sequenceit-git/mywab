@@ -19,7 +19,12 @@ import {
   Check,
   X,
   PlusCircle,
-  HelpCircle
+  Trash2,
+  ToggleLeft,
+  ToggleRight,
+  ShieldCheck,
+  Bot,
+  Zap
 } from 'lucide-react';
 import { CategoryIcon } from '@/components/BrandIcons';
 
@@ -29,12 +34,27 @@ interface PricingProduct {
   categoryTitle: string;
   categoryEmoji?: string;
   name: string;
+  amount: string;
   price: number;
   basePrice: number;
   profit: number;
   marginPercent: number;
   description?: string;
+  isActive?: boolean;
+  sortOrder?: number;
   updatedAt?: string;
+}
+
+interface CategoryInfo {
+  id: string;
+  code: string;
+  title: string;
+  fullName: string;
+  emoji: string;
+  requiresUid: boolean;
+  inputPrompt: string;
+  inputLabel: string;
+  packages: any[];
 }
 
 interface PricingStats {
@@ -48,32 +68,90 @@ interface PricingStats {
 
 export default function PricingPage() {
   const [products, setProducts] = useState<PricingProduct[]>([]);
+  const [categories, setCategories] = useState<CategoryInfo[]>([]);
   const [stats, setStats] = useState<PricingStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('game_pubg_uid');
 
-  // Edit Modal State
-  const [editingProduct, setEditingProduct] = useState<PricingProduct | null>(null);
-  const [editPrice, setEditPrice] = useState<number>(0);
-  const [editBasePrice, setEditBasePrice] = useState<number>(0);
+  // Package Modal State (Add or Edit)
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [modalPkgId, setModalPkgId] = useState<string>('');
+  const [modalCategoryId, setModalCategoryId] = useState<string>('game_pubg_uid');
+  const [modalName, setModalName] = useState<string>('');
+  const [modalAmount, setModalAmount] = useState<string>('');
+  const [modalPrice, setModalPrice] = useState<number>(0);
+  const [modalBasePrice, setModalBasePrice] = useState<number>(0);
+  const [modalDescription, setModalDescription] = useState<string>('');
+  const [modalIsActive, setModalIsActive] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Delete Modal State
+  const [deletingProduct, setDeletingProduct] = useState<PricingProduct | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Reset Modal State
   const [showResetModal, setShowResetModal] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
+  // Kokos Auto-Fulfill Status
+  const [kokosAutoFulfill, setKokosAutoFulfill] = useState<boolean>(false);
+  const [kokosToggling, setKokosToggling] = useState<boolean>(false);
+
+  const fetchKokosStatus = async () => {
+    try {
+      const res = await fetch('/api/system/kokos');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setKokosAutoFulfill(data.autoFulfillEnabled);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleToggleKokos = async () => {
+    setKokosToggling(true);
+    try {
+      const nextState = !kokosAutoFulfill;
+      const res = await fetch('/api/system/kokos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'TOGGLE_AUTO_FULFILL',
+          enabled: nextState
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setKokosAutoFulfill(data.autoFulfillEnabled);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setKokosToggling(false);
+    }
+  };
+
   const fetchPricing = async () => {
     try {
-      const res = await fetch('/api/pricing');
+      const res = await fetch('/api/pricing?all=true');
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
           setProducts(data.products || []);
+          setCategories(data.categories || []);
           setStats(data.stats || null);
+          if (data.categories?.length > 0 && !selectedCategoryId) {
+            setSelectedCategoryId(data.categories[0].id);
+          }
         }
       }
+      await fetchKokosStatus();
     } catch (err) {
       console.error('Failed to fetch pricing catalog:', err);
     } finally {
@@ -85,34 +163,59 @@ export default function PricingPage() {
     fetchPricing();
   }, []);
 
-  // Category options for tabs
-  const categories = Array.from(
-    new Set(products.map(p => JSON.stringify({ id: p.categoryId, title: p.categoryTitle, emoji: p.categoryEmoji })))
-  ).map(str => JSON.parse(str));
-
-  // Filtered products
-  const filteredProducts = products.filter(p => {
-    const matchesCategory = selectedCategory === 'ALL' || p.categoryId === selectedCategory;
+  // Filtered products for active category view
+  const activeCategory = categories.find(c => c.id === selectedCategoryId) || categories[0];
+  const categoryProducts = products.filter(p => {
+    const matchesCategory = selectedCategoryId === 'ALL' || p.categoryId === selectedCategoryId;
     const q = searchQuery.toLowerCase().trim();
     const matchesSearch = !q ||
       p.name.toLowerCase().includes(q) ||
+      (p.amount && p.amount.toLowerCase().includes(q)) ||
       p.categoryTitle.toLowerCase().includes(q) ||
       (p.description && p.description.toLowerCase().includes(q));
     return matchesCategory && matchesSearch;
   });
 
-  const handleOpenEdit = (product: PricingProduct) => {
-    setEditingProduct(product);
-    setEditPrice(product.price);
-    setEditBasePrice(product.basePrice);
+  // Open modal for Creating new package
+  const handleOpenAdd = (catId?: string) => {
+    const targetCat = catId || (selectedCategoryId !== 'ALL' ? selectedCategoryId : 'game_pubg_uid');
+    setIsEditing(false);
+    setModalPkgId('');
+    setModalCategoryId(targetCat);
+    setModalName('');
+    setModalAmount('');
+    setModalPrice(0);
+    setModalBasePrice(0);
+    setModalDescription('');
+    setModalIsActive(true);
     setFeedbackMsg(null);
+    setIsModalOpen(true);
   };
 
-  const handleSavePrice = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingProduct) return;
+  // Open modal for Editing existing package
+  const handleOpenEdit = (product: PricingProduct) => {
+    setIsEditing(true);
+    setModalPkgId(product.id);
+    setModalCategoryId(product.categoryId);
+    setModalName(product.name);
+    setModalAmount(product.amount || product.name);
+    setModalPrice(product.price);
+    setModalBasePrice(product.basePrice);
+    setModalDescription(product.description || '');
+    setModalIsActive(product.isActive !== false);
+    setFeedbackMsg(null);
+    setIsModalOpen(true);
+  };
 
-    if (editPrice < 0 || editBasePrice < 0) {
+  // Save package (Create or Update)
+  const handleSavePackage = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!modalName.trim()) {
+      setFeedbackMsg({ type: 'error', text: 'Package Name is required' });
+      return;
+    }
+    if (modalPrice < 0 || modalBasePrice < 0) {
       setFeedbackMsg({ type: 'error', text: 'Prices cannot be negative numbers' });
       return;
     }
@@ -121,34 +224,107 @@ export default function PricingPage() {
     setFeedbackMsg(null);
 
     try {
-      const res = await fetch('/api/pricing', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: editingProduct.id,
-          price: Number(editPrice),
-          basePrice: Number(editBasePrice)
-        })
-      });
+      if (isEditing) {
+        // Update existing package
+        const res = await fetch('/api/pricing', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: modalPkgId,
+            name: modalName.trim(),
+            amount: modalAmount.trim() || modalName.trim(),
+            price: Number(modalPrice),
+            basePrice: Number(modalBasePrice),
+            description: modalDescription.trim(),
+            isActive: modalIsActive
+          })
+        });
 
-      const data = await res.json();
-      if (data.success) {
-        setEditingProduct(null);
-        await fetchPricing();
+        const data = await res.json();
+        if (data.success) {
+          setIsModalOpen(false);
+          await fetchPricing();
+        } else {
+          setFeedbackMsg({ type: 'error', text: data.error || 'Failed to update package' });
+        }
       } else {
-        setFeedbackMsg({ type: 'error', text: data.error || 'Failed to update price' });
+        // Create new package
+        const res = await fetch('/api/pricing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create',
+            categoryId: modalCategoryId,
+            name: modalName.trim(),
+            amount: modalAmount.trim() || modalName.trim(),
+            price: Number(modalPrice),
+            basePrice: Number(modalBasePrice),
+            description: modalDescription.trim()
+          })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          setIsModalOpen(false);
+          await fetchPricing();
+        } else {
+          setFeedbackMsg({ type: 'error', text: data.error || 'Failed to create package' });
+        }
       }
     } catch (err) {
-      setFeedbackMsg({ type: 'error', text: 'Network error while updating price' });
+      setFeedbackMsg({ type: 'error', text: 'Network error while saving package' });
     } finally {
       setIsSaving(false);
     }
   };
 
+  // Toggle package active status directly from table
+  const handleToggleActive = async (product: PricingProduct) => {
+    try {
+      const nextState = product.isActive === false;
+      await fetch('/api/pricing', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: product.id,
+          isActive: nextState
+        })
+      });
+      await fetchPricing();
+    } catch (err) {
+      console.error('Failed to toggle package status:', err);
+    }
+  };
+
+  // Delete package
+  const handleDeletePackage = async () => {
+    if (!deletingProduct) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/pricing?id=${encodeURIComponent(deletingProduct.id)}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDeletingProduct(null);
+        await fetchPricing();
+      }
+    } catch (err) {
+      console.error('Failed to delete package:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Reset to Defaults
   const handleResetDefaults = async () => {
     setIsResetting(true);
     try {
-      const res = await fetch('/api/pricing', { method: 'POST' });
+      const res = await fetch('/api/pricing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset' })
+      });
       const data = await res.json();
       if (data.success) {
         setShowResetModal(false);
@@ -162,38 +338,42 @@ export default function PricingPage() {
   };
 
   // Live calculator for modal
-  const liveProfit = Math.max(0, editPrice - editBasePrice);
-  const liveMargin = editPrice > 0 ? Math.round((liveProfit / editPrice) * 100) : 0;
+  const liveProfit = Math.max(0, modalPrice - modalBasePrice);
+  const liveMargin = modalPrice > 0 ? Math.round((liveProfit / modalPrice) * 100) : 0;
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-slate-950">
       <Header
-        title="Pricing & Profit Management"
-        subtitle="Configure selling prices, base wholesale costs, and monitor profit margins across all catalog packages"
+        title="Game Categories & Package Management"
+        subtitle="Manage game categories, configure package pricing, wholesale base costs, and synchronize real-time catalog changes with the WhatsApp Bot"
       />
 
       <main className="p-4 sm:p-6 max-w-7xl mx-auto w-full space-y-4 sm:space-y-6 pb-20 lg:pb-6">
-        {/* KPI Top Row: 4 Metric Cards */}
+        {/* Top Status & KPI Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {/* Total Revenue & Profit */}
+          {/* WhatsApp Bot Live Sync Status */}
           <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-emerald-500/40 transition">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Potential Profit</span>
+              <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Bot Integration</span>
               <div className="p-1.5 sm:p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-                <DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />
+                <Bot className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
             </div>
             <div className="mt-2 sm:mt-3">
-              <div className="text-xl sm:text-2xl font-black text-emerald-400">
-                ৳{(stats?.totalProfit ?? 0).toLocaleString()}
+              <div className="text-sm sm:text-base font-bold text-emerald-400 flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span>Live Synced</span>
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1">
-                From total ৳{(stats?.totalPotentialRevenue ?? 0).toLocaleString()}
+                WhatsApp bot automatically serves active packages
               </p>
             </div>
           </div>
 
-          {/* Average Profit Margin */}
+          {/* Total Catalog Profit Margin */}
           <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-indigo-500/40 transition">
             <div className="flex items-center justify-between">
               <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Avg Margin</span>
@@ -206,7 +386,7 @@ export default function PricingPage() {
                 {stats?.avgMarginPercent || 0}%
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1">
-                Margin across catalog
+                Across {products.length} active packages
               </p>
             </div>
           </div>
@@ -214,7 +394,7 @@ export default function PricingPage() {
           {/* Avg Profit Per Unit */}
           <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md relative overflow-hidden group hover:border-brand-500/40 transition">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Avg / Unit</span>
+              <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Avg / Unit Profit</span>
               <div className="p-1.5 sm:p-2 rounded-xl bg-brand-500/10 text-brand-400">
                 <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
@@ -224,414 +404,643 @@ export default function PricingPage() {
                 ৳{(stats?.avgProfitPerUnit ?? 0).toLocaleString()}
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 sm:mt-1">
-                Net profit per item
+                Net profit per item sold
               </p>
             </div>
           </div>
 
-          {/* Total Active Packages & Reset */}
+          {/* Categories Count & Factory Reset */}
           <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Packages ({stats?.totalProducts || 0})</span>
+              <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Categories ({categories.length})
+              </span>
               <button
                 onClick={() => setShowResetModal(true)}
-                title="Reset to Default Prices"
+                title="Reset to Factory Defaults"
                 className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition"
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="w-3.5 h-3.5" />
               </button>
             </div>
             <div className="mt-2">
               <button
-                onClick={() => setShowResetModal(true)}
-                className="w-full py-1.5 sm:py-2 px-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-[11px] sm:text-xs font-bold text-slate-200 transition flex items-center justify-center gap-1"
+                onClick={() => handleOpenAdd(selectedCategoryId !== 'ALL' ? selectedCategoryId : undefined)}
+                className="w-full py-2 px-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-slate-950 font-black text-xs transition flex items-center justify-center gap-1.5 shadow-lg shadow-brand-500/20"
               >
-                <RotateCcw className="w-3 h-3" />
-                <span>Reset Default</span>
+                <PlusCircle className="w-4 h-4" />
+                <span>Add New Package</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Filter, Search & Category Navigation */}
-        <div className="space-y-3 p-3.5 sm:p-4 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-lg">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search packages, games, UC, diamonds..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500/50"
-              />
-            </div>
-
-            <div className="text-xs text-slate-400 flex items-center gap-2">
-              <span>Showing: <b className="text-white">{filteredProducts.length}</b> of {products.length} packages</span>
-            </div>
+        {/* Category Navigation Bar (8 Game Categories) */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Layers className="w-4 h-4 text-brand-400" />
+              <span>Select Game Category</span>
+            </h3>
+            <span className="text-[11px] text-slate-500">
+              Click any category to manage its packages
+            </span>
           </div>
 
-          {/* Category Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 border-t border-slate-800/60 scrollbar-none">
-            <button
-              onClick={() => setSelectedCategory('ALL')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
-                selectedCategory === 'ALL'
-                  ? 'bg-brand-500 text-dark-950 shadow-sm'
-                  : 'bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>All ({products.length})</span>
-            </button>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+            {categories.map((cat) => {
+              const isSelected = selectedCategoryId === cat.id;
+              const catCount = products.filter(p => p.categoryId === cat.id).length;
 
-            {categories.map((cat: any) => {
-              const isSelected = selectedCategory === cat.id;
-              const count = products.filter(p => p.categoryId === cat.id).length;
               return (
                 <button
                   key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${
+                  onClick={() => setSelectedCategoryId(cat.id)}
+                  className={`p-3 rounded-xl text-left border transition flex flex-col justify-between min-h-[84px] relative overflow-hidden group ${
                     isSelected
-                      ? 'bg-brand-500 text-dark-950 shadow-sm'
-                      : 'bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-brand-500/10 border-brand-500/60 shadow-lg shadow-brand-500/15 ring-1 ring-brand-500/50'
+                      : 'bg-dark-900/80 border-slate-800/80 hover:border-slate-700 hover:bg-dark-800/90'
                   }`}
                 >
-                  <CategoryIcon categoryId={cat.id} className="w-3.5 h-3.5" />
-                  <span>{cat.title} ({count})</span>
+                  <div className="flex items-center justify-between gap-1.5">
+                    <CategoryIcon categoryId={cat.id} className="w-7 h-7 shrink-0 drop-shadow-md" />
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      isSelected
+                        ? 'bg-brand-500/20 text-brand-300 border border-brand-500/30'
+                        : 'bg-slate-800 text-slate-400'
+                    }`}>
+                      {catCount}
+                    </span>
+                  </div>
+                  <div className="mt-2">
+                    <p className={`text-[11px] font-bold leading-snug line-clamp-1 ${
+                      isSelected ? 'text-white' : 'text-slate-300 group-hover:text-white'
+                    }`}>
+                      {cat.title}
+                    </p>
+                    <span className="text-[9px] text-slate-500 block truncate">
+                      {cat.requiresUid ? 'Player UID' : 'Login / Info'}
+                    </span>
+                  </div>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Mobile Cards View (sm:hidden) */}
-        <div className="md:hidden space-y-3">
+        {/* Active Category Header & Package Manager Section */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-2xl bg-slate-900 border border-slate-700/70 shadow-lg shrink-0 flex items-center justify-center">
+                <CategoryIcon categoryId={activeCategory?.id} className="w-10 h-10 shrink-0" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-black text-white">
+                    {activeCategory?.fullName || activeCategory?.title || 'Game Packages'}
+                  </h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                    {categoryProducts.length} packages
+                  </span>
+                  {activeCategory?.id === 'game_pubg_uid' && (
+                    <button
+                      onClick={handleToggleKokos}
+                      disabled={kokosToggling}
+                      title="Toggle Kokos API PUBG Auto-Fulfillment"
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 transition ${
+                        kokosAutoFulfill
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-white'
+                      }`}
+                    >
+                      <Zap className="w-3 h-3 text-amber-400" />
+                      <span>Kokos Auto-Fulfill: {kokosAutoFulfill ? 'ON' : 'OFF'}</span>
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Input requirement:{' '}
+                  <span className="font-semibold text-slate-300">
+                    {activeCategory?.requiresUid ? 'Player UID Required' : 'Account / Login Info Required'}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Search Bar */}
+              <div className="relative flex-1 sm:w-56">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search package or amount..."
+                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/70 border border-slate-800 text-slate-200 placeholder-slate-500 text-xs focus:outline-none focus:border-brand-500 transition"
+                />
+              </div>
+
+              {/* Add Package Button */}
+              <button
+                onClick={() => handleOpenAdd(activeCategory?.id)}
+                className="py-1.5 px-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-slate-950 font-bold text-xs transition flex items-center gap-1.5 shrink-0 shadow-md shadow-brand-500/15"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Add Package</span>
+                <span className="sm:hidden">Add</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Loading state */}
           {loading ? (
-            <div className="py-12 text-center text-slate-500 text-xs">Loading pricing catalog...</div>
-          ) : filteredProducts.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 text-xs bg-dark-900/50 rounded-2xl border border-slate-800/60">
-              No packages match your search.
+            <div className="py-16 text-center text-slate-500 text-xs flex flex-col items-center justify-center gap-2">
+              <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+              <span>Loading packages from database...</span>
+            </div>
+          ) : categoryProducts.length === 0 ? (
+            <div className="py-12 text-center text-slate-500 text-xs space-y-2">
+              <Package className="w-8 h-8 text-slate-600 mx-auto opacity-50" />
+              <p>No packages found in this category matching your search.</p>
+              <button
+                onClick={() => handleOpenAdd(activeCategory?.id)}
+                className="text-brand-400 hover:underline font-semibold"
+              >
+                + Create the first package for {activeCategory?.title}
+              </button>
             </div>
           ) : (
-            filteredProducts.map((pkg) => {
-              const isHighMargin = pkg.marginPercent >= 20;
-              const isMedMargin = pkg.marginPercent >= 10 && pkg.marginPercent < 20;
+            <>
+              {/* Desktop Table View (Hidden on mobile) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead>
+                    <tr className="border-b border-slate-800/80 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <th className="py-3 px-3">Package Name</th>
+                      <th className="py-3 px-3">Amount / Credits</th>
+                      <th className="py-3 px-3">Selling Price (৳)</th>
+                      <th className="py-3 px-3">Base Cost (৳)</th>
+                      <th className="py-3 px-3">Net Profit</th>
+                      <th className="py-3 px-3">Margin</th>
+                      <th className="py-3 px-3 text-center">Bot Status</th>
+                      <th className="py-3 px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {categoryProducts.map((p) => {
+                      const isActive = p.isActive !== false;
 
-              return (
-                <div
-                  key={pkg.id}
-                  className="p-4 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <CategoryIcon categoryId={pkg.categoryId} className="w-7 h-7" />
-                      <div>
-                        <div className="font-bold text-white text-sm">{pkg.name}</div>
-                        <div className="text-[10px] text-slate-400">{pkg.categoryTitle}</div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleOpenEdit(pkg)}
-                      className="p-2 rounded-xl bg-slate-800 hover:bg-brand-500 hover:text-dark-950 text-slate-300 transition"
-                      title="Edit Price"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/60 text-center text-xs">
-                    <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/50">
-                      <div className="text-[10px] text-slate-400 uppercase font-semibold">Cost Price</div>
-                      <div className="font-mono font-bold text-slate-300 mt-0.5">৳{pkg.basePrice}</div>
-                    </div>
-                    <div className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/50">
-                      <div className="text-[10px] text-brand-400 uppercase font-semibold">Sell Price</div>
-                      <div className="font-mono font-black text-brand-300 mt-0.5">৳{pkg.price}</div>
-                    </div>
-                    <div className="p-2 rounded-xl bg-emerald-950/20 border border-emerald-500/20">
-                      <div className="text-[10px] text-emerald-400 uppercase font-semibold">Profit</div>
-                      <div className="font-mono font-black text-emerald-400 mt-0.5">৳{pkg.profit}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
-                    <span className="flex items-center gap-1">
-                      Margin:
-                      <span
-                        className={`font-bold px-2 py-0.5 rounded-full ${
-                          isHighMargin
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                            : isMedMargin
-                            ? 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30'
-                            : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                        }`}
-                      >
-                        {pkg.marginPercent}%
-                      </span>
-                    </span>
-
-                    <button
-                      onClick={() => handleOpenEdit(pkg)}
-                      className="text-xs font-bold text-brand-400 hover:text-brand-300 hover:underline flex items-center gap-1"
-                    >
-                      <Edit3 className="w-3 h-3" />
-                      Edit Rates
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Desktop Pricing & Profit Table (hidden on mobile) */}
-        <div className="hidden md:block bg-dark-900/90 border border-slate-800/80 rounded-2xl overflow-hidden shadow-xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-800/80 text-[11px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-950/60">
-                  <th className="py-3.5 px-4">Game / Category</th>
-                  <th className="py-3.5 px-4">Package Name</th>
-                  <th className="py-3.5 px-4 text-right">Cost / Base Price</th>
-                  <th className="py-3.5 px-4 text-right">Selling Price</th>
-                  <th className="py-3.5 px-4 text-right">Unit Profit</th>
-                  <th className="py-3.5 px-4 text-center">Profit Margin</th>
-                  <th className="py-3.5 px-4 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/50 text-xs">
-                {loading ? (
-                  <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-500">
-                      Loading pricing catalog...
-                    </td>
-                  </tr>
-                ) : filteredProducts.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-500">
-                      No packages match your search or filter.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredProducts.map((pkg) => {
-                    const isHighMargin = pkg.marginPercent >= 20;
-                    const isMedMargin = pkg.marginPercent >= 10 && pkg.marginPercent < 20;
-
-                    return (
-                      <tr key={pkg.id} className="hover:bg-slate-800/30 transition group">
-                        {/* Category */}
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2.5">
-                            <CategoryIcon categoryId={pkg.categoryId} className="w-6 h-6" />
-                            <div>
-                              <div className="font-semibold text-white">{pkg.categoryTitle}</div>
-                              <div className="text-[10px] text-slate-500 font-mono">{pkg.categoryId}</div>
+                      return (
+                        <tr
+                          key={p.id}
+                          className={`hover:bg-slate-800/30 transition group ${
+                            !isActive ? 'opacity-50' : ''
+                          }`}
+                        >
+                          {/* Name & ID */}
+                          <td className="py-3 px-3">
+                            <div className="font-bold text-white text-xs flex items-center gap-2">
+                              <span>{p.name}</span>
+                              {p.description && (
+                                <span className="text-[10px] text-slate-500 font-normal truncate max-w-[140px]" title={p.description}>
+                                  ({p.description})
+                                </span>
+                              )}
                             </div>
-                          </div>
-                        </td>
+                            <span className="text-[10px] font-mono text-slate-500 block">
+                              {p.id}
+                            </span>
+                          </td>
 
-                        {/* Package */}
-                        <td className="py-3 px-4">
-                          <div className="font-bold text-slate-200">{pkg.name}</div>
-                          {pkg.description && (
-                            <div className="text-[10px] text-slate-400">{pkg.description}</div>
-                          )}
-                        </td>
+                          {/* Amount */}
+                          <td className="py-3 px-3">
+                            <span className="font-mono text-slate-200 font-semibold px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60">
+                              {p.amount || p.name}
+                            </span>
+                          </td>
 
-                        {/* Base / Cost Price */}
-                        <td className="py-3 px-4 text-right font-mono text-slate-400">
-                          ৳{pkg.basePrice}
-                        </td>
+                          {/* Selling Price */}
+                          <td className="py-3 px-3 font-bold text-white text-sm">
+                            ৳{p.price}
+                          </td>
 
-                        {/* Selling Price */}
-                        <td className="py-3 px-4 text-right font-mono font-bold text-brand-400">
-                          ৳{pkg.price}
-                        </td>
+                          {/* Base Cost */}
+                          <td className="py-3 px-3 font-mono text-slate-400">
+                            ৳{p.basePrice}
+                          </td>
 
-                        {/* Unit Profit */}
-                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
-                          +৳{pkg.profit}
-                        </td>
+                          {/* Net Profit */}
+                          <td className="py-3 px-3 font-bold text-emerald-400">
+                            +৳{p.profit}
+                          </td>
 
-                        {/* Margin Badge */}
-                        <td className="py-3 px-4 text-center">
-                          <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                              isHighMargin
-                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                                : isMedMargin
-                                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                                : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                            }`}
-                          >
-                            {pkg.marginPercent}%
+                          {/* Margin % */}
+                          <td className="py-3 px-3">
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                              p.marginPercent >= 20
+                                ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+                                : p.marginPercent >= 10
+                                ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
+                                : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                            }`}>
+                              {p.marginPercent}%
+                            </span>
+                          </td>
+
+                          {/* Bot Status Toggle */}
+                          <td className="py-3 px-3 text-center">
+                            <button
+                              onClick={() => handleToggleActive(p)}
+                              title={isActive ? 'Active on WhatsApp bot. Click to disable' : 'Disabled on WhatsApp bot. Click to activate'}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition ${
+                                isActive
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30'
+                                  : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-emerald-500/15 hover:text-emerald-400'
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
+                              <span>{isActive ? 'Active' : 'Disabled'}</span>
+                            </button>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => handleOpenEdit(p)}
+                                title="Edit Name, Amount & Prices"
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setDeletingProduct(p)}
+                                title="Delete Package"
+                                className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards View (Hidden on desktop) */}
+              <div className="md:hidden space-y-2.5">
+                {categoryProducts.map((p) => {
+                  const isActive = p.isActive !== false;
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2.5 ${
+                        !isActive ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h4 className="font-bold text-white text-xs">{p.name}</h4>
+                          <span className="text-[10px] font-mono text-slate-400">
+                            Amount: {p.amount || p.name}
                           </span>
-                        </td>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          isActive
+                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {isActive ? 'Bot Active' : 'Disabled'}
+                        </span>
+                      </div>
 
-                        {/* Action Button */}
-                        <td className="py-3 px-4 text-center">
+                      <div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-slate-900/60 border border-slate-800/50 text-center">
+                        <div>
+                          <span className="text-[9px] text-slate-400 uppercase block">Price</span>
+                          <span className="text-xs font-bold text-white">৳{p.price}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 uppercase block">Cost</span>
+                          <span className="text-xs font-mono text-slate-300">৳{p.basePrice}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 uppercase block">Profit</span>
+                          <span className="text-xs font-bold text-emerald-400">+{p.marginPercent}%</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/50">
+                        <button
+                          onClick={() => handleToggleActive(p)}
+                          className="text-[11px] text-slate-400 hover:text-slate-200"
+                        >
+                          {isActive ? 'Disable in Bot' : 'Enable in Bot'}
+                        </button>
+                        <div className="flex items-center gap-1.5">
                           <button
-                            onClick={() => handleOpenEdit(pkg)}
-                            className="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-brand-500 hover:text-dark-950 text-slate-300 text-xs font-semibold transition flex items-center gap-1.5 mx-auto shadow-sm"
+                            onClick={() => handleOpenEdit(p)}
+                            className="p-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-semibold px-2.5 flex items-center gap-1"
                           >
                             <Edit3 className="w-3 h-3" />
-                            <span>Edit Price</span>
+                            <span>Edit</span>
                           </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                          <button
+                            onClick={() => setDeletingProduct(p)}
+                            className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
+      </main>
 
-        {/* Quick Edit Price Modal */}
-        {editingProduct && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-dark-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2 text-brand-400">
-                  <Edit3 className="w-5 h-5" />
-                  <h3 className="text-sm font-bold text-white">Edit Package Pricing & Base Cost</h3>
-                </div>
-                <button
-                  onClick={() => setEditingProduct(null)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1">
-                <div className="text-slate-400">
-                  Category: <b className="text-white">{editingProduct.categoryEmoji} {editingProduct.categoryTitle}</b>
-                </div>
-                <div className="text-slate-400">
-                  Package: <b className="text-brand-400">{editingProduct.name}</b>
+      {/* ---------------------------------------------------- */}
+      {/* ADD / EDIT PACKAGE MODAL                             */}
+      {/* ---------------------------------------------------- */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-dark-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl relative space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <CategoryIcon categoryId={modalCategoryId} className="w-9 h-9" />
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                    <Package className="w-4 h-4 text-brand-400" />
+                    <span>{isEditing ? 'Edit Package Details' : 'Add New Package'}</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Under Category: <b className="text-slate-200">{categories.find(c => c.id === modalCategoryId)?.title}</b>
+                  </p>
                 </div>
               </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              {feedbackMsg && (
-                <div
-                  className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
-                    feedbackMsg.type === 'success'
-                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
-                      : 'bg-rose-500/10 border border-rose-500/30 text-rose-400'
-                  }`}
-                >
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>{feedbackMsg.text}</span>
+            {feedbackMsg && (
+              <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                feedbackMsg.type === 'error'
+                  ? 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+                  : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
+              }`}>
+                {feedbackMsg.type === 'error' ? <AlertCircle className="w-4 h-4 shrink-0" /> : <CheckCircle2 className="w-4 h-4 shrink-0" />}
+                <span>{feedbackMsg.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSavePackage} className="space-y-3.5 text-xs">
+              {/* Category Selector (Only for Add) */}
+              {!isEditing && (
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">Target Category</label>
+                  <select
+                    value={modalCategoryId}
+                    onChange={(e) => setModalCategoryId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-brand-500 transition"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.emoji} {c.title}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 
-              <form onSubmit={handleSavePrice} className="space-y-4 text-xs">
-                {/* Inputs Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">
-                      Base / Cost Price (৳)
-                    </label>
+              {/* Package Name */}
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">
+                  Package Name <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={modalName}
+                  onChange={(e) => setModalName(e.target.value)}
+                  placeholder="e.g. 60 UC or 115 Diamonds"
+                  required
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-brand-500 transition text-xs font-semibold"
+                />
+              </div>
+
+              {/* Amount / Credits */}
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">
+                  Amount / Quantity
+                </label>
+                <input
+                  type="text"
+                  value={modalAmount}
+                  onChange={(e) => setModalAmount(e.target.value)}
+                  placeholder="e.g. 60, 115, or 1 Month"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-brand-500 transition text-xs"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Used by WhatsApp bot to match customer queries (e.g. typing "60")
+                </span>
+              </div>
+
+              {/* Pricing Grid (Selling Price vs Base Cost) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">
+                    Selling Price (৳) <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">৳</span>
                     <input
                       type="number"
                       min="0"
-                      step="1"
+                      step="any"
+                      value={modalPrice || ''}
+                      onChange={(e) => setModalPrice(Number(e.target.value))}
+                      placeholder="115"
                       required
-                      value={editBasePrice}
-                      onChange={(e) => setEditBasePrice(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-brand-500/50"
+                      className="w-full pl-7 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-bold text-sm focus:outline-none focus:border-brand-500 transition"
                     />
-                    <span className="text-[10px] text-slate-500 mt-0.5 block">Wholesale purchase cost</span>
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">
-                      Selling Price (৳)
-                    </label>
+                <div>
+                  <label className="block font-semibold text-slate-300 mb-1">
+                    Wholesale Base Cost (৳)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">৳</span>
                     <input
                       type="number"
                       min="0"
-                      step="1"
-                      required
-                      value={editPrice}
-                      onChange={(e) => setEditPrice(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono text-sm focus:outline-none focus:border-brand-500/50"
+                      step="any"
+                      value={modalBasePrice || ''}
+                      onChange={(e) => setModalBasePrice(Number(e.target.value))}
+                      placeholder="95"
+                      className="w-full pl-7 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 font-mono text-sm focus:outline-none focus:border-brand-500 transition"
                     />
-                    <span className="text-[10px] text-slate-500 mt-0.5 block">Price charged to customer</span>
                   </div>
                 </div>
+              </div>
 
-                {/* Real-time Profit Preview Card */}
-                <div className="p-3.5 rounded-xl bg-slate-950/90 border border-brand-500/30 grid grid-cols-2 gap-2 text-center">
-                  <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-400">Unit Net Profit</div>
-                    <div className="text-lg font-black text-emerald-400 font-mono mt-0.5">
-                      +৳{liveProfit}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-400">Profit Margin</div>
-                    <div className="text-lg font-black text-brand-400 font-mono mt-0.5">
-                      {liveMargin}%
-                    </div>
-                  </div>
+              {/* Dynamic Profit & Margin Preview */}
+              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-slate-400 block text-[11px]">Estimated Net Profit</span>
+                  <span className="text-base font-black text-emerald-400">+৳{liveProfit}</span>
                 </div>
+                <div className="text-right">
+                  <span className="text-slate-400 block text-[11px]">Profit Margin</span>
+                  <span className={`text-base font-black ${
+                    liveMargin >= 20 ? 'text-emerald-400' : liveMargin >= 10 ? 'text-indigo-300' : 'text-amber-400'
+                  }`}>
+                    {liveMargin}%
+                  </span>
+                </div>
+              </div>
 
-                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+              {/* Description */}
+              <div>
+                <label className="block font-semibold text-slate-300 mb-1">
+                  Description / Note (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={modalDescription}
+                  onChange={(e) => setModalDescription(e.target.value)}
+                  placeholder="e.g. Instant UID Top-Up"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-brand-500 transition text-xs"
+                />
+              </div>
+
+              {/* Active Toggle */}
+              {isEditing && (
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <span className="text-slate-300 font-semibold">Active in WhatsApp Bot</span>
                   <button
                     type="button"
-                    onClick={() => setEditingProduct(null)}
-                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition"
+                    onClick={() => setModalIsActive(!modalIsActive)}
+                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 transition ${
+                      modalIsActive
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="px-5 py-2 rounded-xl bg-brand-500 hover:bg-brand-400 text-dark-950 font-bold text-xs transition disabled:opacity-50 shadow-sm"
-                  >
-                    {isSaving ? 'Saving...' : 'Save Pricing'}
+                    <span>{modalIsActive ? 'Enabled 🟢' : 'Disabled ⚪'}</span>
                   </button>
                 </div>
-              </form>
-            </div>
-          </div>
-        )}
+              )}
 
-        {/* Reset Confirmation Modal */}
-        {showResetModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-dark-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-              <div className="flex items-center gap-2 text-amber-400">
-                <RotateCcw className="w-5 h-5" />
-                <h3 className="text-sm font-bold text-white">Reset Catalog to Factory Defaults</h3>
-              </div>
-              <p className="text-xs text-slate-400">
-                Are you sure you want to reset all custom package selling prices and base costs back to their initial factory defaults?
-              </p>
-              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
                 <button
-                  onClick={() => setShowResetModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition"
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={handleResetDefaults}
-                  disabled={isResetting}
-                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white transition disabled:opacity-50"
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-slate-950 text-xs font-black transition flex items-center gap-1.5 shadow-lg shadow-brand-500/20 disabled:opacity-50"
                 >
-                  {isResetting ? 'Resetting...' : 'Confirm Reset'}
+                  {isSaving ? 'Saving...' : isEditing ? 'Update Package & Sync Bot' : 'Create Package & Sync Bot'}
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* DELETE CONFIRMATION MODAL                            */}
+      {/* ---------------------------------------------------- */}
+      {deletingProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-dark-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-white text-sm">Delete Package?</h4>
+                <p className="text-[11px] text-slate-400">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
+              Are you sure you want to remove <b className="text-white">{deletingProduct.name}</b> (৳{deletingProduct.price})? It will be removed from the WhatsApp bot catalog immediately.
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setDeletingProduct(null)}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeletePackage}
+                disabled={isDeleting}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold transition disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting...' : 'Confirm Delete'}
+              </button>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------- */}
+      {/* FACTORY RESET MODAL                                  */}
+      {/* ---------------------------------------------------- */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-dark-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-amber-400">
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 shrink-0">
+                <RotateCcw className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-white text-sm">Reset to Factory Catalog?</h4>
+                <p className="text-[11px] text-slate-400">Restore all standard game packages</p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
+              This will restore all default packages and standard prices across all 8 game categories. Any custom packages will be reset.
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowResetModal(false)}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetDefaults}
+                disabled={isResetting}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition disabled:opacity-50"
+              >
+                {isResetting ? 'Resetting...' : 'Confirm Reset'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
