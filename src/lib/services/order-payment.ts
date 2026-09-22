@@ -1,5 +1,6 @@
 import { db } from '../db';
 import { whatsappService } from '../whatsapp/service';
+import { telegramBot } from '../telegram/bot';
 import { telegramQueue } from '../telegram/queue';
 import { kokosClient } from '../kokos/client';
 import { pinexClient } from '../pinex/client';
@@ -253,10 +254,14 @@ export const orderPaymentService = {
 
     const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
 
-    // Enqueue to Telegram worker group
-    telegramQueue.enqueueOrder(refreshedOrder).catch(err => {
-      console.warn('[Telegram Worker Queue Enqueue Warning]:', err);
-    });
+    // Dispatch directly to Telegram Worker Group immediately so staff can claim and fulfill!
+    try {
+      const queueCount = await db.getUndispatchedQueueCount();
+      const dispatchRes = await telegramBot.dispatchNewOrder(refreshedOrder, queueCount);
+      console.log(`[OrderPaymentService] Telegram Direct Dispatch Result for #${refreshedOrder.order_id}:`, dispatchRes);
+    } catch (tgErr) {
+      console.error('[OrderPaymentService Telegram Dispatch Error]:', tgErr);
+    }
 
     // Send structured order confirmation to customer
     await whatsappService.sendOrderConfirmation(refreshedOrder);

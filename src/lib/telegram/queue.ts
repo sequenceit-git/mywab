@@ -24,10 +24,11 @@ class TelegramOrderQueue {
     try {
       // 1. Check if there is already an unclaimed order active in the Telegram group
       const activeUnclaimed = await db.getActiveTelegramUnclaimedOrder();
+      const isStale = activeUnclaimed && (Date.now() - new Date(activeUnclaimed.created_at).getTime() > 20 * 60 * 1000);
 
-      if (!activeUnclaimed) {
-        // No active order waiting for claim in group -> Dispatch immediately!
-        console.log(`[Telegram Queue] No active unclaimed order in group. Dispatching Order #${order.order_id} immediately...`);
+      if (!activeUnclaimed || isStale) {
+        // No active recent order waiting for claim in group -> Dispatch immediately!
+        console.log(`[Telegram Queue] Dispatching Order #${order.order_id} immediately...`);
         const queueCount = await db.getUndispatchedQueueCount();
         const dispatchResult = await telegramBot.dispatchNewOrder(order, queueCount);
         return { dispatched: Boolean(dispatchResult.success), queuePosition: 1 };

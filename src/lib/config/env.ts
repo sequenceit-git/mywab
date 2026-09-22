@@ -33,6 +33,9 @@ export const env = {
     get verifyToken() {
       return process.env.WHATSAPP_VERIFY_TOKEN || 'wapbusiness_secure_verify_token';
     },
+    get botPhone() {
+      return process.env.NEXT_PUBLIC_WHATSAPP_PHONE || '15551419791';
+    },
     get apiUrl() {
       return process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v21.0';
     },

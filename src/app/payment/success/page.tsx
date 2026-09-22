@@ -13,6 +13,11 @@ function SuccessContent() {
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number>(3);
+  const [isRedirectCancelled, setIsRedirectCancelled] = useState(false);
+
+  const botPhone = process.env.NEXT_PUBLIC_WHATSAPP_PHONE || '15551419791';
+  const whatsappUrl = botPhone ? `https://wa.me/${botPhone.replace(/\D/g, '')}` : 'https://wa.me';
 
   useEffect(() => {
     let isMounted = true;
@@ -67,6 +72,21 @@ function SuccessContent() {
     };
   }, [orderId, invoiceId]);
 
+  // Automated WhatsApp Redirect Timer
+  useEffect(() => {
+    if (isRedirectCancelled) return;
+
+    if (countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(prev => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (countdown === 0) {
+      // Auto redirect to WhatsApp
+      window.location.href = whatsappUrl;
+    }
+  }, [countdown, isRedirectCancelled, whatsappUrl]);
+
   const isDelivered = order?.status === 'DELIVERED';
   const isProcessing = order?.status === 'PROCESSING' || order?.status === 'CLAIMED';
   const amount = order?.total_amount;
@@ -79,7 +99,7 @@ function SuccessContent() {
 
       <div className="relative w-full max-w-lg bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
         {/* Success Icon */}
-        <div className="flex justify-center mb-6">
+        <div className="flex justify-center mb-5">
           <div className="relative">
             <div className="w-20 h-20 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/20 animate-pulse">
               <CheckCircle2 className="w-10 h-10" />
@@ -91,7 +111,7 @@ function SuccessContent() {
         </div>
 
         {/* Title */}
-        <div className="text-center mb-6">
+        <div className="text-center mb-5">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 mb-3">
             <ShieldCheck className="w-3.5 h-3.5" /> পেমেন্ট সফলভাবে যাচাইকৃত
           </span>
@@ -103,8 +123,39 @@ function SuccessContent() {
           </p>
         </div>
 
+        {/* Automated WhatsApp Redirect Banner */}
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 mb-5 text-center relative overflow-hidden">
+          {!isRedirectCancelled ? (
+            <div>
+              <div className="flex items-center justify-center gap-2 text-emerald-400 font-semibold text-sm mb-1.5">
+                <WhatsAppIcon className="w-4 h-4 animate-bounce" />
+                <span>
+                  {countdown > 0 ? `${countdown} সেকেন্ডে হোয়াটসঅ্যাপে ফিরে যাচ্ছি...` : 'হোয়াটসঅ্যাপ খোলা হচ্ছে...'}
+                </span>
+              </div>
+              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-2">
+                <div 
+                  className="bg-emerald-400 h-full transition-all duration-1000 ease-linear rounded-full"
+                  style={{ width: `${((3 - countdown) / 3) * 100}%` }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRedirectCancelled(true)}
+                className="text-xs text-slate-400 hover:text-slate-200 underline"
+              >
+                স্বয়ংক্রিয় রিডাইরেক্ট বন্ধ রাখুন
+              </button>
+            </div>
+          ) : (
+            <div className="text-xs text-slate-300">
+              স্বয়ংক্রিয় রিডাইরেক্ট বন্ধ করা হয়েছে। নিচে ক্লিক করে যেকোনো সময় হোয়াটসঅ্যাপে যেতে পারেন।
+            </div>
+          )}
+        </div>
+
         {/* Order Details Card */}
-        <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 sm:p-5 mb-6 space-y-3 text-sm">
+        <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 sm:p-5 mb-5 space-y-3 text-sm">
           {orderId && (
             <div className="flex justify-between items-center pb-2 border-b border-slate-800/60">
               <span className="text-slate-400">অর্ডার আইডি</span>
@@ -146,27 +197,20 @@ function SuccessContent() {
           </div>
         </div>
 
-        {/* WhatsApp Notification Note */}
-        <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-xl p-3.5 mb-6 text-xs text-emerald-300/90 leading-relaxed flex items-start gap-2.5">
-          <WhatsAppIcon className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
-          <span>
-            আপনার হোয়াটসঅ্যাপে অর্ডারের কনফার্মেশন ও ডেলিভারি বিস্তারিত মেসেজে পাঠানো হয়েছে।
-          </span>
-        </div>
-
         {/* Actions */}
         <div className="flex flex-col gap-3">
           <a
-            href="https://wa.me"
-            className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all transform active:scale-[0.99]"
+            href={whatsappUrl}
+            className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/25 transition-all transform active:scale-[0.99] text-base"
           >
             <WhatsAppIcon className="w-5 h-5" />
             হোয়াটসঅ্যাপে ফিরে যান
+            <ArrowRight className="w-4 h-4 ml-1" />
           </a>
 
           <a
             href="/"
-            className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+            className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors"
           >
             <ShoppingBag className="w-4 h-4" />
             হোমপেজ / ড্যাশবোর্ড
