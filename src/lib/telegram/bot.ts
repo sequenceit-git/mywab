@@ -2,6 +2,7 @@ import { Order } from '@/types';
 import { db } from '../db';
 import { whatsappService } from '../whatsapp/service';
 import { env } from '../config/env';
+import { storageService } from '../supabase/storage';
 import { getAccountFieldInfo, formatPaymentDisplayForTelegram } from '../chat/input-parser';
 
 export interface PendingWorkerCancellation {
@@ -1226,11 +1227,32 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
       const telegramPhotoUrl = `https://api.telegram.org/file/bot${env.telegram.botToken}/${fileData.result.file_path}`;
       console.log(`[Telegram Photo] Photo URL resolved for Order #${targetOrder.order_id}: ${telegramPhotoUrl}`);
 
-      // 3. Send QR Code to customer on WhatsApp with interactive buttons
+      // 3. Download image buffer and save to Supabase Storage bucket 'order-media'
+      let finalImageUrl = telegramPhotoUrl;
+      try {
+        const photoFetch = await fetch(telegramPhotoUrl);
+        if (photoFetch.ok) {
+          const buffer = await photoFetch.arrayBuffer();
+          const uploadRes = await storageService.uploadImage(
+            buffer,
+            `qr_${targetOrder.order_id}.jpg`,
+            'pubg-qr',
+            'image/jpeg'
+          );
+          if (uploadRes.success && uploadRes.publicUrl) {
+            finalImageUrl = uploadRes.publicUrl;
+            console.log(`[Telegram Photo] Stored in Supabase Bucket: ${finalImageUrl}`);
+          }
+        }
+      } catch (storageErr) {
+        console.warn('[Telegram Photo Supabase Upload Warning]:', storageErr);
+      }
+
+      // 4. Send QR Code to customer on WhatsApp with interactive buttons
       const firstItem = targetOrder.items?.[0];
       const sendResult = await whatsappService.sendQrCodePrompt(
         targetOrder.delivery_phone,
-        telegramPhotoUrl,
+        finalImageUrl,
         targetOrder.order_id,
         firstItem?.product_name
       );
@@ -1244,12 +1266,12 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
         return { handled: true, success: false, message: sendResult.error };
       }
 
-      // 4. Update order notes & status to PROCESSING
+      // 5. Update order notes & status to PROCESSING
       await db.updateOrderStatus(targetOrder.id, 'PROCESSING', {
-        notes: `QR Code forwarded to WhatsApp at ${new Date().toLocaleTimeString()} (5m expiry timer)`
+        notes: `QR Code forwarded to WhatsApp at ${new Date().toLocaleTimeString()} (5m expiry timer) | Storage: ${finalImageUrl}`
       });
 
-      // 5. Notify worker in Telegram
+      // 6. Notify worker in Telegram
       await this.sendMessage(
         message.chat.id,
         `✅ <b>QR কোড কাস্টমারের WhatsApp-এ সফলভাবে পাঠানো হয়েছে!</b>\n\n📦 <b>Order ID:</b> <code>#${targetOrder.order_id}</code>\n📱 <b>Customer:</b> <code>${targetOrder.delivery_phone}</code>\n⏱️ <b>মেয়াদ:</b> ৫ মিনিট কাউন্টডাউন শুরু হয়েছে।\n\n<i>কাস্টমার স্ক্যান করলে বা নতুন QR চাইলে সাথে সাথে আপনাকে এখানে জানানো হবে।</i>`,

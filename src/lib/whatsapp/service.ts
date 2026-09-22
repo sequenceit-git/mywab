@@ -366,9 +366,56 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
   },
 
   /**
-   * Send an image with optional caption to customer's WhatsApp
+   * Upload media buffer to Meta WhatsApp Media endpoint and get a media_id
    */
-  async sendImage(toPhone: string, imageUrl: string, caption?: string): Promise<SendMessageResult> {
+  async uploadMedia(
+    imageBuffer: ArrayBuffer | Buffer | Uint8Array,
+    mimeType = 'image/jpeg',
+    filename = 'qr_code.jpg'
+  ): Promise<{ success: boolean; mediaId?: string; error?: string }> {
+    if (!env.whatsapp.isConfigured) {
+      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
+      console.error(errorMsg);
+      return { success: false, error: errorMsg };
+    }
+
+    try {
+      const formData = new FormData();
+      const blob = new Blob([imageBuffer as any], { type: mimeType });
+      formData.append('file', blob, filename);
+      formData.append('type', mimeType);
+      formData.append('messaging_product', 'whatsapp');
+
+      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/media`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (response.ok && data.id) {
+        console.log(`[WhatsApp Media Upload] Successfully uploaded media, media_id: ${data.id}`);
+        return { success: true, mediaId: data.id };
+      }
+      console.error('[WhatsApp Media Upload Error]:', JSON.stringify(data));
+      return { success: false, error: JSON.stringify(data) };
+    } catch (err) {
+      console.error('[WhatsApp Media Upload Exception]:', err);
+      return { success: false, error: String(err) };
+    }
+  },
+
+  /**
+   * Send an image with optional caption to customer's WhatsApp
+   * Automatically handles direct image URLs, Telegram file URLs (by downloading & uploading to Meta), and raw buffers.
+   */
+  async sendImage(
+    toPhone: string,
+    imageSource: string | ArrayBuffer | Buffer,
+    caption?: string
+  ): Promise<SendMessageResult> {
     const cleanPhone = toPhone.replace(/\D/g, '');
 
     if (!env.whatsapp.isConfigured) {
@@ -378,16 +425,46 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
     }
 
     try {
+      let mediaId: string | undefined;
+
+      // 1. If imageSource is a buffer / ArrayBuffer
+      if (typeof imageSource !== 'string') {
+        const uploadRes = await this.uploadMedia(imageSource, 'image/jpeg', 'image.jpg');
+        if (uploadRes.success && uploadRes.mediaId) {
+          mediaId = uploadRes.mediaId;
+        }
+      } else if (typeof imageSource === 'string' && imageSource.startsWith('http')) {
+        // 2. If imageSource is an external URL (e.g. Telegram file URL), download to buffer first and upload to Meta
+        try {
+          console.log(`[WhatsApp sendImage] Fetching image from URL: ${imageSource.slice(0, 45)}...`);
+          const imgFetch = await fetch(imageSource, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+          });
+          if (imgFetch.ok) {
+            const buffer = await imgFetch.arrayBuffer();
+            const uploadRes = await this.uploadMedia(buffer, 'image/jpeg', 'qr_code.jpg');
+            if (uploadRes.success && uploadRes.mediaId) {
+              mediaId = uploadRes.mediaId;
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('[WhatsApp sendImage Fetch Error]: Could not pre-upload buffer, will try link fallback:', fetchErr);
+        }
+      }
+
       const payload: Record<string, any> = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
         to: cleanPhone,
         type: 'image',
-        image: {
-          link: imageUrl,
-          ...(caption ? { caption } : {})
-        }
+        image: mediaId
+          ? { id: mediaId, ...(caption ? { caption } : {}) }
+          : { link: imageSource, ...(caption ? { caption } : {}) }
       };
+
+      console.log(`[WhatsApp sendImage] Dispatching image payload (Mode: ${mediaId ? `media_id (${mediaId})` : 'direct_link'}) to ${cleanPhone}...`);
 
       const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
         method: 'POST',
@@ -400,12 +477,13 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
 
       const data = await response.json();
       if (response.ok && data.messages?.[0]?.id) {
+        console.log(`[WhatsApp sendImage Success] Message ID: ${data.messages[0].id}`);
         return { success: true, messageId: data.messages[0].id };
       }
-      console.error('WhatsApp Send Image Error:', JSON.stringify(data));
+      console.error('[WhatsApp Send Image API Error]:', JSON.stringify(data));
       return { success: false, error: JSON.stringify(data) };
     } catch (err) {
-      console.error('WhatsApp Send Image Network Exception:', err);
+      console.error('[WhatsApp Send Image Network Exception]:', err);
       return { success: false, error: String(err) };
     }
   },
@@ -432,8 +510,11 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
 ২. স্ক্যান সম্পন্ন হলে নিচের *"✅ QR স্ক্যান করেছি"* বাটনে চাপ দিন।
 ৩. কোডের মেয়াদ শেষ হলে *"🔄 নতুন QR কোড দিন"* বাটনে চাপ দিন।`;
 
-    // 1. Send the QR Code Image
+    // 1. Send the QR Code Image (automatically uploads buffer to Meta CDN for 100% delivery)
     const imageResult = await this.sendImage(cleanPhone, imageUrl, caption);
+    if (!imageResult.success) {
+      console.error(`[sendQrCodePrompt Image Error]: Failed to send image to ${cleanPhone}:`, imageResult.error);
+    }
 
     // 2. Send interactive action buttons for quick customer response
     const buttons: WhatsAppButton[] = [
