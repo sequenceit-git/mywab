@@ -723,6 +723,15 @@ ${queueBadge}${pendingQrHint}`,
           const { cardHtml, replyMarkup } = this.generateOrderCard(order, workerName);
           await this.editMessageText(message.chat.id, message.message_id, cardHtml, replyMarkup);
 
+          // Clean up buttons or message from any previous card for this order if different
+          if (order.telegram_message_id && order.telegram_message_id !== message.message_id) {
+            try {
+              await this.deleteMessage(message.chat.id, order.telegram_message_id);
+            } catch {
+              await this.editMessageReplyMarkup(message.chat.id, order.telegram_message_id, { inline_keyboard: [] });
+            }
+          }
+
           // Trigger automated WhatsApp delivery confirmation to customer (non-blocking)
           whatsappService.sendOrderDeliveredNotification(order).catch(err => {
             console.error('[Telegram->WhatsApp Notify Error on Delivered]:', err);
@@ -1031,6 +1040,27 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
     }
   },
 
+  async editMessageReplyMarkup(chatId: string | number, messageId: number, replyMarkup?: unknown): Promise<boolean> {
+    if (!env.telegram.isConfigured) return false;
+    try {
+      const sanitizedMarkup = sanitizeReplyMarkup(replyMarkup);
+      const response = await fetch(`${env.telegram.apiUrl}/editMessageReplyMarkup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: messageId,
+          reply_markup: sanitizedMarkup
+        })
+      });
+      const data = await response.json().catch(() => null);
+      return Boolean(response.ok && data?.ok);
+    } catch (e) {
+      console.error('Error editing message reply markup:', e);
+      return false;
+    }
+  },
+
   async editMessageText(chatId: string | number, messageId: number, text: string, replyMarkup?: unknown): Promise<boolean> {
     if (!env.telegram.isConfigured) return false;
     try {
@@ -1173,6 +1203,15 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
     if (targetChatId && targetMsgId) {
       const { cardHtml, replyMarkup } = this.generateOrderCard(order, workerName);
       await this.editMessageText(targetChatId, targetMsgId, cardHtml, replyMarkup);
+
+      // Clean up buttons or message from any previous card for this order if different
+      if (order.telegram_message_id && order.telegram_message_id !== targetMsgId) {
+        try {
+          await this.deleteMessage(targetChatId, order.telegram_message_id);
+        } catch {
+          await this.editMessageReplyMarkup(targetChatId, order.telegram_message_id, { inline_keyboard: [] });
+        }
+      }
     }
 
     // Trigger WhatsApp customer notification with custom reason
@@ -1585,22 +1624,38 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
         notes: updatedNotes
       });
 
-      // Update the main Telegram order card in the worker group to show Stage 2 (Waiting for Scan & Resend QR)
-      if (targetOrder.telegram_message_id) {
+      // 5b. Remove the previous order card message above the screenshot so group stays clean
+      const oldMessageId = targetOrder.telegram_message_id;
+      if (oldMessageId) {
         try {
-          const { cardHtml, replyMarkup } = this.generateOrderCard(targetOrder, workerName);
-          await this.editMessageText(env.telegram.workerGroupId, targetOrder.telegram_message_id, cardHtml, replyMarkup);
-        } catch (syncErr) {
-          console.warn('[Telegram Card UI Update Warning]:', syncErr);
+          await this.deleteMessage(env.telegram.workerGroupId, oldMessageId);
+          console.log(`[Telegram Photo] Cleaned up previous order card message #${oldMessageId} for Order #${targetOrder.order_id}`);
+        } catch (delErr) {
+          console.warn('[Telegram Photo] Could not delete old order card:', delErr);
+          await this.editMessageReplyMarkup(env.telegram.workerGroupId, oldMessageId, { inline_keyboard: [] });
         }
       }
 
-      // 6. Notify worker in Telegram
-      await this.sendMessage(
+      // 6. Post the new active order card directly below the worker's screenshot with the action buttons
+      const { cardHtml, replyMarkup } = this.generateOrderCard(targetOrder, workerName);
+      const postCardText = 
+`✅ <b>QR কোড কাস্টমারের WhatsApp-এ সফলভাবে পাঠানো হয়েছে!</b>
+
+${cardHtml}`;
+
+      const sendRes = await this.sendMessage(
         message.chat.id,
-        `✅ <b>QR কোড কাস্টমারের WhatsApp-এ সফলভাবে পাঠানো হয়েছে!</b>\n\n📦 <b>Order ID:</b> <code>#${targetOrder.order_id}</code>\n📱 <b>Customer:</b> <code>${targetOrder.delivery_phone}</code>\n⏱️ <b>মেয়াদ:</b> ৫ মিনিট কাউন্টডাউন শুরু হয়েছে।\n\n<i>কাস্টমার স্ক্যান করলে বা নতুন QR চাইলে সাথে সাথে আপনাকে এখানে জানানো হবে।</i>`,
-        { reply_to_message_id: message.message_id }
+        postCardText,
+        {
+          reply_to_message_id: message.message_id,
+          reply_markup: replyMarkup
+        }
       );
+
+      if (sendRes.ok && sendRes.result?.message_id) {
+        targetOrder.telegram_message_id = sendRes.result.message_id;
+        await db.updateOrderTelegramMessageId(targetOrder.id, sendRes.result.message_id);
+      }
 
       return { handled: true, success: true };
     } catch (err) {
@@ -1632,39 +1687,36 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
         notes: 'Customer Scanned QR'
       });
 
-      // Update the main Telegram card to Stage 3 (Scanned & Complete button ready)
-      if (order.telegram_message_id) {
+      // Remove the previous card so there are never duplicate messages with buttons
+      const prevMsgId = order.telegram_message_id;
+      if (prevMsgId) {
         try {
-          const { cardHtml, replyMarkup } = this.generateOrderCard(order, workerName);
-          await this.editMessageText(env.telegram.workerGroupId, order.telegram_message_id, cardHtml, replyMarkup);
-        } catch (syncErr) {
-          console.warn('[Telegram Card Scanned Sync Warning]:', syncErr);
+          await this.deleteMessage(env.telegram.workerGroupId, prevMsgId);
+          console.log(`[Telegram Scanned Sync] Deleted previous order card #${prevMsgId} for Order #${order.order_id}`);
+        } catch (delErr) {
+          console.warn('[Telegram Scanned Sync] Failed to delete previous card:', delErr);
+          await this.editMessageReplyMarkup(env.telegram.workerGroupId, prevMsgId, { inline_keyboard: [] });
         }
       }
 
+      const { cardHtml, replyMarkup } = this.generateOrderCard(order, workerName);
       const msg = 
 `🎯 <b>[Order #${order.order_id}] CUSTOMER SCANNED QR CODE! / স্ক্যান সম্পন্ন</b>
 
-👷 <b>Worker:</b> <b>${workerName}</b>
-📱 <b>Customer:</b> <code>${order.delivery_phone}</code>
-🕹️ <b>Game:</b> ${order.items?.[0]?.product_name || 'PUBG Mobile QR'}
+${cardHtml}`;
 
-✅ <b>গ্রাহক QR কোড স্ক্যান সম্পন্ন করেছেন!</b>
-এখন Midasbuy বা গেমে লগইন করে টপ-আপ সম্পন্ন করুন এবং নিচের <b>"✅ Order Completed"</b> বাটনে চাপ দিন।`;
-
-      const replyMarkup = {
-        inline_keyboard: [
-          [
-            { text: '✅ Order Completed (ডেলিভারি সম্পন্ন)', callback_data: `status_delivered:${order.order_id}` }
-          ],
-          [
-            { text: '❌ Cancel Order', callback_data: `cancel_prompt:${order.order_id}` }
-          ]
-        ]
-      };
-
-      await this.sendMessage(env.telegram.workerGroupId, msg, { reply_markup: sanitizeReplyMarkup(replyMarkup) });
+      const sendRes = await this.sendMessage(env.telegram.workerGroupId, msg, { reply_markup: sanitizeReplyMarkup(replyMarkup) });
+      if (sendRes.ok && sendRes.result?.message_id) {
+        order.telegram_message_id = sendRes.result.message_id;
+        await db.updateOrderTelegramMessageId(order.id, sendRes.result.message_id);
+      }
     } else if (action === 'REFRESH_REQUESTED') {
+      const prevMsgId = order.telegram_message_id;
+      if (prevMsgId) {
+        // Strip buttons from previous card so worker cannot click them while expired
+        await this.editMessageReplyMarkup(env.telegram.workerGroupId, prevMsgId, { inline_keyboard: [] }).catch(() => {});
+      }
+
       const msg = 
 `⚠️ <b>[Order #${order.order_id}] CUSTOMER REQUESTED NEW QR! / নতুন কিউআর প্রয়োজন</b>
 
@@ -1674,7 +1726,11 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 
 📸 <b>একশন:</b> দয়া করে দ্রুত একটি <b>নতুন Login QR কোড স্ক্রিনশট</b> এই গ্রুপে পাঠান (Reply to Order)।`;
 
-      await this.sendMessage(env.telegram.workerGroupId, msg);
+      const sendRes = await this.sendMessage(env.telegram.workerGroupId, msg);
+      if (sendRes.ok && sendRes.result?.message_id) {
+        order.telegram_message_id = sendRes.result.message_id;
+        await db.updateOrderTelegramMessageId(order.id, sendRes.result.message_id);
+      }
     }
   }
 };
