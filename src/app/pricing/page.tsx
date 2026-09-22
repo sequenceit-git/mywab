@@ -24,7 +24,9 @@ import {
   ToggleRight,
   ShieldCheck,
   Bot,
-  Zap
+  Zap,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { CategoryIcon } from '@/components/BrandIcons';
 
@@ -72,7 +74,9 @@ export default function PricingPage() {
   const [stats, setStats] = useState<PricingStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('game_pubg_uid');
+
+  // Expanded Categories State (Set of category IDs) - default all collapsed
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   // Package Modal State (Add or Edit)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -100,6 +104,10 @@ export default function PricingPage() {
   const [kokosAutoFulfill, setKokosAutoFulfill] = useState<boolean>(false);
   const [kokosToggling, setKokosToggling] = useState<boolean>(false);
 
+  // Pinex Free Fire Auto-Fulfill Status
+  const [pinexAutoFulfill, setPinexAutoFulfill] = useState<boolean>(true);
+  const [pinexToggling, setPinexToggling] = useState<boolean>(false);
+
   const fetchKokosStatus = async () => {
     try {
       const res = await fetch('/api/system/kokos');
@@ -107,6 +115,20 @@ export default function PricingPage() {
         const data = await res.json();
         if (data.success) {
           setKokosAutoFulfill(data.autoFulfillEnabled);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchPinexStatus = async () => {
+    try {
+      const res = await fetch('/api/system/pinex');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setPinexAutoFulfill(data.autoFulfillEnabled);
         }
       }
     } catch (e) {
@@ -137,6 +159,29 @@ export default function PricingPage() {
     }
   };
 
+  const handleTogglePinex = async () => {
+    setPinexToggling(true);
+    try {
+      const nextState = !pinexAutoFulfill;
+      const res = await fetch('/api/system/pinex', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'TOGGLE_AUTO_FULFILL',
+          enabled: nextState
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPinexAutoFulfill(data.autoFulfillEnabled);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setPinexToggling(false);
+    }
+  };
+
   const fetchPricing = async () => {
     try {
       const res = await fetch('/api/pricing?all=true');
@@ -146,12 +191,10 @@ export default function PricingPage() {
           setProducts(data.products || []);
           setCategories(data.categories || []);
           setStats(data.stats || null);
-          if (data.categories?.length > 0 && !selectedCategoryId) {
-            setSelectedCategoryId(data.categories[0].id);
-          }
         }
       }
       await fetchKokosStatus();
+      await fetchPinexStatus();
     } catch (err) {
       console.error('Failed to fetch pricing catalog:', err);
     } finally {
@@ -163,22 +206,30 @@ export default function PricingPage() {
     fetchPricing();
   }, []);
 
-  // Filtered products for active category view
-  const activeCategory = categories.find(c => c.id === selectedCategoryId) || categories[0];
-  const categoryProducts = products.filter(p => {
-    const matchesCategory = selectedCategoryId === 'ALL' || p.categoryId === selectedCategoryId;
-    const q = searchQuery.toLowerCase().trim();
-    const matchesSearch = !q ||
-      p.name.toLowerCase().includes(q) ||
-      (p.amount && p.amount.toLowerCase().includes(q)) ||
-      p.categoryTitle.toLowerCase().includes(q) ||
-      (p.description && p.description.toLowerCase().includes(q));
-    return matchesCategory && matchesSearch;
-  });
+  // Accordion toggle helpers
+  const toggleCategory = (catId: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(catId)) {
+        next.delete(catId);
+      } else {
+        next.add(catId);
+      }
+      return next;
+    });
+  };
+
+  const expandAll = () => {
+    setExpandedCategories(new Set(categories.map((c) => c.id)));
+  };
+
+  const collapseAll = () => {
+    setExpandedCategories(new Set());
+  };
 
   // Open modal for Creating new package
   const handleOpenAdd = (catId?: string) => {
-    const targetCat = catId || (selectedCategoryId !== 'ALL' ? selectedCategoryId : 'game_pubg_uid');
+    const targetCat = catId || categories[0]?.id || 'game_pubg_uid';
     setIsEditing(false);
     setModalPkgId('');
     setModalCategoryId(targetCat);
@@ -266,6 +317,8 @@ export default function PricingPage() {
         const data = await res.json();
         if (data.success) {
           setIsModalOpen(false);
+          // Auto-expand category so the user sees their new package immediately
+          setExpandedCategories((prev) => new Set([...Array.from(prev), modalCategoryId]));
           await fetchPricing();
         } else {
           setFeedbackMsg({ type: 'error', text: data.error || 'Failed to create package' });
@@ -341,6 +394,21 @@ export default function PricingPage() {
   const liveProfit = Math.max(0, modalPrice - modalBasePrice);
   const liveMargin = modalPrice > 0 ? Math.round((liveProfit / modalPrice) * 100) : 0;
 
+  // Search filter helper across categories & packages
+  const query = searchQuery.toLowerCase().trim();
+  const getCategoryProducts = (catId: string) => {
+    return products.filter((p) => {
+      if (p.categoryId !== catId) return false;
+      if (!query) return true;
+      return (
+        p.name.toLowerCase().includes(query) ||
+        (p.amount && p.amount.toLowerCase().includes(query)) ||
+        p.categoryTitle.toLowerCase().includes(query) ||
+        (p.description && p.description.toLowerCase().includes(query))
+      );
+    });
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-slate-950">
       <Header
@@ -409,7 +477,7 @@ export default function PricingPage() {
             </div>
           </div>
 
-          {/* Categories Count & Factory Reset */}
+          {/* Categories Count & Add Global */}
           <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -425,7 +493,7 @@ export default function PricingPage() {
             </div>
             <div className="mt-2">
               <button
-                onClick={() => handleOpenAdd(selectedCategoryId !== 'ALL' ? selectedCategoryId : undefined)}
+                onClick={() => handleOpenAdd()}
                 className="w-full py-2 px-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-slate-950 font-black text-xs transition flex items-center justify-center gap-1.5 shadow-lg shadow-brand-500/20"
               >
                 <PlusCircle className="w-4 h-4" />
@@ -435,334 +503,388 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* Category Navigation Bar (8 Game Categories) */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-brand-400" />
-              <span>Select Game Category</span>
-            </h3>
-            <span className="text-[11px] text-slate-500">
-              Click any category to manage its packages
+        {/* Global Toolbar / Search & Expand Controls */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-sm">
+          <div className="flex items-center gap-2 flex-1">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search packages across all categories (e.g. 60 UC, Weekly, Diamond)..."
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 placeholder-slate-500 text-xs focus:outline-none focus:border-brand-500 transition"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <span className="text-[11px] text-slate-500 hidden md:inline">
+              {categories.length} Game & Service Categories
             </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+          <div className="flex items-center gap-2 justify-end">
+            <button
+              onClick={expandAll}
+              className="py-1.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition flex items-center gap-1.5 border border-slate-700/60"
+            >
+              <span>Expand All</span>
+            </button>
+            <button
+              onClick={collapseAll}
+              className="py-1.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition flex items-center gap-1.5 border border-slate-700/60"
+            >
+              <span>Collapse All</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Expandable Category Accordion List */}
+        {loading ? (
+          <div className="py-20 text-center text-slate-500 text-xs flex flex-col items-center justify-center gap-2">
+            <div className="w-7 h-7 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
+            <span>Loading categories and packages from catalog...</span>
+          </div>
+        ) : (
+          <div className="space-y-3.5">
             {categories.map((cat) => {
-              const isSelected = selectedCategoryId === cat.id;
-              const catCount = products.filter(p => p.categoryId === cat.id).length;
+              const catProducts = getCategoryProducts(cat.id);
+              const totalCatProducts = products.filter((p) => p.categoryId === cat.id).length;
+              // If user is searching and category has matching items, force expand
+              const isExpanded = query ? catProducts.length > 0 : expandedCategories.has(cat.id);
 
               return (
-                <button
+                <div
                   key={cat.id}
-                  onClick={() => setSelectedCategoryId(cat.id)}
-                  className={`p-3 rounded-xl text-left border transition flex flex-col justify-between min-h-[84px] relative overflow-hidden group ${
-                    isSelected
-                      ? 'bg-brand-500/10 border-brand-500/60 shadow-lg shadow-brand-500/15 ring-1 ring-brand-500/50'
-                      : 'bg-dark-900/80 border-slate-800/80 hover:border-slate-700 hover:bg-dark-800/90'
+                  className={`rounded-2xl border transition overflow-hidden shadow-md ${
+                    isExpanded
+                      ? 'bg-dark-900/95 border-slate-700/90 ring-1 ring-brand-500/20 shadow-brand-500/5'
+                      : 'bg-dark-900/80 border-slate-800/80 hover:border-slate-700/90'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-1.5">
-                    <CategoryIcon categoryId={cat.id} className="w-7 h-7 shrink-0 drop-shadow-md" />
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                      isSelected
-                        ? 'bg-brand-500/20 text-brand-300 border border-brand-500/30'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}>
-                      {catCount}
-                    </span>
+                  {/* Category Header Row (Click to Expand/Collapse) */}
+                  <div
+                    onClick={() => toggleCategory(cat.id)}
+                    className="p-3 sm:p-3.5 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 select-none hover:bg-slate-800/30 transition group"
+                  >
+                    {/* Left: Icon, Category Name, Meta */}
+                    <div className="flex items-center gap-3">
+                      <div className="p-1.5 rounded-xl bg-slate-900/90 border border-slate-700/60 shadow-sm shrink-0 flex items-center justify-center group-hover:scale-105 transition">
+                        <CategoryIcon categoryId={cat.id} className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 drop-shadow" />
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                          <h3 className="text-xs sm:text-sm font-bold text-white group-hover:text-brand-300 transition">
+                            {cat.title || cat.fullName}
+                          </h3>
+                          <span className="text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                            {catProducts.length}{query && catProducts.length !== totalCatProducts ? ` of ${totalCatProducts}` : ''} packages
+                          </span>
+                          <span className="text-[9px] sm:text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-950/80 text-slate-400 border border-slate-800">
+                            {cat.requiresUid ? 'Player UID' : 'Login / Info'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5">
+                          {cat.requiresUid ? 'Instant Player UID recharge' : 'Account login / credentials required'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Right Controls: Kokos Toggle, Pinex Toggle, Add Package, Chevron */}
+                    <div className="flex items-center gap-2 self-end sm:self-center" onClick={(e) => e.stopPropagation()}>
+                      {/* PUBG UID Kokos Toggle */}
+                      {cat.id === 'game_pubg_uid' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleKokos();
+                          }}
+                          disabled={kokosToggling}
+                          title="Toggle Kokos API PUBG Auto-Fulfillment"
+                          className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl inline-flex items-center gap-1.5 transition ${
+                            kokosAutoFulfill
+                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
+                              : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-white'
+                          }`}
+                        >
+                          <Zap className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Kokos: {kokosAutoFulfill ? 'ON' : 'OFF'}</span>
+                        </button>
+                      )}
+
+                      {/* Free Fire Pinex Toggle */}
+                      {cat.id === 'game_ff' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleTogglePinex();
+                          }}
+                          disabled={pinexToggling}
+                          title="Toggle Pinex Free Fire Auto-Fulfillment"
+                          className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl inline-flex items-center gap-1.5 transition ${
+                            pinexAutoFulfill
+                              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25'
+                              : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-white'
+                          }`}
+                        >
+                          <Zap className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Pinex Auto: {pinexAutoFulfill ? 'ON' : 'OFF'}</span>
+                        </button>
+                      )}
+
+                      {/* Add Package to this Category */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenAdd(cat.id);
+                        }}
+                        className="py-1.5 px-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-slate-950 font-black text-xs transition flex items-center gap-1.5 shadow-md shadow-brand-500/15"
+                      >
+                        <PlusCircle className="w-3.5 h-3.5" />
+                        <span>Add Package</span>
+                      </button>
+
+                      {/* Chevron Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleCategory(cat.id);
+                        }}
+                        className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                        title={isExpanded ? 'Collapse Category' : 'Expand Category'}
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-brand-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        )}
+                      </button>
+                    </div>
                   </div>
-                  <div className="mt-2">
-                    <p className={`text-[11px] font-bold leading-snug line-clamp-1 ${
-                      isSelected ? 'text-white' : 'text-slate-300 group-hover:text-white'
-                    }`}>
-                      {cat.title}
-                    </p>
-                    <span className="text-[9px] text-slate-500 block truncate">
-                      {cat.requiresUid ? 'Player UID' : 'Login / Info'}
-                    </span>
-                  </div>
-                </button>
+
+                  {/* Expandable Package Container */}
+                  {isExpanded && (
+                    <div className="border-t border-slate-800/80 p-4 sm:p-5 bg-slate-950/40 space-y-3">
+                      {catProducts.length === 0 ? (
+                        <div className="py-8 text-center text-slate-500 text-xs space-y-2">
+                          <Package className="w-7 h-7 text-slate-600 mx-auto opacity-50" />
+                          <p>
+                            {query
+                              ? `No packages found in ${cat.title} matching "${query}".`
+                              : `No packages added under ${cat.title} yet.`}
+                          </p>
+                          <button
+                            onClick={() => handleOpenAdd(cat.id)}
+                            className="text-brand-400 hover:underline font-semibold"
+                          >
+                            + Add the first package for {cat.title}
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Desktop Table View */}
+                          <div className="hidden md:block overflow-x-auto">
+                            <table className="w-full text-left text-xs text-slate-300">
+                              <thead>
+                                <tr className="border-b border-slate-800/80 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                  <th className="py-2.5 px-3">Package Name</th>
+                                  <th className="py-2.5 px-3">Amount / Credits</th>
+                                  <th className="py-2.5 px-3">Selling Price (৳)</th>
+                                  <th className="py-2.5 px-3">Base Cost (৳)</th>
+                                  <th className="py-2.5 px-3">Net Profit</th>
+                                  <th className="py-2.5 px-3">Margin</th>
+                                  <th className="py-2.5 px-3 text-center">Bot Status</th>
+                                  <th className="py-2.5 px-3 text-right">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/50">
+                                {catProducts.map((p) => {
+                                  const isActive = p.isActive !== false;
+
+                                  return (
+                                    <tr
+                                      key={p.id}
+                                      className={`hover:bg-slate-800/40 transition group ${
+                                        !isActive ? 'opacity-50' : ''
+                                      }`}
+                                    >
+                                      {/* Name & ID */}
+                                      <td className="py-3 px-3">
+                                        <div className="font-bold text-white text-xs flex items-center gap-2">
+                                          <span>{p.name}</span>
+                                          {p.description && (
+                                            <span className="text-[10px] text-slate-500 font-normal truncate max-w-[160px]" title={p.description}>
+                                              ({p.description})
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className="text-[10px] font-mono text-slate-500 block">
+                                          {p.id}
+                                        </span>
+                                      </td>
+
+                                      {/* Amount */}
+                                      <td className="py-3 px-3">
+                                        <span className="font-mono text-slate-200 font-semibold px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60">
+                                          {p.amount || p.name}
+                                        </span>
+                                      </td>
+
+                                      {/* Selling Price */}
+                                      <td className="py-3 px-3 font-bold text-white text-sm">
+                                        ৳{p.price}
+                                      </td>
+
+                                      {/* Base Cost */}
+                                      <td className="py-3 px-3 font-mono text-slate-400">
+                                        ৳{p.basePrice}
+                                      </td>
+
+                                      {/* Net Profit */}
+                                      <td className="py-3 px-3 font-bold text-emerald-400">
+                                        +৳{p.profit}
+                                      </td>
+
+                                      {/* Margin % */}
+                                      <td className="py-3 px-3">
+                                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                                          p.marginPercent >= 20
+                                            ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+                                            : p.marginPercent >= 10
+                                            ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
+                                            : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                                        }`}>
+                                          {p.marginPercent}%
+                                        </span>
+                                      </td>
+
+                                      {/* Bot Status Toggle */}
+                                      <td className="py-3 px-3 text-center">
+                                        <button
+                                          onClick={() => handleToggleActive(p)}
+                                          title={isActive ? 'Active on WhatsApp bot. Click to disable' : 'Disabled on WhatsApp bot. Click to activate'}
+                                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition ${
+                                            isActive
+                                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30'
+                                              : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-emerald-500/15 hover:text-emerald-400'
+                                          }`}
+                                        >
+                                          <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
+                                          <span>{isActive ? 'Active' : 'Disabled'}</span>
+                                        </button>
+                                      </td>
+
+                                      {/* Actions */}
+                                      <td className="py-3 px-3 text-right">
+                                        <div className="flex items-center justify-end gap-1">
+                                          <button
+                                            onClick={() => handleOpenEdit(p)}
+                                            title="Edit Package"
+                                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
+                                          >
+                                            <Edit3 className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            onClick={() => setDeletingProduct(p)}
+                                            title="Delete Package"
+                                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Mobile Cards View */}
+                          <div className="md:hidden space-y-2.5">
+                            {catProducts.map((p) => {
+                              const isActive = p.isActive !== false;
+
+                              return (
+                                <div
+                                  key={p.id}
+                                  className={`p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2.5 ${
+                                    !isActive ? 'opacity-50' : ''
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                      <h4 className="font-bold text-white text-xs">{p.name}</h4>
+                                      <span className="text-[10px] font-mono text-slate-400">
+                                        Amount: {p.amount || p.name}
+                                      </span>
+                                    </div>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                      isActive
+                                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                        : 'bg-slate-800 text-slate-400'
+                                    }`}>
+                                      {isActive ? 'Bot Active' : 'Disabled'}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-slate-900/60 border border-slate-800/50 text-center">
+                                    <div>
+                                      <span className="text-[9px] text-slate-400 uppercase block">Price</span>
+                                      <span className="text-xs font-bold text-white">৳{p.price}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-[9px] text-slate-400 uppercase block">Cost</span>
+                                      <span className="text-xs font-mono text-slate-300">৳{p.basePrice}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-[9px] text-slate-400 uppercase block">Profit</span>
+                                      <span className="text-xs font-bold text-emerald-400">+{p.marginPercent}%</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/50">
+                                    <button
+                                      onClick={() => handleToggleActive(p)}
+                                      className="text-[11px] text-slate-400 hover:text-slate-200"
+                                    >
+                                      {isActive ? 'Disable in Bot' : 'Enable in Bot'}
+                                    </button>
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        onClick={() => handleOpenEdit(p)}
+                                        className="p-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-semibold px-2.5 flex items-center gap-1"
+                                      >
+                                        <Edit3 className="w-3 h-3" />
+                                        <span>Edit</span>
+                                      </button>
+                                      <button
+                                        onClick={() => setDeletingProduct(p)}
+                                        className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
-        </div>
-
-        {/* Active Category Header & Package Manager Section */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-dark-900/90 border border-slate-800/80 shadow-md space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-2xl bg-slate-900 border border-slate-700/70 shadow-lg shrink-0 flex items-center justify-center">
-                <CategoryIcon categoryId={activeCategory?.id} className="w-10 h-10 shrink-0" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm sm:text-base font-black text-white">
-                    {activeCategory?.fullName || activeCategory?.title || 'Game Packages'}
-                  </h3>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                    {categoryProducts.length} packages
-                  </span>
-                  {activeCategory?.id === 'game_pubg_uid' && (
-                    <button
-                      onClick={handleToggleKokos}
-                      disabled={kokosToggling}
-                      title="Toggle Kokos API PUBG Auto-Fulfillment"
-                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 transition ${
-                        kokosAutoFulfill
-                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
-                          : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-white'
-                      }`}
-                    >
-                      <Zap className="w-3 h-3 text-amber-400" />
-                      <span>Kokos Auto-Fulfill: {kokosAutoFulfill ? 'ON' : 'OFF'}</span>
-                    </button>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Input requirement:{' '}
-                  <span className="font-semibold text-slate-300">
-                    {activeCategory?.requiresUid ? 'Player UID Required' : 'Account / Login Info Required'}
-                  </span>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Search Bar */}
-              <div className="relative flex-1 sm:w-56">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search package or amount..."
-                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/70 border border-slate-800 text-slate-200 placeholder-slate-500 text-xs focus:outline-none focus:border-brand-500 transition"
-                />
-              </div>
-
-              {/* Add Package Button */}
-              <button
-                onClick={() => handleOpenAdd(activeCategory?.id)}
-                className="py-1.5 px-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-slate-950 font-bold text-xs transition flex items-center gap-1.5 shrink-0 shadow-md shadow-brand-500/15"
-              >
-                <PlusCircle className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Add Package</span>
-                <span className="sm:hidden">Add</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Loading state */}
-          {loading ? (
-            <div className="py-16 text-center text-slate-500 text-xs flex flex-col items-center justify-center gap-2">
-              <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin"></div>
-              <span>Loading packages from database...</span>
-            </div>
-          ) : categoryProducts.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 text-xs space-y-2">
-              <Package className="w-8 h-8 text-slate-600 mx-auto opacity-50" />
-              <p>No packages found in this category matching your search.</p>
-              <button
-                onClick={() => handleOpenAdd(activeCategory?.id)}
-                className="text-brand-400 hover:underline font-semibold"
-              >
-                + Create the first package for {activeCategory?.title}
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Desktop Table View (Hidden on mobile) */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead>
-                    <tr className="border-b border-slate-800/80 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      <th className="py-3 px-3">Package Name</th>
-                      <th className="py-3 px-3">Amount / Credits</th>
-                      <th className="py-3 px-3">Selling Price (৳)</th>
-                      <th className="py-3 px-3">Base Cost (৳)</th>
-                      <th className="py-3 px-3">Net Profit</th>
-                      <th className="py-3 px-3">Margin</th>
-                      <th className="py-3 px-3 text-center">Bot Status</th>
-                      <th className="py-3 px-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                    {categoryProducts.map((p) => {
-                      const isActive = p.isActive !== false;
-
-                      return (
-                        <tr
-                          key={p.id}
-                          className={`hover:bg-slate-800/30 transition group ${
-                            !isActive ? 'opacity-50' : ''
-                          }`}
-                        >
-                          {/* Name & ID */}
-                          <td className="py-3 px-3">
-                            <div className="font-bold text-white text-xs flex items-center gap-2">
-                              <span>{p.name}</span>
-                              {p.description && (
-                                <span className="text-[10px] text-slate-500 font-normal truncate max-w-[140px]" title={p.description}>
-                                  ({p.description})
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-[10px] font-mono text-slate-500 block">
-                              {p.id}
-                            </span>
-                          </td>
-
-                          {/* Amount */}
-                          <td className="py-3 px-3">
-                            <span className="font-mono text-slate-200 font-semibold px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60">
-                              {p.amount || p.name}
-                            </span>
-                          </td>
-
-                          {/* Selling Price */}
-                          <td className="py-3 px-3 font-bold text-white text-sm">
-                            ৳{p.price}
-                          </td>
-
-                          {/* Base Cost */}
-                          <td className="py-3 px-3 font-mono text-slate-400">
-                            ৳{p.basePrice}
-                          </td>
-
-                          {/* Net Profit */}
-                          <td className="py-3 px-3 font-bold text-emerald-400">
-                            +৳{p.profit}
-                          </td>
-
-                          {/* Margin % */}
-                          <td className="py-3 px-3">
-                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                              p.marginPercent >= 20
-                                ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
-                                : p.marginPercent >= 10
-                                ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
-                                : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                            }`}>
-                              {p.marginPercent}%
-                            </span>
-                          </td>
-
-                          {/* Bot Status Toggle */}
-                          <td className="py-3 px-3 text-center">
-                            <button
-                              onClick={() => handleToggleActive(p)}
-                              title={isActive ? 'Active on WhatsApp bot. Click to disable' : 'Disabled on WhatsApp bot. Click to activate'}
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition ${
-                                isActive
-                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30'
-                                  : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-emerald-500/15 hover:text-emerald-400'
-                              }`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
-                              <span>{isActive ? 'Active' : 'Disabled'}</span>
-                            </button>
-                          </td>
-
-                          {/* Actions */}
-                          <td className="py-3 px-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => handleOpenEdit(p)}
-                                title="Edit Name, Amount & Prices"
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => setDeletingProduct(p)}
-                                title="Delete Package"
-                                className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile Cards View (Hidden on desktop) */}
-              <div className="md:hidden space-y-2.5">
-                {categoryProducts.map((p) => {
-                  const isActive = p.isActive !== false;
-
-                  return (
-                    <div
-                      key={p.id}
-                      className={`p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2.5 ${
-                        !isActive ? 'opacity-50' : ''
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h4 className="font-bold text-white text-xs">{p.name}</h4>
-                          <span className="text-[10px] font-mono text-slate-400">
-                            Amount: {p.amount || p.name}
-                          </span>
-                        </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          isActive
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {isActive ? 'Bot Active' : 'Disabled'}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-slate-900/60 border border-slate-800/50 text-center">
-                        <div>
-                          <span className="text-[9px] text-slate-400 uppercase block">Price</span>
-                          <span className="text-xs font-bold text-white">৳{p.price}</span>
-                        </div>
-                        <div>
-                          <span className="text-[9px] text-slate-400 uppercase block">Cost</span>
-                          <span className="text-xs font-mono text-slate-300">৳{p.basePrice}</span>
-                        </div>
-                        <div>
-                          <span className="text-[9px] text-slate-400 uppercase block">Profit</span>
-                          <span className="text-xs font-bold text-emerald-400">+{p.marginPercent}%</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/50">
-                        <button
-                          onClick={() => handleToggleActive(p)}
-                          className="text-[11px] text-slate-400 hover:text-slate-200"
-                        >
-                          {isActive ? 'Disable in Bot' : 'Enable in Bot'}
-                        </button>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => handleOpenEdit(p)}
-                            className="p-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-semibold px-2.5 flex items-center gap-1"
-                          >
-                            <Edit3 className="w-3 h-3" />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            onClick={() => setDeletingProduct(p)}
-                            className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
+        )}
       </main>
 
       {/* ---------------------------------------------------- */}

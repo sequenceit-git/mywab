@@ -1,0 +1,198 @@
+P■■■x API
+UC Voucher & TopUp HTTP API — Integration Documentation
+Generated: 11 Sep 2026, 08:56 PM BD
+Currency: BDT
+
+API KEY
+OWNER
+ENDPOINT (POST)
+
+@@200#ds7dukan@@##@#@2007
+Faruk (6463761922) @Dsdukan
+https://sohan.pinexbot.shop/pinex/brand
+
+Send an HTTP POST with a JSON body and Content-Type: application/json.
+
+1. Request Fields
+
+key required Your generated API key. No request is allowed without a valid key.
+type required uc = return UniPin vouchers. topup = redeem vouchers to a player id. shell =
+redeem a shell item to a player id.
+product required UC: 20,36,80,160,161,405,800,810,1625,2000. Shell:
+lite,lvl6,lvl10,lvl15,lvl20,lvl25,lvl30.
+quantity required How many pieces, e.g. 3.
+orderid required Any value. Echoed back as-is. Duplicates are allowed.
+playerid topup/shell Required when type = topup or shell. Not needed for uc.
+url required Your callback URL. The result JSON is POSTed here.
+
+2. UC Request & Responses
+
+Request:
+{
+  "key": "@@200#ds7dukan@@##@#@2007",
+  "type": "uc",
+  "product": "20",
+  "quantity": "3",
+  "orderid": "106",
+  "url": "https://your-server/callback"
+}
+
+Success callback:
+{
+  "type": "uc",
+  "status": "sucess",
+  "orderid": "106",
+  "content": "UPBD-Q-S-... 5417-...,UPBD-Q-S-... 1229-..."
+}
+
+Insufficient balance/limit:
+{
+  "type": "uc",
+  "status": "failed",
+  "orderid": "106",
+  "content": "insufficient credit"
+}
+
+Out of stock (any charge is auto-refunded):
+{
+  "type": "uc",
+  "status": "failed",
+  "orderid": "106",
+  "content": "stock out"
+}
+
+3. TopUp Request & Responses
+
+Request (playerid required):
+{
+  "key": "@@200#ds7dukan@@##@#@2007",
+  "type": "topup",
+  "product": "20",
+  "quantity": "3",
+  "playerid": "2198470022",
+  "orderid": "106",
+  "url": "https://your-server/callback"
+}
+
+Success callback (nickname comes from the topup result):
+{
+  "type": "topup",
+  "status": "sucess",
+  "orderid": "106",
+  "nickname": "PlayerName",
+  "content": "<vouchers used>"
+}
+
+Failure (insufficient credit / wrong player id / region doesn't match / server down). On any failure no voucher is shown
+and stock is returned:
+{
+  "type": "topup",
+  "status": "failed",
+  "orderid": "106",
+  "content": "insufficient credit"
+}
+
+Wrong player id (the playerid is invalid / not found):
+{
+  "type": "topup",
+  "status": "failed",
+  "orderid": "106",
+  "content": "wrong player id"
+}
+
+Region doesn't match (the player belongs to a different region):
+{
+  "type": "topup",
+  "status": "failed",
+  "orderid": "106",
+  "content": "region doesn't match"
+}
+
+4. Shell Request & Responses
+
+Shell items are redeemed directly to a player id (like topup) but use no voucher pool. playerid is required. Works for both
+USD and BDT accounts.
+Available shell products: lite, lvl6, lvl10, lvl15, lvl20, lvl25, lvl30.
+
+Request (playerid required):
+{
+  "key": "@@200#ds7dukan@@##@#@2007",
+  "type": "shell",
+  "product": "lite",
+  "quantity": "3",
+  "playerid": "2198470022",
+  "orderid": "106",
+  "url": "https://your-server/callback"
+}
+
+Success callback (nickname comes from the topup result, content = TRX id):
+{
+  "type": "shell",
+  "status": "sucess",
+  "orderid": "106",
+  "nickname": "PlayerName",
+  "content": "TRX id"
+}
+
+Failure (insufficient credit / wrong player id / region doesn't match / server down). On any failure nothing is delivered and
+any charge is refunded:
+{
+  "type": "shell",
+  "status": "failed",
+  "orderid": "106",
+  "content": "insufficient credit"
+}
+
+Wrong player id (the playerid is invalid / not found):
+{
+  "type": "shell",
+  "status": "failed",
+  "orderid": "106",
+  "content": "wrong player id"
+}
+
+Region doesn't match (the player belongs to a different region):
+{
+  "type": "shell",
+  "status": "failed",
+  "orderid": "106",
+  "content": "region doesn't match"
+}
+
+Your shell pricing (per piece):
+• lite : 42 Tk
+• lvl6 : 35 Tk
+• lvl10 : 59 Tk
+• lvl15 : 59 Tk
+• lvl20 : 59 Tk
+• lvl25 : 59 Tk
+• lvl30 : 84 Tk
+
+5. Your UC Pricing (per piece) — Tk
+
+20 UC 20 Tk 405 UC 370 Tk
+36 UC 35 Tk 800 UC 728 Tk
+80 UC 75 Tk 810 UC 738 Tk
+160 UC 147 Tk 1625 UC 1480 Tk
+161 UC 148 Tk 2000 UC 1850 Tk
+
+6. Notes
+
+• All amounts are in BDT.
+• Balance is charged first; if it is not enough, the remainder goes to your due within the baki limit.
+• Every request is processed under a per-user lock, so balance never goes below zero and the baki limit is never
+exceeded.
+• orderid is informational only and is echoed back; concurrent requests with the same orderid stay isolated.
+• On any failure (uc or topup) vouchers are never exposed and are returned to stock; any charge is refunded.
+• Shell items use no voucher pool; they are redeemed directly to the player id. On failure any charge is refunded (partial
+failures get a partial refund).
+• Shell (like uc and topup) works for both USD and BDT accounts and is fully counted in your due.
+• Callback timeout: if the external server does not send its confirmation callback in time, the request is treated as
+delivered — the charge is kept and is NOT refunded. For uc/topup the voucher is still shown so it can be redeemed
+manually (no player nickname); for shell the result is marked 'timeout'. Only real failures (insufficient credit / wrong
+player id / region doesn't match / server down) are refunded.
+• API request fee: each topup and shell piece charges a small extra fee (default 0.15) on top of the product price,
+deducted from your balance or due limit. uc is never charged. If you cannot afford BOTH the product price and the fee,
+the order is blocked for balance. If the service request limit is temporarily exhausted, the order fails with content
+'api request limit over'. On a FULL refund the fee is refunded too; on a PARTIAL completion the fee is not refunded.
+• Activity messages for every request are also delivered to your Telegram inbox.

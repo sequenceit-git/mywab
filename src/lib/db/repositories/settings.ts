@@ -3,7 +3,8 @@ import { getDbClient } from '../client';
 // In-memory cache for fast, synchronous access in WhatsApp bot runtime
 const settingsCache: Map<string, any> = new Map([
   ['kokos_pubg_auto_fulfill', false],
-  ['kokos_fallback_to_telegram', true]
+  ['kokos_fallback_to_telegram', true],
+  ['pinex_ff_auto_fulfill', true]
 ]);
 
 let isInitialized = false;
@@ -48,6 +49,13 @@ export const settingsRepository = {
    */
   isKokosAutoFulfillEnabled(): boolean {
     return Boolean(this.getCachedSetting('kokos_pubg_auto_fulfill', false));
+  },
+
+  /**
+   * Helper: Check if Pinex Free Fire Auto-Fulfill is active
+   */
+  isPinexAutoFulfillEnabled(): boolean {
+    return Boolean(this.getCachedSetting('pinex_ff_auto_fulfill', true));
   },
 
   /**

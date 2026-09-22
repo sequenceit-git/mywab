@@ -103,7 +103,11 @@ export const telegramBot = {
   /**
    * Helper to build dynamic HTML card and inline keyboard for any order state
    */
-  generateOrderCard(order: Order, assignedWorkerName?: string): { cardHtml: string; replyMarkup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } {
+  generateOrderCard(
+    order: Order,
+    assignedWorkerName?: string,
+    queueCount?: number
+  ): { cardHtml: string; replyMarkup: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } } {
     const firstItem = order.items?.[0];
     const itemsText = order.items
       ?.map(item => `  ▪️ <b>${item.product_name}</b> x ${item.quantity} = ৳${item.subtotal}`)
@@ -363,6 +367,10 @@ ${proofLines}
       ? `\n📲 <i>কর্মী: অর্ডার Claim করুন এবং লগইন QR কোড স্ক্রিনশট পাঠিয়ে কাস্টমারকে দিন।</i>`
       : `\n<i>Click below to claim and process this order:</i>`;
 
+    const queueBadge = queueCount && queueCount > 0
+      ? `\n📬 <b>Queue:</b> <b>${queueCount} more order${queueCount > 1 ? 's' : ''} waiting in line</b>\n`
+      : '';
+
     return {
       cardHtml: 
 `🚨 <b>NEW ORDER / নতুন অর্ডার</b>${qrBanner}
@@ -377,7 +385,7 @@ ${proofLines}
 
 💎 <b>Packages:</b>
 ${itemsText}
-${pendingQrHint}`,
+${queueBadge}${pendingQrHint}`,
       replyMarkup: {
         inline_keyboard: [
           [
@@ -394,14 +402,14 @@ ${pendingQrHint}`,
   /**
    * Send new order card to the Telegram Worker Group with Claim button
    */
-  async dispatchNewOrder(order: Order): Promise<{ success: boolean; messageId?: number; error?: string }> {
+  async dispatchNewOrder(order: Order, queueCount?: number): Promise<{ success: boolean; messageId?: number; error?: string }> {
     if (!env.telegram.isConfigured) {
       const errorMsg = 'Telegram Worker Bot not configured in environment';
       console.error(errorMsg);
       return { success: false, error: errorMsg };
     }
 
-    const { cardHtml, replyMarkup } = this.generateOrderCard(order);
+    const { cardHtml, replyMarkup } = this.generateOrderCard(order, undefined, queueCount);
 
     try {
       const response = await fetch(`${env.telegram.apiUrl}/sendMessage`, {
@@ -602,6 +610,11 @@ ${pendingQrHint}`,
           });
         }
 
+        // Trigger queue to dispatch next order in line for other workers!
+        import('./queue').then(m => m.telegramQueue.processNextInQueue()).catch(err => {
+          console.warn('[Telegram Queue Auto-Dispatch Warning on Claim]:', err);
+        });
+
         await this.answerCallbackQuery(id, `✅ You have successfully claimed top-up #${orderIdCode}!`, false);
         return { success: true, message: `Claimed by ${workerName}` };
       } catch (claimErr) {
@@ -686,6 +699,11 @@ ${pendingQrHint}`,
             console.error('[Telegram->WhatsApp Notify Error on Delivered]:', err);
           });
         }
+
+        // Trigger queue to dispatch next order in line
+        import('./queue').then(m => m.telegramQueue.processNextInQueue()).catch(err => {
+          console.warn('[Telegram Queue Auto-Dispatch Warning on Delivered]:', err);
+        });
 
         await this.answerCallbackQuery(id, `🎉 Top-up #${orderIdCode} marked as Delivered!`, false);
         return { success: true, message: 'Delivered successfully' };
@@ -1117,6 +1135,11 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 
     // Clear pending cancellation state for this worker
     this.clearPendingCancellation(workerTelegramId);
+
+    // Trigger queue to dispatch next order in line
+    import('./queue').then(m => m.telegramQueue.processNextInQueue()).catch(err => {
+      console.warn('[Telegram Queue Auto-Dispatch Warning on Cancel]:', err);
+    });
 
     return { success: true, message: `Order #${orderIdCode} cancelled: ${cancelReason}`, order };
   },

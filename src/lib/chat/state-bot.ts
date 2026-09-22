@@ -1,7 +1,9 @@
 import { db } from '../db';
 import { whatsappService } from '../whatsapp/service';
 import { telegramBot } from '../telegram/bot';
+import { telegramQueue } from '../telegram/queue';
 import { kokosClient } from '../kokos/client';
+import { pinexClient } from '../pinex/client';
 import { GAME_CATEGORIES, GameCategory, GamePackage, PAYMENT_ACCOUNTS, findGameCategory, findPackage, formatWhatsAppRow, formatWhatsAppButton } from './game-catalog';
 import { extractCleanUid, extractPaymentProof, getAccountFieldInfo, getGameDeliveryConfig, isGratitudeOrPleasantry, isStatusInquiry, isGreetingOrMenu, parseSlashCommand, isRefusalOrCancellation, isPriceInquiry } from './input-parser';
 import { ConversationSessionState, OrderItem } from '@/types';
@@ -770,9 +772,9 @@ ${game.inputPrompt}`;
             console.warn('[Kokos Auto-Fulfill Error]:', kokosResult.error);
             // Log fallback in customer notes
             order.customer_notes = `${order.customer_notes} | ⚠️ Kokos Auto-Fulfill Failed: ${kokosResult.error?.errorCode || 'Error'}`;
-            // Fallback to Telegram Worker Bot so humans can fulfill
-            telegramBot.dispatchNewOrder(order).catch(err => {
-              console.warn('[Telegram Worker Dispatch Warning]:', err);
+            // Fallback to Telegram Worker Bot Queue so humans can fulfill in order
+            telegramQueue.enqueueOrder(order).catch(err => {
+              console.warn('[Telegram Worker Queue Enqueue Warning]:', err);
             });
 
             // Send standard order confirmation to customer
@@ -790,9 +792,100 @@ ${game.inputPrompt}`;
         }
       }
 
-      // Default Flow (Kokos Auto-Fulfill is OFF or other game category): Dispatch to Telegram Worker Bot
-      telegramBot.dispatchNewOrder(order).catch(err => {
-        console.warn('[Telegram Worker Dispatch Warning]:', err);
+      // Check if this order is eligible for Pinex API Auto-Fulfillment (Free Fire)
+      const isFreeFire = selectedGame === 'game_ff' ||
+        (session.draftOrder.selectedGameLabel || '').toLowerCase().includes('free fire') ||
+        (session.draftOrder.selectedGameLabel || '').toLowerCase().includes('ff') ||
+        (productName || '').toLowerCase().includes('diamond');
+      const isPinexEnabled = db.isPinexAutoFulfillEnabled() && pinexClient.isConfigured();
+
+      if (isFreeFire && isPinexEnabled) {
+        if (playerUid && playerUid !== 'N/A') {
+          console.log(`[Pinex Auto-Fulfill] Processing Free Fire Order #${order.order_id} for Player ${playerUid}...`);
+
+          const pinexResult = await pinexClient.autoRedeemFreeFire({
+            playerId: playerUid,
+            packageNameOrAmount: item?.skuOrName || productName,
+            orderId: order.order_id
+          });
+
+          if (pinexResult.success) {
+            console.log(`[Pinex Auto-Fulfill Success] Free Fire Order #${order.order_id} delivered immediately.`);
+
+            // Mark order delivered in database with Pinex details
+            await db.updateOrderStatus(
+              order.order_id,
+              'DELIVERED',
+              {
+                isAdminOverride: true,
+                notes: `Pinex Auto-Fulfilled | TRX: ${pinexResult.trxIdOrContent || 'COMPLETED'} | Player: ${pinexResult.nickname || playerUid}`
+              }
+            );
+
+            // Automated delivery message to customer on WhatsApp
+            const deliveryMsg = `🎉 *Free Fire ডায়মন্ড টপ-আপ সফলভাবে সম্পন্ন হয়েছে!*
+
+🔥 *সার্ভিস:* Free Fire (Direct UID Top-Up)
+👤 *Player Name:* \`${pinexResult.nickname || 'In-Game Player'}\`
+🆔 *Player UID:* \`${playerUid}\`
+💎 *প্যাকেজ:* *${item?.skuOrName || productName}*
+🧾 *Pinex TRX ID:* \`${pinexResult.trxIdOrContent || 'COMPLETED'}\`
+💰 *অর্ডার আইডি:* \`#${order.order_id}\`
+
+আপনার অ্যাকাউন্টে ডায়মন্ড যোগ হয়ে গেছে। ধন্যবাদ সাথে থাকার জন্য! ❤️`;
+
+            const buttons = [
+              { id: 'btn_main_menu', title: '🎮 নতুন অর্ডার করুন' },
+              { id: `track:${order.order_id}`, title: '📦 অর্ডার বিস্তারিত' }
+            ];
+
+            await whatsappService.sendInteractiveButtons(phone, deliveryMsg, buttons, 'টপ-আপ ডেলিভারি সম্পন্ন');
+
+            await db.addMessage({
+              conversationId,
+              sender: 'BOT',
+              content: deliveryMsg,
+              metadata: { orderId: order.order_id, pinexResult, step: 'DELIVERED' }
+            });
+
+            // NO Telegram bot needed for Free Fire auto-fulfillment as requested!
+            return;
+          } else {
+            console.log(`[Pinex Auto-Fulfill Response] Order #${order.order_id} status: ${pinexResult.status}`);
+
+            // Send confirmation that order is accepted and being processed via Pinex
+            const processingMsg = `🎉 *অর্ডার #${order.order_id} গ্রহণ করা হয়েছে!*
+
+🔥 *সার্ভিস:* Free Fire (Direct UID Top-Up)
+🆔 *Player UID:* \`${playerUid}\`
+💎 *প্যাকেজ:* *${item?.skuOrName || productName}*
+⚡ *স্ট্যাটাস:* স্বয়ংক্রিয়ভাবে টপ-আপ প্রসেস হচ্ছে...
+
+কিছুক্ষণের মধ্যে আপনার ফ্রি ফায়ার আইডিতে ডায়মন্ড যুক্ত হয়ে যাবে।`;
+
+            const buttons = [
+              { id: `track:${order.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
+              { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
+            ];
+
+            await whatsappService.sendInteractiveButtons(phone, processingMsg, buttons, 'অর্ডার প্রসেস হচ্ছে');
+
+            await db.addMessage({
+              conversationId,
+              sender: 'BOT',
+              content: processingMsg,
+              metadata: { orderId: order.order_id, pinexResult, step: 'ORDER_PLACED' }
+            });
+
+            // NO Telegram bot needed for Free Fire auto-fulfillment as requested!
+            return;
+          }
+        }
+      }
+
+      // Default Flow: Enqueue to Telegram Worker Group (for other games like PUBG Login/QR, Efootball, Subscriptions, etc.)
+      telegramQueue.enqueueOrder(order).catch(err => {
+        console.warn('[Telegram Worker Queue Enqueue Warning]:', err);
       });
 
       // Send WhatsApp structured order confirmation
