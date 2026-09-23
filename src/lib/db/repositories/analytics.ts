@@ -4,6 +4,7 @@ import { OrderModel } from '../models/Order';
 import { mockStore } from '../mock-store';
 import { ordersRepository } from './orders';
 import { pricingRepository } from './pricing';
+import { workersRepository } from './workers';
 
 export const analyticsRepository = {
   // PAYMENTS
@@ -85,9 +86,10 @@ export const analyticsRepository = {
   },
 
   async getAnalyticsSummary() {
-    const [orders, allProducts] = await Promise.all([
+    const [orders, allProducts, workers] = await Promise.all([
       ordersRepository.getOrders(),
-      pricingRepository.getAllProducts()
+      pricingRepository.getAllProducts(),
+      workersRepository.getWorkers().catch(() => [])
     ]);
 
     // Product base cost lookup map (by ID and lowercased name)
@@ -149,10 +151,21 @@ export const analyticsRepository = {
       }
     }
 
-    // Today & This Month Calculations
+    // Helper functions for timezone-resilient date string extraction
+    const getFormattedDateKey = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const getFormattedMonthKey = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const getUtcDateKey = (d: Date) =>
+      d.toISOString().slice(0, 10);
+    const getUtcMonthKey = (d: Date) =>
+      d.toISOString().slice(0, 7);
+
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
-    const thisMonthStr = now.toISOString().slice(0, 7);
+    const todayLocalKey = getFormattedDateKey(now);
+    const todayUtcKey = getUtcDateKey(now);
+    const thisMonthLocalKey = getFormattedMonthKey(now);
+    const thisMonthUtcKey = getUtcMonthKey(now);
 
     let todaySales = 0;
     let todayProfit = 0;
@@ -167,7 +180,7 @@ export const analyticsRepository = {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const dateKey = d.toISOString().slice(0, 10);
+      const dateKey = getFormattedDateKey(d);
       const displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       dailyMap.set(dateKey, {
         date: dateKey,
@@ -180,12 +193,13 @@ export const analyticsRepository = {
     }
 
     // Monthly Trend (Last 6 Months)
-    const monthlyMap = new Map<string, { month: string; displayMonth: string; revenue: number; profit: number; orders: number }>();
+    const monthlyMap = new Map<string, { monthKey: string; month: string; displayMonth: string; revenue: number; profit: number; orders: number }>();
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthKey = d.toISOString().slice(0, 7);
+      const monthKey = getFormattedMonthKey(d);
       const displayMonth = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
       monthlyMap.set(monthKey, {
+        monthKey,
         month: monthKey,
         displayMonth,
         revenue: 0,
@@ -194,43 +208,69 @@ export const analyticsRepository = {
       });
     }
 
-    // Top Selling Packages Map
-    const packageStatsMap = new Map<string, { name: string; quantity: number; revenue: number; profit: number }>();
+    // Top Selling Packages Map with margin calculation
+    const packageCountMap = new Map<string, { name: string; count: number; revenue: number; profit: number; margin: number }>();
+    // Payment Breakdown Map
+    const paymentMap = new Map<string, { name: string; count: number; value: number }>();
 
     for (const o of orders) {
       if (o.status === 'CANCELLED') continue;
 
-      const oDate = o.created_at ? o.created_at.slice(0, 10) : '';
-      const oMonth = o.created_at ? o.created_at.slice(0, 7) : '';
+      const oDate = o.created_at ? new Date(o.created_at) : null;
+      const isValidDate = Boolean(oDate && !isNaN(oDate.getTime()));
+      const oDateLocal = isValidDate ? getFormattedDateKey(oDate!) : '';
+      const oDateUtc = isValidDate ? getUtcDateKey(oDate!) : '';
+      const oMonthLocal = isValidDate ? getFormattedMonthKey(oDate!) : '';
+      const oMonthUtc = isValidDate ? getUtcMonthKey(oDate!) : '';
+
       const { revenue, profit } = helperGetOrderProfit(o);
 
-      if (oDate === todayStr) {
+      // Check if order belongs to today (checking both local & UTC dates)
+      if (isValidDate && (oDateLocal === todayLocalKey || oDateUtc === todayUtcKey)) {
         todaySales += revenue;
         todayProfit += profit;
         todayOrdersCount++;
       }
 
-      if (oMonth === thisMonthStr) {
+      // Check if order belongs to this month (checking both local & UTC months)
+      if (isValidDate && (oMonthLocal === thisMonthLocalKey || oMonthUtc === thisMonthUtcKey)) {
         thisMonthSales += revenue;
         thisMonthProfit += profit;
         thisMonthOrdersCount++;
       }
 
-      if (dailyMap.has(oDate)) {
-        const item = dailyMap.get(oDate)!;
-        item.revenue += revenue;
-        item.profit += profit;
-        item.orders++;
-        if (o.status === 'DELIVERED') item.delivered++;
+      // Aggregate into Daily Trend
+      if (isValidDate) {
+        const dKey = dailyMap.has(oDateLocal)
+          ? oDateLocal
+          : dailyMap.has(oDateUtc)
+          ? oDateUtc
+          : null;
+        if (dKey && dailyMap.has(dKey)) {
+          const item = dailyMap.get(dKey)!;
+          item.revenue += revenue;
+          item.profit += profit;
+          item.orders++;
+          if (o.status === 'DELIVERED') item.delivered++;
+        }
       }
 
-      if (monthlyMap.has(oMonth)) {
-        const item = monthlyMap.get(oMonth)!;
-        item.revenue += revenue;
-        item.profit += profit;
-        item.orders++;
+      // Aggregate into Monthly Trend
+      if (isValidDate) {
+        const mKey = monthlyMap.has(oMonthLocal)
+          ? oMonthLocal
+          : monthlyMap.has(oMonthUtc)
+          ? oMonthUtc
+          : null;
+        if (mKey && monthlyMap.has(mKey)) {
+          const item = monthlyMap.get(mKey)!;
+          item.revenue += revenue;
+          item.profit += profit;
+          item.orders++;
+        }
       }
 
+      // Aggregate Package Popularity & Profit
       if (Array.isArray(o.items)) {
         for (const item of o.items) {
           const pName = item.product_name || 'Top-Up Item';
@@ -242,49 +282,98 @@ export const analyticsRepository = {
           const itemCost = (prodInfo?.basePrice !== undefined ? prodInfo.basePrice : Math.round(uPrice * 0.82)) * qty;
           const itemProfit = Math.max(0, itemRev - itemCost);
 
-          if (!packageStatsMap.has(pName)) {
-            packageStatsMap.set(pName, { name: pName, quantity: 0, revenue: 0, profit: 0 });
-          }
-          const pkg = packageStatsMap.get(pName)!;
-          pkg.quantity += qty;
-          pkg.revenue += itemRev;
-          pkg.profit += itemProfit;
+          const prev = packageCountMap.get(pName) || { name: pName, count: 0, revenue: 0, profit: 0, margin: 0 };
+          prev.count += qty;
+          prev.revenue += itemRev;
+          prev.profit += itemProfit;
+          prev.margin = prev.revenue > 0 ? Math.round((prev.profit / prev.revenue) * 100) : 0;
+          packageCountMap.set(pName, prev);
         }
       }
+
+      // Aggregate Payment Breakdown
+      const rawMethod = o.payment_method || (o.delivery_address as any)?.payment_method || 'bKash';
+      const cleanMethod = rawMethod.trim().toUpperCase();
+      const displayMethodName = cleanMethod.includes('NAGAD')
+        ? 'Nagad'
+        : cleanMethod.includes('ROCKET')
+        ? 'Rocket'
+        : cleanMethod.includes('UPAY')
+        ? 'Upay'
+        : cleanMethod.includes('BKASH')
+        ? 'bKash'
+        : rawMethod;
+
+      const prevPay = paymentMap.get(displayMethodName) || { name: displayMethodName, count: 0, value: 0 };
+      prevPay.count += 1;
+      prevPay.value += revenue;
+      paymentMap.set(displayMethodName, prevPay);
     }
 
-    const topSellingPackages = Array.from(packageStatsMap.values())
-      .sort((a, b) => b.revenue - a.revenue)
+    const topPackages = Array.from(packageCountMap.values())
+      .sort((a, b) => b.count - a.count)
       .slice(0, 5);
+
+    const paymentBreakdown = Array.from(paymentMap.values())
+      .sort((a, b) => b.value - a.value);
+
+    const activeWorkers = workers.filter(w => w.is_active).length;
+    const totalWorkers = workers.length;
 
     const overallMargin = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 100) : 0;
     const deliveredMargin = deliveredRevenue > 0 ? Math.round((deliveredProfit / deliveredRevenue) * 100) : 0;
+    const todayMargin = todaySales > 0 ? Math.round((todayProfit / todaySales) * 100) : 0;
+    const thisMonthMargin = thisMonthSales > 0 ? Math.round((thisMonthProfit / thisMonthSales) * 100) : 0;
+
+    const dailyTrend = Array.from(dailyMap.values());
+    const monthlyTrend = Array.from(monthlyMap.values());
+
+    const overview = {
+      totalOrders,
+      deliveredOrders,
+      pendingOrders,
+      cancelledOrders,
+      completionRate: totalOrders > 0 ? Math.round((deliveredOrders / totalOrders) * 100) : 0,
+      totalRevenue,
+      deliveredRevenue,
+      pendingRevenue,
+      totalProfit,
+      deliveredProfit,
+      pendingProfit,
+      totalMargin: overallMargin,
+      overallMargin,
+      deliveredMargin,
+      todaySales,
+      todayProfit,
+      todayMargin,
+      todayOrdersCount,
+      thisMonthSales,
+      thisMonthProfit,
+      thisMonthMargin,
+      thisMonthOrdersCount,
+      activeWorkers,
+      totalWorkers
+    };
 
     return {
-      overview: {
-        totalOrders,
-        deliveredOrders,
-        pendingOrders,
-        cancelledOrders,
-        completionRate: totalOrders > 0 ? Math.round((deliveredOrders / totalOrders) * 100) : 0,
-        totalRevenue,
-        totalProfit,
-        overallMargin,
-        deliveredRevenue,
-        deliveredProfit,
-        deliveredMargin,
-        pendingRevenue,
-        pendingProfit,
-        todaySales,
-        todayProfit,
-        todayOrdersCount,
-        thisMonthSales,
-        thisMonthProfit,
-        thisMonthOrdersCount
-      },
-      dailyTrends: Array.from(dailyMap.values()),
-      monthlyTrends: Array.from(monthlyMap.values()),
-      topSellingPackages
+      // 1. Direct top-level properties for src/app/page.tsx
+      ...overview,
+      dailyTrend,
+      monthlyTrend,
+      topPackages,
+      paymentBreakdown,
+
+      // 2. Compatibility aliases and nested overview
+      overview,
+      dailyTrends: dailyTrend,
+      monthlyTrends: monthlyTrend,
+      topSellingPackages: topPackages.map(p => ({
+        name: p.name,
+        quantity: p.count,
+        revenue: p.revenue,
+        profit: p.profit,
+        margin: p.margin
+      }))
     };
   }
 };

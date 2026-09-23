@@ -75,7 +75,49 @@ export default function DashboardOverviewPage() {
         fetch('/api/workers')
       ]);
       const dataAnalytics = await resAnalytics.json();
-      if (dataAnalytics.success) setAnalytics(dataAnalytics.stats);
+      if (dataAnalytics.success && dataAnalytics.stats) {
+        const stats = dataAnalytics.stats;
+        const normalized: AnalyticsData = {
+          totalOrders: stats.totalOrders ?? stats.overview?.totalOrders ?? 0,
+          deliveredOrders: stats.deliveredOrders ?? stats.overview?.deliveredOrders ?? 0,
+          pendingOrders: stats.pendingOrders ?? stats.overview?.pendingOrders ?? 0,
+          cancelledOrders: stats.cancelledOrders ?? stats.overview?.cancelledOrders ?? 0,
+          totalRevenue: stats.totalRevenue ?? stats.overview?.totalRevenue ?? 0,
+          deliveredRevenue: stats.deliveredRevenue ?? stats.overview?.deliveredRevenue ?? 0,
+          pendingRevenue: stats.pendingRevenue ?? stats.overview?.pendingRevenue ?? 0,
+          totalProfit: stats.totalProfit ?? stats.overview?.totalProfit ?? 0,
+          deliveredProfit: stats.deliveredProfit ?? stats.overview?.deliveredProfit ?? 0,
+          pendingProfit: stats.pendingProfit ?? stats.overview?.pendingProfit ?? 0,
+          totalMargin: stats.totalMargin ?? stats.overview?.totalMargin ?? stats.overview?.overallMargin ?? 0,
+          todaySales: stats.todaySales ?? stats.overview?.todaySales ?? 0,
+          todayProfit: stats.todayProfit ?? stats.overview?.todayProfit ?? 0,
+          todayMargin: stats.todayMargin ?? stats.overview?.todayMargin ?? 0,
+          todayOrdersCount: stats.todayOrdersCount ?? stats.overview?.todayOrdersCount ?? 0,
+          thisMonthSales: stats.thisMonthSales ?? stats.overview?.thisMonthSales ?? 0,
+          thisMonthProfit: stats.thisMonthProfit ?? stats.overview?.thisMonthProfit ?? 0,
+          thisMonthMargin: stats.thisMonthMargin ?? stats.overview?.thisMonthMargin ?? 0,
+          thisMonthOrdersCount: stats.thisMonthOrdersCount ?? stats.overview?.thisMonthOrdersCount ?? 0,
+          dailyTrend: stats.dailyTrend || stats.dailyTrends || [],
+          monthlyTrend: (stats.monthlyTrend || stats.monthlyTrends || []).map((m: any) => ({
+            monthKey: m.monthKey || m.month || '',
+            displayMonth: m.displayMonth || '',
+            revenue: m.revenue || 0,
+            profit: m.profit || 0,
+            orders: m.orders || 0
+          })),
+          topPackages: (stats.topPackages || stats.topSellingPackages || []).map((p: any) => ({
+            name: p.name || '',
+            count: p.count ?? p.quantity ?? 0,
+            revenue: p.revenue ?? 0,
+            profit: p.profit ?? 0,
+            margin: p.margin ?? 0
+          })),
+          paymentBreakdown: stats.paymentBreakdown || [],
+          activeWorkers: stats.activeWorkers ?? stats.overview?.activeWorkers ?? 0,
+          totalWorkers: stats.totalWorkers ?? stats.overview?.totalWorkers ?? 0
+        };
+        setAnalytics(normalized);
+      }
 
       const dataWorkers = await resWorkers.json();
       if (dataWorkers.success) setWorkers(dataWorkers.workers);

@@ -19,7 +19,7 @@ export async function getOrders(filter?: { status?: OrderStatus; limit?: number 
       }
 
       const docs = await q.lean();
-      if (docs && docs.length > 0) {
+      if (docs) {
         return docs.map((doc: any) => hydrateOrder(doc));
       }
     } catch (err) {
@@ -86,7 +86,7 @@ export async function getOrdersByPhone(phone: string): Promise<Order[]> {
       .sort({ created_at: -1 })
       .lean();
 
-      if (docs && docs.length > 0) {
+      if (docs) {
         return docs.map((doc: any) => hydrateOrder(doc));
       }
     } catch (err) {
