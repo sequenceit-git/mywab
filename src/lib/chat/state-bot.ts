@@ -204,6 +204,12 @@ export const stateBot = {
       }
     }
 
+    // 8b. Email verification code capture (PUBG KR / eFootball "code method" only — worker requested this via Telegram)
+    if (session.step === 'AWAITING_VERIFICATION_CODE' && !triggerId.startsWith('game_') && !triggerId.startsWith('pkg_')) {
+      await this.handleVerificationCodeInput(phone, conversationId, rawText, session);
+      return;
+    }
+
     // 9. Check if trigger or text is selecting one of the game categories (supported in any step!)
     const baseGame = findGameCategory(triggerId) || findGameCategory(rawText);
     const matchedGame = baseGame ? (db.getCachedCategory(baseGame.id) || baseGame) : undefined;
@@ -240,6 +246,10 @@ export const stateBot = {
 
       case 'AWAITING_PAYMENT':
         await this.handleCheckPayment(phone, conversationId, triggerId, rawText, session);
+        break;
+
+      case 'AWAITING_VERIFICATION_CODE':
+        await this.handleVerificationCodeInput(phone, conversationId, rawText, session);
         break;
 
       case 'ORDER_PLACED':
@@ -863,6 +873,69 @@ ${payUrl || 'https://secure.zinipay.com'}
       if (orderIdCode) {
         await telegramBot.notifyWorkerQrAction(orderIdCode, 'REFRESH_REQUESTED');
       }
+    }
+  },
+
+  /**
+   * Capture customer's email verification code and forward it to the Telegram worker
+   * (PUBG KR / eFootball "code method" fulfillment only — triggered when worker requests a code via Telegram)
+   */
+  async handleVerificationCodeInput(
+    phone: string,
+    conversationId: string,
+    rawText: string,
+    session: ConversationSessionState
+  ): Promise<void> {
+    const code = rawText.trim();
+
+    if (!code || code.length < 3) {
+      await whatsappService.sendMessage(
+        phone,
+        '⚠️ কোডটি স্পষ্টভাবে বুঝতে পারিনি। অনুগ্রহ করে আপনার ইমেইলে পাওয়া ভেরিফিকেশন কোডটি সরাসরি টাইপ করে পাঠান।'
+      );
+      return;
+    }
+
+    let orderIdCode = session.draftOrder.pendingOrderId || '';
+
+    // If not tracked in session (e.g. session lost on serverless restart), fall back to recent active order for this phone
+    if (!orderIdCode) {
+      const activeOrders = await db.getOrders({ limit: 10 });
+      const cleanPhone = phone.replace(/\D/g, '');
+      const recentOrder = activeOrders.find(o =>
+        o.delivery_phone.replace(/\D/g, '').includes(cleanPhone) &&
+        ['PROCESSING', 'CLAIMED'].includes(o.status)
+      );
+      if (recentOrder) {
+        orderIdCode = recentOrder.order_id;
+      }
+    }
+
+    const replyMsg =
+`✅ *কোডটি পাওয়া গেছে!*
+
+আমাদের টপ-আপ টিমকে কোডটি পাঠানো হয়েছে। অনুগ্রহ করে একটু অপেক্ষা করুন — কোড দিয়ে লগইন সফল হলে আপনি কনফার্মেশন মেসেজ পাবেন। কোডের মেয়াদ শেষ হয়ে গেলে আমরা আপনাকে আবার নতুন কোডের জন্য জানাবো। ⏳✨`;
+
+    const buttons = [
+      { id: `track:${orderIdCode || ''}`, title: '📦 অর্ডার স্ট্যাটাস' },
+      { id: 'btn_main_menu', title: '🎮 মেইন মেনু' }
+    ];
+
+    await whatsappService.sendInteractiveButtons(phone, replyMsg, buttons, 'কোড রিসিভড');
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: replyMsg,
+      metadata: { step: 'CODE_RECEIVED', orderId: orderIdCode }
+    });
+
+    db.setSessionState(conversationId, {
+      step: 'ORDER_PLACED',
+      draftOrder: { ...session.draftOrder, pendingOrderId: undefined }
+    });
+
+    if (orderIdCode) {
+      await telegramBot.notifyWorkerCodeReceived(orderIdCode, code);
     }
   },
 

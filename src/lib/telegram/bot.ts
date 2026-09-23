@@ -168,6 +168,23 @@ export const telegramBot = {
     const hasQrSent = (order.customer_notes || '').includes('QR Code forwarded') || (order.customer_notes || '').includes('Storage:');
     const hasQrScanned = (order.customer_notes || '').includes('Customer Scanned') || (order.customer_notes || '').includes('QR_SCANNED');
 
+    // Email Verification "Code Method" orders (PUBG KR + eFootball Android/iOS only)
+    const isCodeOrder =
+      gameTitle.toLowerCase().includes('korean') ||
+      gameTitle.toLowerCase().includes('efootball') ||
+      (firstItem?.product_name || '').toLowerCase().includes('korean') ||
+      (firstItem?.product_name || '').toLowerCase().includes('efootball');
+
+    const codeBanner = isCodeOrder ? `\n📧 <b>[EMAIL CODE VERIFICATION ORDER]</b>\n` : '';
+    const codeNotes = order.customer_notes || '';
+    const lastCodeRequestIdx = codeNotes.lastIndexOf('CODE_REQUESTED');
+    const lastCodeReceivedIdx = codeNotes.lastIndexOf('CODE_RECEIVED:');
+    const hasCodeRequested = lastCodeRequestIdx !== -1;
+    const hasCodeReceived = lastCodeReceivedIdx !== -1 && lastCodeReceivedIdx > lastCodeRequestIdx;
+    const receivedCode = hasCodeReceived
+      ? (codeNotes.slice(lastCodeReceivedIdx).match(/CODE_RECEIVED:\s*([^|]+)/i)?.[1] || '').trim()
+      : '';
+
     if (order.status === 'CLAIMED' || order.status === 'PROCESSING') {
       if (isQrOrder) {
         if (hasQrScanned) {
@@ -258,6 +275,104 @@ ${itemsText}
               inline_keyboard: [
                 [
                   { text: '📸 Send QR Screenshot (ছবি পাঠান)', callback_data: `qr_hint:${order.order_id}` }
+                ],
+                [
+                  { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+                ]
+              ]
+            }
+          };
+        }
+      } else if (isCodeOrder) {
+        if (hasCodeReceived) {
+          // Stage 3: Customer sent the code -> Worker verifies it on the site
+          return {
+            cardHtml:
+`🔑 <b>CODE RECEIVED FROM CUSTOMER! / কাস্টমার কোড পাঠিয়েছেন</b>${codeBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
+🔑 <b>Verification Code:</b> <code>${receivedCode || 'N/A'}</code>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>
+${proofLines}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+
+💎 <b>Packages:</b>
+${itemsText}
+
+✅ <b>কাস্টমার কোড পাঠিয়েছে!</b> কোডটি দিয়ে সাইটে লগইন/ভেরিফাই করুন। কোড কাজ না করলে নিচে <b>"Code Expired"</b> চাপুন, সফল হলে <b>"Order Completed"</b> চাপুন।`,
+            replyMarkup: {
+              inline_keyboard: [
+                [
+                  { text: '✅ Order Completed (ডেলিভারী সম্পন্ন)', callback_data: `status_delivered:${order.order_id}` }
+                ],
+                [
+                  { text: '🔄 Code Expired / Request New Code', callback_data: `code_request:${order.order_id}` }
+                ],
+                [
+                  { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+                ]
+              ]
+            }
+          };
+        } else if (hasCodeRequested) {
+          // Stage 2: Code requested from customer -> Waiting for customer's reply
+          return {
+            cardHtml:
+`📧 <b>CODE REQUESTED — WAITING FOR CUSTOMER / কোডের অপেক্ষায়</b>${codeBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>
+${proofLines}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+
+💎 <b>Packages:</b>
+${itemsText}
+
+⏳ <i>কাস্টমারকে ইমেইলের কোড পাঠাতে বলা হয়েছে। কাস্টমার কোড পাঠালে সাথে সাথে এখানে আপডেট আসবে।</i>`,
+            replyMarkup: {
+              inline_keyboard: [
+                [
+                  { text: '🔄 Code Expired / Resend Request', callback_data: `code_request:${order.order_id}` }
+                ],
+                [
+                  { text: '✅ Order Completed', callback_data: `status_delivered:${order.order_id}` }
+                ],
+                [
+                  { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+                ]
+              ]
+            }
+          };
+        } else {
+          // Stage 1: Claimed, waiting for worker to request the code from customer
+          return {
+            cardHtml:
+`✅ <b>ORDER CLAIMED — REQUEST CODE / কোড রিকোয়েস্ট করুন</b>${codeBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>
+${proofLines}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+📝 <b>Notes:</b> ${order.customer_notes || 'None'}
+
+💎 <b>Packages:</b>
+${itemsText}
+
+📧 <b>ACTION REQUIRED:</b>
+লগইন করার সময় সাইট ইমেইলে ভেরিফিকেশন কোড চাইবে। নিচের বাটনে চাপ দিয়ে কাস্টমারকে কোড দিতে বলুন — কাস্টমারের WhatsApp-এ মেসেজ চলে যাবে।`,
+            replyMarkup: {
+              inline_keyboard: [
+                [
+                  { text: '📧 Request Verification Code', callback_data: `code_request:${order.order_id}` }
                 ],
                 [
                   { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
@@ -610,6 +725,68 @@ ${queueBadge}${pendingQrHint}`,
         false
       );
       return { success: true, message: 'QR resend hint shown' };
+    }
+
+    // Email Verification "Code Method" action (PUBG KR / eFootball) — worker requests/re-requests code
+    if (action === 'code_request') {
+      // Must be claimed first
+      if (!assignedTelegramId || existingOrder.status === 'PENDING_CLAIM' || existingOrder.status === 'PENDING_PAYMENT') {
+        await this.answerCallbackQuery(id, `⚠️ প্রথমে 'Claim Order' বাটনে ক্লিক করে অর্ডারটি গ্রহণ করুন!`, true);
+        return { success: false, message: 'Order must be claimed first' };
+      }
+
+      // Check worker lock
+      if (assignedTelegramId !== from.id) {
+        await this.answerCallbackQuery(
+          id,
+          `⛔ একশন বাতিল!\nএই অর্ডারটি [${assignedWorkerName}] ক্লেইম করেছেন। শুধুমাত্র তিনি অথবা অ্যাডমিন প্যানেল এতে একশন নিতে পারবেন।`,
+          true
+        );
+        return { success: false, message: `Unauthorized: Claimed by ${assignedWorkerName}` };
+      }
+
+      const isResend = (existingOrder.customer_notes || '').includes('CODE_REQUESTED');
+
+      try {
+        const sendResult = await whatsappService.sendVerificationCodeRequest(existingOrder.delivery_phone, existingOrder.order_id, isResend);
+        if (!sendResult.success) {
+          await this.answerCallbackQuery(id, `⚠️ কাস্টমারকে নোটিফাই করা যায়নি: ${sendResult.error || 'Unknown error'}`, true);
+          return { success: false, message: sendResult.error || 'Failed to notify customer' };
+        }
+
+        // Put the customer's WhatsApp session into AWAITING_VERIFICATION_CODE mode so the next text they send is captured as the code
+        try {
+          const conversation = await db.getOrCreateConversation(existingOrder.delivery_phone);
+          const currentSession = db.getSessionState(conversation.id);
+          db.setSessionState(conversation.id, {
+            step: 'AWAITING_VERIFICATION_CODE',
+            draftOrder: { ...currentSession.draftOrder, pendingOrderId: existingOrder.order_id }
+          });
+        } catch (convErr) {
+          console.error('[Telegram code_request] Failed to set customer session state:', convErr);
+        }
+
+        const updatedNotes = `${existingOrder.customer_notes || ''} | CODE_REQUESTED:${new Date().toLocaleTimeString()}`;
+        await db.updateOrderStatus(existingOrder.order_id, existingOrder.status, { notes: updatedNotes });
+
+        const refreshedOrder = (await db.getOrderByCode(existingOrder.order_id)) || existingOrder;
+
+        if (message) {
+          const { cardHtml, replyMarkup } = this.generateOrderCard(refreshedOrder, workerName);
+          await this.editMessageText(message.chat.id, message.message_id, cardHtml, replyMarkup);
+        }
+
+        await this.answerCallbackQuery(
+          id,
+          isResend ? '🔄 কাস্টমারকে নতুন কোডের জন্য নোটিফাই করা হয়েছে!' : '📧 কাস্টমারকে কোডের জন্য নোটিফাই করা হয়েছে!',
+          false
+        );
+        return { success: true, message: 'Code request sent to customer' };
+      } catch (codeErr) {
+        console.error('[Telegram code_request Error]:', codeErr);
+        await this.answerCallbackQuery(id, `⚠️ Error requesting code: ${String(codeErr)}`, true);
+        return { success: false, message: String(codeErr) };
+      }
     }
 
     // 1. ACTION: CLAIM ORDER
@@ -1748,6 +1925,50 @@ ${cardHtml}`;
         order.telegram_message_id = sendRes.result.message_id;
         await db.updateOrderTelegramMessageId(order.id, sendRes.result.message_id);
       }
+    }
+  },
+
+  /**
+   * Notify worker in Telegram when customer sends the email verification code on WhatsApp
+   * (PUBG KR / eFootball "code method" fulfillment)
+   */
+  async notifyWorkerCodeReceived(orderIdCode: string, code: string): Promise<void> {
+    if (!env.telegram.isConfigured) return;
+
+    const order = await db.getOrderByCode(orderIdCode);
+    if (!order) return;
+
+    const workerName = order.current_worker?.full_name || 'Worker';
+
+    const updatedNotes = `${order.customer_notes || ''} | CODE_RECEIVED:${code}`;
+    await db.updateOrderStatus(order.order_id, order.status, { notes: updatedNotes });
+
+    const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
+
+    // Remove the previous card so there are never duplicate messages with buttons
+    const prevMsgId = refreshedOrder.telegram_message_id;
+    if (prevMsgId) {
+      try {
+        await this.deleteMessage(env.telegram.workerGroupId, prevMsgId);
+        console.log(`[Telegram Code Received] Deleted previous order card #${prevMsgId} for Order #${refreshedOrder.order_id}`);
+      } catch (delErr) {
+        console.warn('[Telegram Code Received] Failed to delete previous card:', delErr);
+        await this.editMessageReplyMarkup(env.telegram.workerGroupId, prevMsgId, { inline_keyboard: [] });
+      }
+    }
+
+    const { cardHtml, replyMarkup } = this.generateOrderCard(refreshedOrder, workerName);
+    const msg =
+`📨 <b>[Order #${refreshedOrder.order_id}] CUSTOMER SENT CODE! / কাস্টমার কোড পাঠিয়েছেন</b>
+
+🔑 <b>Code:</b> <code>${code}</code>
+
+${cardHtml}`;
+
+    const sendRes = await this.sendMessage(env.telegram.workerGroupId, msg, { reply_markup: sanitizeReplyMarkup(replyMarkup) });
+    if (sendRes.ok && sendRes.result?.message_id) {
+      refreshedOrder.telegram_message_id = sendRes.result.message_id;
+      await db.updateOrderTelegramMessageId(refreshedOrder.id, sendRes.result.message_id);
     }
   }
 };

@@ -529,6 +529,33 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
   },
 
   /**
+   * Ask customer to check their email for a verification/security code and reply with it
+   * (Used for PUBG KR / eFootball "code method" fulfillment — worker triggers this from Telegram)
+   */
+  async sendVerificationCodeRequest(
+    toPhone: string,
+    orderIdCode: string,
+    isResend = false
+  ): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+
+    const bodyText = isResend
+      ? `⚠️ *কোডের মেয়াদ শেষ হয়ে গেছে!*\n\nআমাদের এডমিন আপনার ইমেইলে *নতুন* একটি ভেরিফিকেশন কোড পাঠিয়েছেন। অনুগ্রহ করে ইমেইল চেক করে নতুন কোডটি *এখানে টাইপ করে পাঠান*।\n\n📦 *অর্ডার আইডি:* \`#${orderIdCode}\``
+      : `📧 *ভেরিফিকেশন কোড প্রয়োজন!*\n\nআমাদের এডমিন আপনার ইমেইলে একটি ভেরিফিকেশন কোড পাঠিয়েছেন। অনুগ্রহ করে আপনার ইমেইল চেক করে কোডটি *এখানে টাইপ করে পাঠান*।\n\n📦 *অর্ডার আইডি:* \`#${orderIdCode}\``;
+
+    const buttons: WhatsAppButton[] = [
+      { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
+    ];
+
+    return await this.sendInteractiveButtons(
+      cleanPhone,
+      bodyText,
+      buttons,
+      isResend ? 'নতুন কোড প্রয়োজন' : 'ভেরিফিকেশন কোড প্রয়োজন'
+    );
+  },
+
+  /**
    * Send typing indicator and mark as read (shows "typing..." to customer in WhatsApp chat)
    */
   async markAsReadAndType(messageId: string): Promise<boolean> {

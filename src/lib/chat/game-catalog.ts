@@ -51,8 +51,8 @@ export const GAME_CATEGORIES: GameCategory[] = [
     fullName: 'PUBG MOBILE — LOGIN UC ( QR )',
     emoji: '📲',
     requiresUid: false,
-    inputLabel: 'Phone / Account Info',
-    inputPrompt: '📲 আপনার *WhatsApp নম্বর বা অ্যাকাউন্ট তথ্য* লিখে পাঠান (টপ-আপের সময় আমাদের এজেন্ট QR কোড দিয়ে লগইন করে দেবেন):',
+    inputLabel: 'Game UID / In-Game Name',
+    inputPrompt: '📲 আপনার *Game UID / Game ID* এবং *In-Game Name* লিখে পাঠান (টপ-আপের সময় আমাদের এজেন্ট QR কোড দিয়ে লগইন করে দেবেন):',
     packages: [
       { id: 'pkg_login_325', name: '300+25 UC (QR)', amount: '325', price: 520, basePrice: 420, description: 'QR Code Login Top-Up' },
       { id: 'pkg_login_660', name: '600+60 UC (QR)', amount: '660', price: 1000, basePrice: 820, description: 'QR Code Login Top-Up' },

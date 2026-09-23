@@ -131,8 +131,8 @@ export function getAccountFieldInfo(identifierValue?: string, gameLabelOrCode?: 
   if (game.includes('pubg')) {
     if (game.includes('login') || game.includes('special')) {
       return {
-        labelEn: 'Phone / Contact (QR)',
-        labelBn: 'হোয়াটসঅ্যাপ / যোগাযোগ নম্বর',
+        labelEn: 'Game UID / In-Game Name (QR)',
+        labelBn: 'Game UID / In-Game Name',
         emoji: '📲',
         isEmail: false
       };

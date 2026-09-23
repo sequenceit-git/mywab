@@ -154,6 +154,7 @@ export type ConversationStep =
   | 'SELECTING_PACKAGE' // Game chosen, price list shown, waiting for package tap
   | 'COLLECTING_UID'    // Package chosen, waiting for UID / account info text
   | 'AWAITING_PAYMENT'  // UID saved, payment info shown, waiting for TrxID text
+  | 'AWAITING_VERIFICATION_CODE' // Worker requested email verification code, waiting for customer to send it (PUBG KR / eFootball)
   | 'ORDER_PLACED';     // Order created, confirmation sent
 
 export interface DraftOrderItem {
