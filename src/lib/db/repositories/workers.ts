@@ -1,73 +1,60 @@
 import { Worker, OrderAssignment, Order } from '@/types';
-import { getDbClient, isSupabaseConfigured } from '../client';
+import { connectToDatabase, isDbConfigured } from '../client';
+import { WorkerModel } from '../models/Worker';
+import { OrderModel } from '../models/Order';
 import { mockStore } from '../mock-store';
 import { ordersRepository } from './orders';
 
 export const workersRepository = {
   async getWorkers(): Promise<Worker[]> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
+    if (isDbConfigured()) {
       try {
-        const { data: workers, error } = await client
-          .from('workers')
-          .select(`
-            *,
-            assignments:order_assignments(
-              id,
-              status,
-              order:orders(id, status)
-            )
-          `)
-          .order('created_at', { ascending: false });
+        await connectToDatabase();
+        const workers = await WorkerModel.find().sort({ created_at: -1 }).lean();
 
-        if (!error && workers) {
-          return workers.map((w: any) => {
-            const assignments = Array.isArray(w.assignments) ? w.assignments : [];
-            const activeCount = assignments.filter((a: any) => {
-              const currentStatus = a.order?.status || a.status;
-              return ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY'].includes(currentStatus);
-            }).length;
+        // Aggregate worker order counts
+        const orderCounts = await OrderModel.aggregate([
+          { $match: { 'current_worker.telegram_user_id': { $ne: null } } },
+          {
+            $group: {
+              _id: '$current_worker.telegram_user_id',
+              activeOrders: {
+                $sum: {
+                  $cond: [{ $in: ['$status', ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY']] }, 1, 0]
+                }
+              },
+              completedOrders: {
+                $sum: {
+                  $cond: [{ $eq: ['$status', 'DELIVERED'] }, 1, 0]
+                }
+              }
+            }
+          }
+        ]);
 
-            const completedCount = assignments.filter((a: any) => {
-              const currentStatus = a.order?.status || a.status;
-              return currentStatus === 'DELIVERED';
-            }).length;
-
-            return {
-              id: w.id,
-              telegram_user_id: w.telegram_user_id,
-              telegram_username: w.telegram_username,
-              full_name: w.full_name,
-              phone_number: w.phone_number,
-              role: w.role,
-              is_active: w.is_active,
-              created_at: w.created_at,
-              active_orders: activeCount,
-              total_completed_orders: completedCount
-            };
-          });
+        const countsMap = new Map<number, { active: number; completed: number }>();
+        for (const item of orderCounts) {
+          countsMap.set(Number(item._id), { active: item.activeOrders || 0, completed: item.completedOrders || 0 });
         }
-        if (error) console.error('Supabase getWorkers join error, falling back:', error);
 
-        // Fallback aggregation
-        const { data: baseWorkers } = await client.from('workers').select('*').order('created_at', { ascending: false });
-        const { data: allAssignments } = await client.from('order_assignments').select('*');
-        if (baseWorkers) {
-          return baseWorkers.map((w: any) => {
-            const wAssignments = (allAssignments || []).filter((a: any) => a.worker_id === w.id);
-            const activeCount = wAssignments.filter((a: any) => ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY'].includes(a.status)).length;
-            const completedCount = wAssignments.filter((a: any) => a.status === 'DELIVERED').length;
-            return {
-              ...w,
-              active_orders: activeCount,
-              total_completed_orders: completedCount
-            };
-          });
-        }
+        return workers.map((w: any) => {
+          const stats = countsMap.get(Number(w.telegram_user_id)) || { active: 0, completed: 0 };
+          return {
+            id: w.id,
+            telegram_user_id: w.telegram_user_id,
+            telegram_username: w.telegram_username,
+            full_name: w.full_name,
+            phone_number: w.phone_number,
+            role: w.role,
+            is_active: w.is_active,
+            created_at: w.created_at,
+            active_orders: stats.active,
+            total_completed_orders: stats.completed
+          };
+        });
       } catch (err) {
-        console.error('Supabase getWorkers error:', err);
+        console.error('[MongoDB getWorkers error]:', err);
       }
-      return [];
     }
 
     const orders = Array.from(mockStore.orders.values());
@@ -75,8 +62,7 @@ export const workersRepository = {
     return workers.map(w => {
       const workerOrders = orders.filter(o => 
         o.current_worker?.id === w.id || 
-        o.current_worker?.telegram_user_id === w.telegram_user_id ||
-        o.assignments?.some(a => a.worker_id === w.id || a.worker?.telegram_user_id === w.telegram_user_id)
+        o.current_worker?.telegram_user_id === w.telegram_user_id
       );
       const activeCount = workerOrders.filter(o => ['CLAIMED', 'PROCESSING', 'OUT_FOR_DELIVERY'].includes(o.status)).length;
       const completedCount = workerOrders.filter(o => o.status === 'DELIVERED').length;
@@ -89,14 +75,14 @@ export const workersRepository = {
   },
 
   async getWorkerByTelegramId(telegramUserId: number): Promise<Worker | null> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { data } = await client
-        .from('workers')
-        .select('*')
-        .eq('telegram_user_id', telegramUserId)
-        .single();
-      if (data) return data;
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        const doc = await WorkerModel.findOne({ telegram_user_id: telegramUserId }).lean();
+        if (doc) return doc as any;
+      } catch (err) {
+        console.error('[MongoDB getWorkerByTelegramId error]:', err);
+      }
     }
     for (const w of mockStore.workers.values()) {
       if (w.telegram_user_id === telegramUserId) return w;
@@ -111,51 +97,54 @@ export const workersRepository = {
     telegramUsername?: string;
   }): Promise<{ success: boolean; message: string; order?: Order; worker?: Worker }> {
     const { orderIdCode, telegramUserId, workerName, telegramUsername } = params;
-    const client = getDbClient();
 
-    if (isSupabaseConfigured() && client) {
+    if (isDbConfigured()) {
       try {
-        // 1. Ensure worker exists in Supabase
-        let { data: worker } = await client
-          .from('workers')
-          .select('*')
-          .eq('telegram_user_id', telegramUserId)
-          .single();
+        await connectToDatabase();
 
-        if (!worker) {
-          const { data: newWorker, error: createErr } = await client
-            .from('workers')
-            .insert({
-              telegram_user_id: telegramUserId,
-              telegram_username: telegramUsername || null,
-              full_name: workerName,
-              role: 'WORKER',
-              is_active: true
-            })
-            .select()
-            .single();
-
-          if (createErr) console.error('Failed to create worker in claimOrderAtomic:', createErr);
-          worker = newWorker;
+        // 1. Ensure worker exists in MongoDB
+        let workerDoc = await WorkerModel.findOne({ telegram_user_id: telegramUserId });
+        if (!workerDoc) {
+          workerDoc = await WorkerModel.create({
+            id: crypto.randomUUID(),
+            telegram_user_id: telegramUserId,
+            telegram_username: telegramUsername || null,
+            full_name: workerName,
+            role: 'WORKER',
+            is_active: true,
+            created_at: new Date().toISOString()
+          });
         }
 
-        // 2. Atomic claim update
-        const { data: updatedOrder, error: claimErr } = await client
-          .from('orders')
-          .update({
-            status: 'CLAIMED',
-            updated_at: new Date().toISOString()
-          })
-          .eq('order_id', orderIdCode)
-          .eq('status', 'PENDING_CLAIM')
-          .select(`
-            *,
-            customer:users(*),
-            items:order_items(*)
-          `)
-          .single();
+        const workerPayload = {
+          id: workerDoc.id,
+          telegram_user_id: workerDoc.telegram_user_id,
+          telegram_username: workerDoc.telegram_username,
+          full_name: workerDoc.full_name,
+          phone_number: workerDoc.phone_number,
+          role: workerDoc.role
+        };
 
-        if (claimErr || !updatedOrder) {
+        // 2. Atomic claim update via findOneAndUpdate
+        const updatedOrderDoc = await OrderModel.findOneAndUpdate(
+          {
+            $or: [
+              { order_id: { $regex: new RegExp(`^${orderIdCode.trim()}$`, 'i') } },
+              { id: orderIdCode.trim() }
+            ],
+            status: 'PENDING_CLAIM'
+          },
+          {
+            $set: {
+              status: 'CLAIMED',
+              current_worker: workerPayload,
+              updated_at: new Date().toISOString()
+            }
+          },
+          { new: true }
+        ).lean();
+
+        if (!updatedOrderDoc) {
           const currentOrder = await ordersRepository.getOrderByCode(orderIdCode);
           if (!currentOrder) {
             return { success: false, message: 'অর্ডারটি সিস্টেমে পাওয়া যায়নি।' };
@@ -170,31 +159,16 @@ export const workersRepository = {
           return { success: false, message: 'অর্ডার ক্লেইম করতে ব্যর্থ হয়েছে।' };
         }
 
-        // 3. Create or update assignment record
-        if (worker) {
-          await client
-            .from('order_assignments')
-            .insert({
-              order_id: updatedOrder.id,
-              worker_id: worker.id,
-              status: 'CLAIMED',
-              claimed_at: new Date().toISOString()
-            });
-        }
-
-        const populatedOrder = ordersRepository.hydrateOrder({
-          ...updatedOrder,
-          current_worker: worker || undefined
-        });
+        const populatedOrder = ordersRepository.hydrateOrder(updatedOrderDoc);
 
         return {
           success: true,
           message: 'সফলভাবে অর্ডারটি ক্লেইম করেছেন!',
           order: populatedOrder,
-          worker: worker || undefined
+          worker: workerDoc.toObject() as any
         };
       } catch (err) {
-        console.error('Supabase atomic claim exception:', err);
+        console.error('[MongoDB atomic claim exception]:', err);
       }
     }
 
@@ -248,25 +222,33 @@ export const workersRepository = {
   },
 
   async assignWorker(orderId: string, workerId: string): Promise<OrderAssignment> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { data } = await client
-        .from('order_assignments')
-        .insert({
-          order_id: orderId,
-          worker_id: workerId,
-          status: 'CLAIMED',
-          claimed_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      await client
-        .from('orders')
-        .update({ status: 'CLAIMED', updated_at: new Date().toISOString() })
-        .eq('id', orderId);
-
-      if (data) return data;
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        const worker = await WorkerModel.findOne({ $or: [{ id: workerId }, { telegram_user_id: Number(workerId) || 0 }] }).lean();
+        if (worker) {
+          const workerPayload = {
+            id: worker.id,
+            telegram_user_id: worker.telegram_user_id,
+            telegram_username: worker.telegram_username,
+            full_name: worker.full_name,
+            phone_number: worker.phone_number,
+            role: worker.role
+          };
+          await OrderModel.updateOne(
+            { $or: [{ id: orderId }, { order_id: orderId }] },
+            {
+              $set: {
+                status: 'CLAIMED',
+                current_worker: workerPayload,
+                updated_at: new Date().toISOString()
+              }
+            }
+          );
+        }
+      } catch (err) {
+        console.error('[MongoDB assignWorker error]:', err);
+      }
     }
 
     const assignment: OrderAssignment = {
@@ -281,16 +263,6 @@ export const workersRepository = {
   },
 
   async updateAssignmentStatus(assignmentId: string, status: OrderAssignment['status']): Promise<boolean> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const payload: any = { status };
-      if (status === 'DELIVERED') payload.completed_at = new Date().toISOString();
-      const { error } = await client
-        .from('order_assignments')
-        .update(payload)
-        .eq('id', assignmentId);
-      return !error;
-    }
     const a = mockStore.assignments.get(assignmentId);
     if (a) {
       a.status = status;

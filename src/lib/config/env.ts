@@ -4,20 +4,13 @@
  */
 
 export const env = {
-  supabase: {
-    get url() {
-      return process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    },
-    get anonKey() {
-      return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
-    },
-    get serviceRoleKey() {
-      return process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  mongodb: {
+    get uri() {
+      return process.env.MONGODB_URI || '';
     },
     get isConfigured() {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
-      return Boolean(url && key && url.startsWith('http'));
+      const uri = process.env.MONGODB_URI || '';
+      return Boolean(uri && uri.startsWith('mongodb'));
     },
   },
   whatsapp: {

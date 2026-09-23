@@ -1,4 +1,5 @@
-import { getDbClient } from '../client';
+import { connectToDatabase, isDbConfigured } from '../client';
+import { SettingModel } from '../models/Setting';
 
 // In-memory cache for fast, synchronous access in WhatsApp bot runtime
 const settingsCache: Map<string, any> = new Map([
@@ -16,23 +17,25 @@ export const settingsRepository = {
    */
   async initSettings(): Promise<void> {
     if (isInitialized) return;
-    try {
-      const client = getDbClient();
-      if (client) {
-        const { data, error } = await client
-          .from('system_settings')
-          .select('key, value');
-
-        if (!error && Array.isArray(data)) {
-          for (const row of data) {
+    if (isDbConfigured()) {
+      try {
+        const conn = await connectToDatabase();
+        if (!conn) {
+          isInitialized = true;
+          return;
+        }
+        const docs = await SettingModel.find().lean();
+        if (docs && Array.isArray(docs)) {
+          for (const row of docs) {
             settingsCache.set(row.key, row.value);
           }
         }
+        isInitialized = true;
+      } catch (err) {
+        console.warn('[SettingsRepository init error]:', err);
       }
-      isInitialized = true;
-    } catch (err) {
-      console.warn('[SettingsRepository init error]:', err);
     }
+    isInitialized = true;
   },
 
   /**
@@ -84,26 +87,26 @@ export const settingsRepository = {
   async setSetting(key: string, value: any, description?: string): Promise<boolean> {
     settingsCache.set(key, value);
 
-    try {
-      const client = getDbClient();
-      if (client) {
-        const { error } = await client
-          .from('system_settings')
-          .upsert({
-            key,
-            value,
-            description: description || null,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'key' });
-
-        if (error) {
-          console.warn(`[SettingsRepository persist error for ${key}]:`, error);
-        }
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        await SettingModel.findOneAndUpdate(
+          { key },
+          {
+            $set: {
+              value,
+              description: description || null,
+              updated_at: new Date().toISOString()
+            }
+          },
+          { upsert: true }
+        );
+        return true;
+      } catch (err) {
+        console.error(`[SettingsRepository error updating ${key}]:`, err);
+        return false;
       }
-      return true;
-    } catch (err) {
-      console.error(`[SettingsRepository error updating ${key}]:`, err);
-      return false;
     }
+    return true;
   }
 };

@@ -1,9 +1,8 @@
 import { Payment, PaymentStatus, PaymentMethod } from '@/types';
-import { getDbClient, isSupabaseConfigured } from '../client';
+import { connectToDatabase, isDbConfigured } from '../client';
+import { OrderModel } from '../models/Order';
 import { mockStore } from '../mock-store';
 import { ordersRepository } from './orders';
-import { usersRepository } from './users';
-import { workersRepository } from './workers';
 import { pricingRepository } from './pricing';
 
 export const analyticsRepository = {
@@ -25,10 +24,17 @@ export const analyticsRepository = {
       created_at: new Date().toISOString()
     };
 
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      await client.from('payments').insert(newPayment);
-      return newPayment;
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        await OrderModel.updateOne(
+          { $or: [{ id: params.orderId }, { order_id: params.orderId }] },
+          { $push: { payments: newPayment } }
+        );
+        return newPayment;
+      } catch (err) {
+        console.error('[MongoDB createPayment error]:', err);
+      }
     }
 
     mockStore.payments.set(paymentId, newPayment);
@@ -36,25 +42,34 @@ export const analyticsRepository = {
   },
 
   async getPaymentsByOrder(orderId: string): Promise<Payment[]> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { data } = await client
-        .from('payments')
-        .select('*')
-        .eq('order_id', orderId);
-      if (data) return data;
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        const order = await OrderModel.findOne({
+          $or: [{ id: orderId }, { order_id: orderId }]
+        }).lean();
+        if (order && Array.isArray(order.payments) && order.payments.length > 0) {
+          return order.payments as any;
+        }
+      } catch (err) {
+        console.error('[MongoDB getPaymentsByOrder error]:', err);
+      }
     }
     return Array.from(mockStore.payments.values()).filter(p => p.order_id === orderId);
   },
 
   async updatePaymentStatus(paymentId: string, status: PaymentStatus): Promise<boolean> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { error } = await client
-        .from('payments')
-        .update({ status })
-        .eq('id', paymentId);
-      return !error;
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        await OrderModel.updateOne(
+          { 'payments.id': paymentId },
+          { $set: { 'payments.$.status': status } }
+        );
+        return true;
+      } catch (err) {
+        console.error('[MongoDB updatePaymentStatus error]:', err);
+      }
     }
     const p = mockStore.payments.get(paymentId);
     if (p) {
@@ -65,6 +80,10 @@ export const analyticsRepository = {
   },
 
   // KPI & ANALYTICS SUMMARY
+  getDashboardAnalytics() {
+    return this.getAnalyticsSummary();
+  },
+
   async getAnalyticsSummary() {
     const [orders, allProducts] = await Promise.all([
       ordersRepository.getOrders(),
@@ -148,123 +167,124 @@ export const analyticsRepository = {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
+      const dateKey = d.toISOString().slice(0, 10);
       const displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      dailyMap.set(key, { date: key, displayDate, revenue: 0, profit: 0, orders: 0, delivered: 0 });
+      dailyMap.set(dateKey, {
+        date: dateKey,
+        displayDate,
+        revenue: 0,
+        profit: 0,
+        orders: 0,
+        delivered: 0
+      });
     }
 
     // Monthly Trend (Last 6 Months)
-    const monthlyMap = new Map<string, { monthKey: string; displayMonth: string; revenue: number; profit: number; orders: number }>();
+    const monthlyMap = new Map<string, { month: string; displayMonth: string; revenue: number; profit: number; orders: number }>();
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = d.toISOString().slice(0, 7);
-      const displayMonth = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      monthlyMap.set(key, { monthKey: key, displayMonth, revenue: 0, profit: 0, orders: 0 });
+      const monthKey = d.toISOString().slice(0, 7);
+      const displayMonth = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      monthlyMap.set(monthKey, {
+        month: monthKey,
+        displayMonth,
+        revenue: 0,
+        profit: 0,
+        orders: 0
+      });
     }
 
-    // Package Popularity & Payment Breakdown
-    const packageCountMap = new Map<string, { name: string; count: number; revenue: number; profit: number; margin: number }>();
-    const paymentMap = new Map<string, { name: string; count: number; value: number }>();
+    // Top Selling Packages Map
+    const packageStatsMap = new Map<string, { name: string; quantity: number; revenue: number; profit: number }>();
 
     for (const o of orders) {
       if (o.status === 'CANCELLED') continue;
-      const orderDate = o.created_at ? o.created_at.slice(0, 10) : '';
-      const orderMonth = o.created_at ? o.created_at.slice(0, 7) : '';
+
+      const oDate = o.created_at ? o.created_at.slice(0, 10) : '';
+      const oMonth = o.created_at ? o.created_at.slice(0, 7) : '';
       const { revenue, profit } = helperGetOrderProfit(o);
 
-      if (orderDate === todayStr) {
+      if (oDate === todayStr) {
         todaySales += revenue;
         todayProfit += profit;
-        todayOrdersCount += 1;
+        todayOrdersCount++;
       }
 
-      if (orderMonth === thisMonthStr) {
+      if (oMonth === thisMonthStr) {
         thisMonthSales += revenue;
         thisMonthProfit += profit;
-        thisMonthOrdersCount += 1;
+        thisMonthOrdersCount++;
       }
 
-      // Populate Daily
-      if (dailyMap.has(orderDate)) {
-        const item = dailyMap.get(orderDate)!;
+      if (dailyMap.has(oDate)) {
+        const item = dailyMap.get(oDate)!;
         item.revenue += revenue;
         item.profit += profit;
-        item.orders += 1;
-        if (o.status === 'DELIVERED') item.delivered += 1;
+        item.orders++;
+        if (o.status === 'DELIVERED') item.delivered++;
       }
 
-      // Populate Monthly
-      if (monthlyMap.has(orderMonth)) {
-        const item = monthlyMap.get(orderMonth)!;
+      if (monthlyMap.has(oMonth)) {
+        const item = monthlyMap.get(oMonth)!;
         item.revenue += revenue;
         item.profit += profit;
-        item.orders += 1;
+        item.orders++;
       }
 
-      // Populate Items
       if (Array.isArray(o.items)) {
-        for (const it of o.items) {
-          const pName = it.product_name || 'Top-Up';
-          const prev = packageCountMap.get(pName) || { name: pName, count: 0, revenue: 0, profit: 0, margin: 0 };
-          const qty = it.quantity || 1;
-          const itemRev = it.subtotal || (it.unit_price * qty) || 0;
-          const prodInfo = productMap.get(pName.toLowerCase());
-          const unitBase = prodInfo?.basePrice !== undefined ? prodInfo.basePrice : Math.round((it.unit_price || 0) * 0.82);
-          const itemProf = Math.max(0, itemRev - (unitBase * qty));
+        for (const item of o.items) {
+          const pName = item.product_name || 'Top-Up Item';
+          const qty = Number(item.quantity) || 1;
+          const uPrice = Number(item.unit_price) || 0;
+          const itemRev = uPrice * qty;
 
-          prev.count += qty;
-          prev.revenue += itemRev;
-          prev.profit += itemProf;
-          prev.margin = prev.revenue > 0 ? Math.round((prev.profit / prev.revenue) * 100) : 0;
-          packageCountMap.set(pName, prev);
+          const prodInfo = productMap.get(pName.toLowerCase());
+          const itemCost = (prodInfo?.basePrice !== undefined ? prodInfo.basePrice : Math.round(uPrice * 0.82)) * qty;
+          const itemProfit = Math.max(0, itemRev - itemCost);
+
+          if (!packageStatsMap.has(pName)) {
+            packageStatsMap.set(pName, { name: pName, quantity: 0, revenue: 0, profit: 0 });
+          }
+          const pkg = packageStatsMap.get(pName)!;
+          pkg.quantity += qty;
+          pkg.revenue += itemRev;
+          pkg.profit += itemProfit;
         }
       }
-
-      // Populate Payment
-      const method = o.payment_method || 'bKash';
-      const prevPay = paymentMap.get(method) || { name: method, count: 0, value: 0 };
-      prevPay.count += 1;
-      prevPay.value += revenue;
-      paymentMap.set(method, prevPay);
     }
 
-    const workers = await workersRepository.getWorkers();
-    const activeWorkers = workers.filter(w => w.is_active).length;
+    const topSellingPackages = Array.from(packageStatsMap.values())
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
 
-    const todayMargin = todaySales > 0 ? Math.round((todayProfit / todaySales) * 100) : 0;
-    const thisMonthMargin = thisMonthSales > 0 ? Math.round((thisMonthProfit / thisMonthSales) * 100) : 0;
-    const totalMargin = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 100) : 0;
+    const overallMargin = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 100) : 0;
+    const deliveredMargin = deliveredRevenue > 0 ? Math.round((deliveredProfit / deliveredRevenue) * 100) : 0;
 
     return {
-      totalOrders,
-      deliveredOrders,
-      pendingOrders,
-      cancelledOrders,
-      totalRevenue,
-      deliveredRevenue,
-      pendingRevenue,
-      totalProfit,
-      deliveredProfit,
-      pendingProfit,
-      totalMargin,
-      todaySales,
-      todayProfit,
-      todayMargin,
-      todayOrdersCount,
-      thisMonthSales,
-      thisMonthProfit,
-      thisMonthMargin,
-      thisMonthOrdersCount,
-      dailyTrend: Array.from(dailyMap.values()),
-      monthlyTrend: Array.from(monthlyMap.values()),
-      topPackages: Array.from(packageCountMap.values()).sort((a, b) => b.count - a.count).slice(0, 5),
-      paymentBreakdown: Array.from(paymentMap.values()),
-      activeWorkers,
-      totalWorkers: workers.length
+      overview: {
+        totalOrders,
+        deliveredOrders,
+        pendingOrders,
+        cancelledOrders,
+        completionRate: totalOrders > 0 ? Math.round((deliveredOrders / totalOrders) * 100) : 0,
+        totalRevenue,
+        totalProfit,
+        overallMargin,
+        deliveredRevenue,
+        deliveredProfit,
+        deliveredMargin,
+        pendingRevenue,
+        pendingProfit,
+        todaySales,
+        todayProfit,
+        todayOrdersCount,
+        thisMonthSales,
+        thisMonthProfit,
+        thisMonthOrdersCount
+      },
+      dailyTrends: Array.from(dailyMap.values()),
+      monthlyTrends: Array.from(monthlyMap.values()),
+      topSellingPackages
     };
-  },
-
-  async getDashboardAnalytics() {
-    return this.getAnalyticsSummary();
   }
 };

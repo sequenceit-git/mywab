@@ -1,28 +1,33 @@
 import { FAQ } from '@/types';
-import { getDbClient, isSupabaseConfigured } from '../client';
+import { connectToDatabase, isDbConfigured } from '../client';
+import { FaqModel } from '../models/Faq';
 import { mockStore } from '../mock-store';
 
 export const faqsRepository = {
   async getFAQs(includeInactive = false): Promise<FAQ[]> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      let query = client.from('faqs').select('*').order('created_at', { ascending: false });
-      if (!includeInactive) {
-        query = query.eq('is_active', true);
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        const filter = includeInactive ? {} : { is_active: true };
+        const docs = await FaqModel.find(filter).sort({ created_at: -1 }).lean();
+        if (docs && docs.length > 0) return docs as any;
+      } catch (err) {
+        console.error('[MongoDB getFAQs error]:', err);
       }
-      const { data, error } = await query;
-      if (!error && data && data.length > 0) return data;
-      if (error) console.error('Supabase getFAQs error:', error);
     }
     const all = Array.from(mockStore.faqs.values());
     return includeInactive ? all : all.filter(f => f.is_active);
   },
 
   async getFAQById(id: string): Promise<FAQ | null> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { data, error } = await client.from('faqs').select('*').eq('id', id).single();
-      if (!error && data) return data;
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        const doc = await FaqModel.findOne({ id }).lean();
+        if (doc) return doc as any;
+      } catch (err) {
+        console.error('[MongoDB getFAQById error]:', err);
+      }
     }
     return mockStore.faqs.get(id) || null;
   },
@@ -41,20 +46,30 @@ export const faqsRepository = {
       created_at: faq.created_at || new Date().toISOString()
     };
 
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { error } = await client.from('faqs').upsert(newFaq);
-      if (error) console.error('Supabase saveFAQ error:', error);
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        await FaqModel.findOneAndUpdate(
+          { id },
+          { $set: newFaq },
+          { upsert: true, new: true }
+        );
+      } catch (err) {
+        console.error('[MongoDB saveFAQ error]:', err);
+      }
     }
     mockStore.faqs.set(id, newFaq);
     return newFaq;
   },
 
   async deleteFAQ(id: string): Promise<boolean> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { error } = await client.from('faqs').delete().eq('id', id);
-      if (error) console.error('Supabase deleteFAQ error:', error);
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        await FaqModel.deleteOne({ id });
+      } catch (err) {
+        console.error('[MongoDB deleteFAQ error]:', err);
+      }
     }
     mockStore.faqs.delete(id);
     return true;

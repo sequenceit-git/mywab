@@ -4,7 +4,7 @@ import { AppShell } from '@/components/AppShell';
 
 export const metadata: Metadata = {
   title: 'WapBusiness - AI WhatsApp Commerce & Telegram Worker Dispatch Hub',
-  description: 'AI-powered WhatsApp customer support, automated order creation, and Telegram worker dispatching platform with Supabase & OpenAI.',
+  description: 'AI-powered WhatsApp customer support, automated order creation, and Telegram worker dispatching platform with MongoDB Atlas & OpenAI.',
 };
 
 export default function RootLayout({

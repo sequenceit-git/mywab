@@ -2,7 +2,7 @@ import { Order } from '@/types';
 import { db } from '../db';
 import { env } from '../config/env';
 import { whatsappService } from '../whatsapp/service';
-import { storageService } from '../supabase/storage';
+import { storageService } from '../storage';
 import { telegramClient } from './client';
 import {
   generateOrderCard,
@@ -445,7 +445,7 @@ export async function handleWorkerPhotoMessage(message: {
     const telegramPhotoUrl = `https://api.telegram.org/file/bot${env.telegram.botToken}/${fileData.result.file_path}`;
     console.log(`[Telegram Photo] Photo URL resolved for Order #${targetOrder.order_id}: ${telegramPhotoUrl}`);
 
-    // 3. Download image buffer and save to Supabase Storage bucket 'order-media'
+    // 3. Download image buffer and save to local storage
     let finalImageUrl = telegramPhotoUrl;
     try {
       const photoFetch = await fetch(telegramPhotoUrl);
@@ -459,11 +459,11 @@ export async function handleWorkerPhotoMessage(message: {
         );
         if (uploadRes.success && uploadRes.publicUrl) {
           finalImageUrl = uploadRes.publicUrl;
-          console.log(`[Telegram Photo] Stored in Supabase Bucket: ${finalImageUrl}`);
+          console.log(`[Telegram Photo] Stored in Media Storage: ${finalImageUrl}`);
         }
       }
     } catch (storageErr) {
-      console.warn('[Telegram Photo Supabase Upload Warning]:', storageErr);
+      console.warn('[Telegram Photo Storage Upload Warning]:', storageErr);
     }
 
     // 4. Send QR Code to customer on WhatsApp with interactive buttons

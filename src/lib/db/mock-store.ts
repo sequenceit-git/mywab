@@ -13,7 +13,7 @@ import {
   DEFAULT_DS_DUKAN_FAQS
 } from './seeds';
 
-// Clean in-memory fallback store used when Supabase is not configured or in unit testing
+// Clean in-memory fallback store used when MongoDB is not configured or in unit testing
 export class MockDatabaseStore {
   users: Map<string, UserProfile> = new Map();
   faqs: Map<string, FAQ> = new Map();

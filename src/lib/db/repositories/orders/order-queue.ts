@@ -1,5 +1,6 @@
 import { Order } from '@/types';
-import { getDbClient, isSupabaseConfigured } from '../../client';
+import { connectToDatabase, isDbConfigured } from '../../client';
+import { OrderModel } from '../../models/Order';
 import { mockStore } from '../../mock-store';
 import { hydrateOrder } from './order-hydrator';
 
@@ -7,31 +8,18 @@ import { hydrateOrder } from './order-hydrator';
  * Telegram Queue Helpers: Next pending order waiting in line for dispatch
  */
 export async function getNextQueuedOrder(): Promise<Order | null> {
-  const client = getDbClient();
-  if (isSupabaseConfigured() && client) {
+  if (isDbConfigured()) {
     try {
-      const { data, error } = await client
-        .from('orders')
-        .select(`
-          *,
-          customer:users(*),
-          items:order_items(*),
-          payments:payments(*),
-          assignments:order_assignments(
-            id,
-            status,
-            claimed_at,
-            worker:workers(*)
-          )
-        `)
-        .in('status', ['PENDING_CLAIM', 'PENDING'])
-        .is('telegram_message_id', null)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
+      await connectToDatabase();
+      const doc = await OrderModel.findOne({
+        status: { $in: ['PENDING_CLAIM', 'PENDING'] },
+        telegram_message_id: null
+      })
+      .sort({ created_at: 1 })
+      .lean();
 
-      if (!error && data) {
-        return hydrateOrder(data);
+      if (doc) {
+        return hydrateOrder(doc);
       }
     } catch (err) {
       console.error('[getNextQueuedOrder Exception]:', err);
@@ -49,18 +37,14 @@ export async function getNextQueuedOrder(): Promise<Order | null> {
  * Telegram Queue Helpers: Count of pending orders waiting in the queue
  */
 export async function getUndispatchedQueueCount(): Promise<number> {
-  const client = getDbClient();
-  if (isSupabaseConfigured() && client) {
+  if (isDbConfigured()) {
     try {
-      const { count, error } = await client
-        .from('orders')
-        .select('id', { count: 'exact', head: true })
-        .in('status', ['PENDING_CLAIM', 'PENDING'])
-        .is('telegram_message_id', null);
-
-      if (!error && typeof count === 'number') {
-        return count;
-      }
+      await connectToDatabase();
+      const count = await OrderModel.countDocuments({
+        status: { $in: ['PENDING_CLAIM', 'PENDING'] },
+        telegram_message_id: null
+      });
+      return count;
     } catch (err) {
       console.error('[getUndispatchedQueueCount Exception]:', err);
     }
@@ -75,31 +59,18 @@ export async function getUndispatchedQueueCount(): Promise<number> {
  * Telegram Queue Helpers: Find if there is an active unclaimed order card in Telegram
  */
 export async function getActiveTelegramUnclaimedOrder(): Promise<Order | null> {
-  const client = getDbClient();
-  if (isSupabaseConfigured() && client) {
+  if (isDbConfigured()) {
     try {
-      const { data, error } = await client
-        .from('orders')
-        .select(`
-          *,
-          customer:users(*),
-          items:order_items(*),
-          payments:payments(*),
-          assignments:order_assignments(
-            id,
-            status,
-            claimed_at,
-            worker:workers(*)
-          )
-        `)
-        .in('status', ['PENDING_CLAIM', 'PENDING'])
-        .not('telegram_message_id', 'is', null)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
+      await connectToDatabase();
+      const doc = await OrderModel.findOne({
+        status: { $in: ['PENDING_CLAIM', 'PENDING'] },
+        telegram_message_id: { $ne: null }
+      })
+      .sort({ created_at: 1 })
+      .lean();
 
-      if (!error && data) {
-        return hydrateOrder(data);
+      if (doc) {
+        return hydrateOrder(doc);
       }
     } catch (err) {
       console.error('[getActiveTelegramUnclaimedOrder Exception]:', err);

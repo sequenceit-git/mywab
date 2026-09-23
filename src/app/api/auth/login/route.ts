@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from '@/lib/config/env';
-import { supabase } from '@/lib/supabase/client';
 
 export async function POST(req: NextRequest) {
   try {
@@ -52,49 +51,6 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
-    // 2. Check Supabase Auth if configured
-    if (supabase) {
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password: cleanPass
-        });
-
-        if (!error && data.user) {
-          const response = NextResponse.json({
-            success: true,
-            user: {
-              id: data.user.id,
-              email: data.user.email,
-              name: data.user.user_metadata?.full_name || 'Staff User',
-              role: 'ADMIN'
-            }
-          });
-
-          const sessionData = JSON.stringify({
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.user_metadata?.full_name || 'Staff User',
-            role: 'ADMIN',
-            loginAt: Date.now()
-          });
-
-          const encoded = Buffer.from(sessionData).toString('base64');
-
-          response.cookies.set('wap_auth_token', encoded, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 60 * 60 * 24 * 7
-          });
-
-          return response;
-        }
-      } catch (authErr) {
-        console.error('Supabase Auth error:', authErr);
-      }
-    }
 
     return NextResponse.json(
       { success: false, error: 'Invalid email or password' },

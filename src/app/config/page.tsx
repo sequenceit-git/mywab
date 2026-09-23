@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import { Server, RefreshCw } from 'lucide-react';
 import { SystemStatus } from './types';
-import { SupabaseConfigCard } from './components/SupabaseConfigCard';
+import { MongoDbConfigCard } from './components/MongoDbConfigCard';
 import { KokosConfigCard } from './components/KokosConfigCard';
 import { PinexConfigCard } from './components/PinexConfigCard';
 import { ZiniPayConfigCard } from './components/ZiniPayConfigCard';
@@ -389,8 +389,8 @@ export default function ConfigPage() {
 
         {/* 6 Connected Services Grid (2 columns on desktop) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-          {/* 1. Supabase Database Card */}
-          <SupabaseConfigCard status={status} />
+          {/* 1. MongoDB Database Card */}
+          <MongoDbConfigCard status={status} />
 
           {/* 2. Kokos Activator API Card (PUBG UID Auto-Fulfillment) */}
           <KokosConfigCard

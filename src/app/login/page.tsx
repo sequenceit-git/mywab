@@ -160,7 +160,7 @@ export default function LoginPage() {
         {/* Security / Deployment Badge */}
         <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Protected by Encrypted Sessions & Supabase DB</span>
+          <span>Protected by Encrypted Sessions & MongoDB Atlas</span>
         </div>
       </div>
     </div>

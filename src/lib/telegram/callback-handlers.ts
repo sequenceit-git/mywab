@@ -86,8 +86,8 @@ export async function handleCallbackQuery(callbackQuery: {
   if (action === 'qr_resend_hint') {
     await telegramClient.answerCallbackQuery(
       id,
-      '🔄 নতুন QR পাঠাতে এই কার্ডে রিপ্লাই করে আরেকটি স্ক্রিনশট সেন্ড করুন।',
-      false
+      '📸 অনুগ্রহ করে এই মেসেজে রিপ্লাই করে নতুন লগইন QR কোডের ছবি/স্ক্রিনশট পাঠান। বট সাথে সাথে কাস্টমারের WhatsApp-এ পাঠিয়ে দেবে (৫ মিনিট মেয়াদ)।',
+      true
     );
     return { success: true, message: 'QR resend hint shown' };
   }

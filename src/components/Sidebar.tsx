@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { useNav } from '@/components/NavContext';
-import { BrandLogo, WhatsAppIcon, TelegramIcon, SupabaseIcon } from '@/components/BrandIcons';
+import { BrandLogo, WhatsAppIcon, TelegramIcon, MongoDbIcon } from '@/components/BrandIcons';
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -113,9 +113,9 @@ export function Sidebar({ isMobile = false }: { isMobile?: boolean }) {
               <TelegramIcon className="w-3.5 h-3.5" />
               Telegram
             </span>
-            <span className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-300">
-              <SupabaseIcon className="w-3.5 h-3.5" />
-              Supabase
+            <span className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-400">
+              <MongoDbIcon className="w-3.5 h-3.5" />
+              MongoDB
             </span>
           </div>
         </div>

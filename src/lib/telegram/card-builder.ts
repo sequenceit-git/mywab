@@ -121,6 +121,11 @@ export function isQrLoginOrder(order: { customer_notes?: string; items?: Array<{
  */
 export function hasQrCodeBeenSent(order: { customer_notes?: string; status?: string }): boolean {
   const notes = order.customer_notes || '';
+  const lastForwardIdx = notes.lastIndexOf('QR Code forwarded');
+  const lastRefreshIdx = notes.lastIndexOf('QR_REFRESH_REQUESTED');
+  if (lastRefreshIdx !== -1 && lastRefreshIdx > lastForwardIdx) {
+    return false;
+  }
   return (
     notes.includes('QR Code forwarded') ||
     notes.includes('Storage:') ||

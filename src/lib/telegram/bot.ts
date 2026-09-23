@@ -177,11 +177,32 @@ ${cardHtml}`;
         await db.updateOrderTelegramMessageId(order.id, sendRes.result.message_id);
       }
     } else if (action === 'REFRESH_REQUESTED') {
+      const refreshNotes = `${order.customer_notes || ''} | QR_REFRESH_REQUESTED:${new Date().toLocaleTimeString()}`;
+      order.customer_notes = refreshNotes;
+      await db.updateOrderStatus(order.order_id, order.status, {
+        notes: refreshNotes
+      });
+
       const prevMsgId = order.telegram_message_id;
       if (prevMsgId) {
-        // Strip buttons from previous card so worker cannot click them while expired
+        try {
+          await telegramClient.deleteMessage(env.telegram.workerGroupId, prevMsgId);
+        } catch (delErr) {
+          console.warn('[Telegram Refresh Sync] Failed to delete previous card:', delErr);
+        }
         await telegramClient.editMessageReplyMarkup(env.telegram.workerGroupId, prevMsgId, { inline_keyboard: [] }).catch(() => {});
       }
+
+      const refreshMarkup = {
+        inline_keyboard: [
+          [
+            { text: '📸 Send New QR (নতুন QR পাঠান)', callback_data: `qr_resend_hint:${order.order_id}` }
+          ],
+          [
+            { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+          ]
+        ]
+      };
 
       const msg = 
 `⚠️ <b>[Order #${order.order_id}] CUSTOMER REQUESTED NEW QR! / নতুন কিউআর প্রয়োজন</b>
@@ -192,7 +213,7 @@ ${cardHtml}`;
 
 📸 <b>একশন:</b> দয়া করে দ্রুত একটি <b>নতুন Login QR কোড স্ক্রিনশট</b> এই গ্রুপে পাঠান (Reply to Order)।`;
 
-      const sendRes = await telegramClient.sendMessage(env.telegram.workerGroupId, msg);
+      const sendRes = await telegramClient.sendMessage(env.telegram.workerGroupId, msg, { reply_markup: sanitizeReplyMarkup(refreshMarkup) });
       if (sendRes.ok && sendRes.result?.message_id) {
         order.telegram_message_id = sendRes.result.message_id;
         await db.updateOrderTelegramMessageId(order.id, sendRes.result.message_id);

@@ -1,5 +1,6 @@
 import { Order } from '@/types';
-import { getDbClient, isSupabaseConfigured } from '../../client';
+import { connectToDatabase, isDbConfigured } from '../../client';
+import { OrderModel } from '../../models/Order';
 import { mockStore } from '../../mock-store';
 import { hydrateOrder } from './order-hydrator';
 import { getOrderByCode } from './order-query';
@@ -11,50 +12,19 @@ export async function getOrderByInvoiceId(invoiceId: string): Promise<Order | nu
   const clean = (invoiceId || '').trim();
   if (!clean) return null;
 
-  const client = getDbClient();
-  if (isSupabaseConfigured() && client) {
+  if (isDbConfigured()) {
     try {
-      const { data, error } = await client
-        .from('orders')
-        .select(`
-          *,
-          customer:users(*),
-          items:order_items(*),
-          payments:payments(*),
-          assignments:order_assignments(
-            id,
-            status,
-            claimed_at,
-            worker:workers(*)
-          )
-        `)
-        .eq('invoice_id', clean)
-        .maybeSingle();
+      await connectToDatabase();
+      const doc = await OrderModel.findOne({
+        $or: [
+          { invoice_id: clean },
+          { 'delivery_address.invoice_id': clean },
+          { 'payments.invoice_id': clean }
+        ]
+      }).lean();
 
-      if (!error && data) {
-        return hydrateOrder(data);
-      }
-
-      // Secondary search in delivery_address jsonb if column wasn't populated
-      const { data: fallbackData } = await client
-        .from('orders')
-        .select(`
-          *,
-          customer:users(*),
-          items:order_items(*),
-          payments:payments(*),
-          assignments:order_assignments(
-            id,
-            status,
-            claimed_at,
-            worker:workers(*)
-          )
-        `)
-        .contains('delivery_address', { invoice_id: clean })
-        .maybeSingle();
-
-      if (fallbackData) {
-        return hydrateOrder(fallbackData);
+      if (doc) {
+        return hydrateOrder(doc);
       }
     } catch (err) {
       console.error('[getOrderByInvoiceId Exception]:', err);
@@ -86,32 +56,30 @@ export async function attachInvoiceToOrder(
   const order = await getOrderByCode(orderIdCode);
   if (!order) return { success: false };
 
-  const client = getDbClient();
-  if (isSupabaseConfigured() && client) {
+  const updatedAt = new Date().toISOString();
+
+  if (isDbConfigured()) {
     try {
+      await connectToDatabase();
       const updatedDelivery = {
         ...(order.delivery_address || {}),
         invoice_id: invoiceId,
         payment_url: paymentUrl
       };
 
-      await client
-        .from('orders')
-        .update({
-          invoice_id: invoiceId,
-          payment_url: paymentUrl,
-          delivery_address: updatedDelivery,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', order.id);
-
-      // Also update or insert payment record
-      await client
-        .from('payments')
-        .update({ invoice_id: invoiceId })
-        .eq('order_id', order.id);
+      await OrderModel.updateOne(
+        { $or: [{ order_id: orderIdCode }, { id: order.id }] },
+        {
+          $set: {
+            invoice_id: invoiceId,
+            payment_url: paymentUrl,
+            delivery_address: updatedDelivery,
+            updated_at: updatedAt
+          }
+        }
+      );
     } catch (err) {
-      console.warn('[attachInvoiceToOrder Supabase warn]:', err);
+      console.warn('[attachInvoiceToOrder MongoDB warn]:', err);
     }
   }
 
@@ -147,11 +115,11 @@ export async function updateOrderPaymentSuccess(
   const order = await getOrderByCode(orderIdCode);
   if (!order) return { success: false };
 
-  const client = getDbClient();
   const verifiedAt = new Date().toISOString();
 
-  if (isSupabaseConfigured() && client) {
+  if (isDbConfigured()) {
     try {
+      await connectToDatabase();
       const updatedDelivery = {
         ...(order.delivery_address || {}),
         trx_id: details.trxId,
@@ -159,49 +127,33 @@ export async function updateOrderPaymentSuccess(
         ...(details.invoiceId ? { invoice_id: details.invoiceId } : {})
       };
 
-      await client
-        .from('orders')
-        .update({
-          trx_id: details.trxId,
-          payment_method: details.paymentMethod,
-          delivery_address: updatedDelivery,
-          updated_at: verifiedAt
-        })
-        .eq('id', order.id);
+      const newPayment = {
+        id: crypto.randomUUID(),
+        amount: details.amount || order.total_amount,
+        method: details.paymentMethod,
+        status: 'VERIFIED',
+        transaction_id: details.trxId,
+        invoice_id: details.invoiceId || null,
+        created_at: verifiedAt
+      };
 
-      // Update existing payment record or insert new verified payment
-      const { data: existingPay } = await client
-        .from('payments')
-        .select('id')
-        .eq('order_id', order.id)
-        .maybeSingle();
-
-      if (existingPay?.id) {
-        await client
-          .from('payments')
-          .update({
-            status: 'VERIFIED',
+      await OrderModel.updateOne(
+        { $or: [{ order_id: orderIdCode }, { id: order.id }] },
+        {
+          $set: {
             trx_id: details.trxId,
             payment_method: details.paymentMethod,
             ...(details.invoiceId ? { invoice_id: details.invoiceId } : {}),
-            verified_at: verifiedAt
-          })
-          .eq('id', existingPay.id);
-      } else {
-        await client.from('payments').insert({
-          id: crypto.randomUUID(),
-          order_id: order.id,
-          payment_method: details.paymentMethod,
-          trx_id: details.trxId,
-          invoice_id: details.invoiceId || null,
-          amount: details.amount || order.total_amount,
-          status: 'VERIFIED',
-          verified_at: verifiedAt,
-          created_at: verifiedAt
-        });
-      }
+            delivery_address: updatedDelivery,
+            updated_at: verifiedAt
+          },
+          $push: {
+            payments: newPayment
+          }
+        }
+      );
     } catch (err) {
-      console.error('[updateOrderPaymentSuccess Supabase error]:', err);
+      console.error('[updateOrderPaymentSuccess MongoDB error]:', err);
     }
   }
 

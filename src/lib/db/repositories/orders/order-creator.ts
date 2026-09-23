@@ -1,5 +1,6 @@
 import { Order, OrderStatus } from '@/types';
-import { getDbClient, isSupabaseConfigured } from '../../client';
+import { connectToDatabase, isDbConfigured } from '../../client';
+import { OrderModel } from '../../models/Order';
 import { mockStore } from '../../mock-store';
 import { usersRepository } from '../users';
 import { getAccountFieldInfo } from '../../../chat/input-parser';
@@ -56,113 +57,70 @@ export async function createOrder(params: {
     ...(params.deliveryAddress || {})
   };
 
-  const client = getDbClient();
-  if (isSupabaseConfigured() && client) {
-    // 1. Insert order record
-    const orderPayload: Record<string, any> = {
-      id: orderUuid,
-      order_id: orderIdCode,
-      user_id: params.userId,
-      total_amount: totalAmount,
-      status: orderStatus,
-      delivery_address: deliveryAddressObj,
-      delivery_phone: params.deliveryPhone,
-      customer_notes: params.customerNotes || (params.playerUid ? `${accountLabel}: ${params.playerUid} | Trx: ${params.trxId || 'N/A'} | Pay: ${params.paymentMethod || 'BKASH'}` : null),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
+  const embeddedItems = params.items.map(item => ({
+    id: crypto.randomUUID(),
+    product_id: item.product_id || null,
+    product_name: item.product_name,
+    unit_price: item.unit_price,
+    quantity: item.quantity,
+    subtotal: item.unit_price * item.quantity,
+  }));
 
-    if (params.invoiceId) {
-      orderPayload.invoice_id = params.invoiceId;
-    }
-    if (params.paymentUrl) {
-      orderPayload.payment_url = params.paymentUrl;
-    }
-
-    const { data: createdOrder, error: orderErr } = await client
-      .from('orders')
-      .insert(orderPayload)
-      .select()
-      .single();
-
-    if (orderErr) {
-      console.error('Supabase createOrder error:', orderErr);
-      throw new Error(`Failed to create order in Supabase: ${orderErr.message}`);
-    }
-
-    // 2. Insert order items
-    if (params.items.length > 0) {
-      const orderItems = params.items.map(item => ({
-        id: crypto.randomUUID(),
-        order_id: orderUuid,
-        product_id: item.product_id || null,
-        product_name: item.product_name,
-        unit_price: item.unit_price,
-        quantity: item.quantity,
-        subtotal: item.unit_price * item.quantity,
-        created_at: new Date().toISOString()
-      }));
-
-      await client.from('order_items').insert(orderItems);
-    }
-
-    // 3. Insert payment record
-    if (params.trxId || params.invoiceId) {
-      try {
-        const payPayload: Record<string, any> = {
-          id: crypto.randomUUID(),
-          order_id: orderUuid,
-          payment_method: params.paymentMethod || (params.invoiceId ? 'ZINIPAY' : 'BKASH'),
-          trx_id: params.trxId || null,
-          amount: totalAmount,
-          status: params.trxId ? 'VERIFYING' : 'UNPAID',
-          created_at: new Date().toISOString()
-        };
-        if (params.invoiceId) {
-          payPayload.invoice_id = params.invoiceId;
-        }
-        await client.from('payments').insert(payPayload);
-      } catch (payErr) {
-        console.warn('Payment record insert non-fatal error:', payErr);
-      }
-    }
-
-    // 4. Return fully hydrated order with user profile
-    const user = await usersRepository.getUserById(params.userId);
-    return hydrateOrder({
-      ...createdOrder,
-      customer: user || undefined,
-      items: params.items.map(i => ({
-        ...i,
-        subtotal: i.unit_price * i.quantity
-      }))
+  const embeddedPayments: any[] = [];
+  if (params.trxId || params.invoiceId) {
+    embeddedPayments.push({
+      id: crypto.randomUUID(),
+      amount: totalAmount,
+      method: params.paymentMethod || (params.invoiceId ? 'ZINIPAY' : 'BKASH'),
+      status: params.trxId ? 'VERIFYING' : 'UNPAID',
+      transaction_id: params.trxId || null,
+      invoice_id: params.invoiceId || null,
+      created_at: new Date().toISOString()
     });
   }
 
-  // In-memory fallback
-  const newOrder: Order = {
+  const orderPayload: any = {
     id: orderUuid,
     order_id: orderIdCode,
     user_id: params.userId,
     total_amount: totalAmount,
     status: orderStatus,
-    delivery_address: params.deliveryAddress || {
-      address: `${accountLabel}: ${params.playerUid || 'N/A'}`
-    },
+    delivery_address: deliveryAddressObj,
     delivery_phone: params.deliveryPhone,
-    customer_notes: params.customerNotes || (params.playerUid ? `${accountLabel}: ${params.playerUid} | Trx: ${params.trxId || 'N/A'} | Pay: ${params.paymentMethod || 'BKASH'}` : undefined),
-    player_uid: params.playerUid,
-    trx_id: params.trxId,
+    customer_notes: params.customerNotes || (params.playerUid ? `${accountLabel}: ${params.playerUid} | Trx: ${params.trxId || 'N/A'} | Pay: ${params.paymentMethod || 'BKASH'}` : null),
+    player_uid: params.playerUid || null,
+    trx_id: params.trxId || null,
     payment_method: params.paymentMethod || (params.invoiceId ? 'ZINIPAY' : 'BKASH'),
-    invoice_id: params.invoiceId,
-    payment_url: params.paymentUrl,
+    invoice_id: params.invoiceId || null,
+    payment_url: params.paymentUrl || null,
+    items: embeddedItems,
+    payments: embeddedPayments,
     created_at: new Date().toISOString(),
-    items: params.items.map(i => ({
-      ...i,
-      subtotal: i.unit_price * i.quantity
-    }))
+    updated_at: new Date().toISOString()
   };
 
+  if (isDbConfigured()) {
+    try {
+      await connectToDatabase();
+      const createdDoc = await OrderModel.create(orderPayload);
+      const user = await usersRepository.getUserById(params.userId);
+      return hydrateOrder({
+        ...createdDoc.toObject(),
+        customer: user || undefined,
+      });
+    } catch (orderErr: any) {
+      console.error('[MongoDB createOrder error]:', orderErr);
+      throw new Error(`Failed to create order in MongoDB: ${orderErr.message}`);
+    }
+  }
+
+  // In-memory fallback
+  const newOrder: Order = {
+    ...orderPayload,
+    items: embeddedItems
+  };
+
+  mockStore.orders.set(orderUuid, newOrder);
   mockStore.orders.set(orderIdCode, newOrder);
-  return newOrder;
+  return hydrateOrder(newOrder);
 }

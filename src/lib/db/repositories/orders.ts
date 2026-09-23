@@ -1,5 +1,6 @@
 import { Order, OrderStatus } from '@/types';
-import { getDbClient, isSupabaseConfigured } from '../client';
+import { connectToDatabase, isDbConfigured } from '../client';
+import { OrderModel } from '../models/Order';
 import { mockStore } from '../mock-store';
 import { hydrateOrder } from './orders/order-hydrator';
 import { createOrder } from './orders/order-creator';
@@ -105,30 +106,26 @@ export const ordersRepository = {
       }
     }
 
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const updatePayload: Record<string, any> = {
-        status,
-        updated_at: new Date().toISOString()
-      };
-      if (mergedNotes) {
-        updatePayload.customer_notes = mergedNotes;
-      }
-      await client
-        .from('orders')
-        .update(updatePayload)
-        .eq('id', order.id);
-      
-      if (status === 'DELIVERED') {
-        await client
-          .from('order_assignments')
-          .update({ status: 'DELIVERED', completed_at: new Date().toISOString() })
-          .eq('order_id', order.id);
-      } else if (status === 'CANCELLED') {
-        await client
-          .from('order_assignments')
-          .update({ status: 'CANCELLED', completed_at: new Date().toISOString() })
-          .eq('order_id', order.id);
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        const updatePayload: Record<string, any> = {
+          status,
+          updated_at: new Date().toISOString()
+        };
+        if (mergedNotes) {
+          updatePayload.customer_notes = mergedNotes;
+        }
+        if (isAdminOverride && (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT')) {
+          updatePayload.current_worker = null;
+        }
+
+        await OrderModel.updateOne(
+          { $or: [{ order_id: orderIdCode }, { id: order.id }] },
+          { $set: updatePayload }
+        );
+      } catch (err) {
+        console.error('[MongoDB updateOrderStatus error]:', err);
       }
     }
 
@@ -136,12 +133,16 @@ export const ordersRepository = {
   },
 
   async updateOrderTelegramMessageId(orderIdCodeOrId: string, messageId: number | null): Promise<void> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      await client
-        .from('orders')
-        .update({ telegram_message_id: messageId, updated_at: new Date().toISOString() })
-        .or(`id.eq.${orderIdCodeOrId},order_id.eq.${orderIdCodeOrId}`);
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        await OrderModel.updateOne(
+          { $or: [{ id: orderIdCodeOrId }, { order_id: orderIdCodeOrId }] },
+          { $set: { telegram_message_id: messageId, updated_at: new Date().toISOString() } }
+        );
+      } catch (err) {
+        console.error('[MongoDB updateOrderTelegramMessageId error]:', err);
+      }
     }
 
     for (const o of mockStore.orders.values()) {

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from '@/lib/config/env';
-import { supabase, supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase/client';
+import { connectToDatabase, isMongoConnected } from '@/lib/db/mongodb';
+import { OrderModel } from '@/lib/db/models/Order';
+import { WorkerModel } from '@/lib/db/models/Worker';
+import { ConversationModel } from '@/lib/db/models/Conversation';
+import { FaqModel } from '@/lib/db/models/Faq';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +31,6 @@ export async function GET(request: NextRequest) {
       activeDomain = process.env.DOMAIN || hostHeader.split(':')[0] || env.app.domain;
     }
 
-    const client = supabaseAdmin || supabase;
     let dbConnected = false;
     let stats = {
       ordersCount: 0,
@@ -36,31 +39,26 @@ export async function GET(request: NextRequest) {
       faqsCount: 0,
     };
 
-    if (isSupabaseConfigured() && client) {
+    if (env.mongodb.isConfigured) {
       try {
-        const [
-          { count: ordCount, error: ordErr },
-          { count: workCount, error: workErr },
-          { count: convCount, error: convErr },
-          { count: faqCount, error: faqErr }
-        ] = await Promise.all([
-          client.from('orders').select('*', { count: 'exact', head: true }),
-          client.from('workers').select('*', { count: 'exact', head: true }),
-          client.from('conversations').select('*', { count: 'exact', head: true }),
-          client.from('faqs').select('*', { count: 'exact', head: true })
-        ]);
-
-        if (!ordErr) {
+        await connectToDatabase();
+        if (isMongoConnected()) {
           dbConnected = true;
+          const [ordCount, workCount, convCount, faqCount] = await Promise.all([
+            OrderModel.countDocuments(),
+            WorkerModel.countDocuments(),
+            ConversationModel.countDocuments(),
+            FaqModel.countDocuments()
+          ]);
           stats = {
-            ordersCount: ordCount || 0,
-            workersCount: workCount || 0,
-            conversationsCount: convCount || 0,
-            faqsCount: faqCount || 0
+            ordersCount: ordCount,
+            workersCount: workCount,
+            conversationsCount: convCount,
+            faqsCount: faqCount
           };
         }
       } catch (e) {
-        console.error('Supabase status check error:', e);
+        console.error('MongoDB status check error:', e);
       }
     }
 
@@ -68,6 +66,11 @@ export async function GET(request: NextRequest) {
       if (!str) return 'Not Configured';
       if (str.length <= 8) return '••••••••';
       return `${str.slice(0, 4)}••••${str.slice(-4)}`;
+    };
+
+    const maskUri = (uri: string) => {
+      if (!uri) return 'Not Configured';
+      return uri.replace(/:([^:@]+)@/, ':••••••••@');
     };
 
     return NextResponse.json({
@@ -78,12 +81,10 @@ export async function GET(request: NextRequest) {
         url: activeUrl,
         nodeEnv: process.env.NODE_ENV || 'production'
       },
-      supabase: {
-        isConfigured: env.supabase.isConfigured,
+      mongodb: {
+        isConfigured: env.mongodb.isConfigured,
         connected: dbConnected,
-        url: env.supabase.url || 'Not set',
-        publishableKeyMasked: mask(env.supabase.anonKey),
-        serviceRoleKeyMasked: mask(env.supabase.serviceRoleKey),
+        uriMasked: maskUri(env.mongodb.uri),
         stats
       },
       whatsapp: {

@@ -1,42 +1,29 @@
 import { Order, OrderStatus } from '@/types';
-import { getDbClient, isSupabaseConfigured } from '../../client';
+import { connectToDatabase, isDbConfigured } from '../../client';
+import { OrderModel } from '../../models/Order';
 import { mockStore } from '../../mock-store';
 import { hydrateOrder } from './order-hydrator';
 
 export async function getOrders(filter?: { status?: OrderStatus; limit?: number }): Promise<Order[]> {
-  const client = getDbClient();
-  if (isSupabaseConfigured() && client) {
+  if (isDbConfigured()) {
     try {
-      let query = client
-        .from('orders')
-        .select(`
-          *,
-          customer:users(*),
-          items:order_items(*),
-          payments:payments(*),
-          assignments:order_assignments(
-            id,
-            status,
-            claimed_at,
-            worker:workers(*)
-          )
-        `)
-        .order('created_at', { ascending: false });
-
+      await connectToDatabase();
+      const mongoFilter: any = {};
       if (filter?.status) {
-        query = query.eq('status', filter.status);
-      }
-      if (filter?.limit) {
-        query = query.limit(filter.limit);
+        mongoFilter.status = filter.status;
       }
 
-      const { data, error } = await query;
-      if (!error && data) {
-        return data.map((order: any) => hydrateOrder(order));
+      let q = OrderModel.find(mongoFilter).sort({ created_at: -1 });
+      if (filter?.limit) {
+        q = q.limit(filter.limit);
       }
-      if (error) console.error('Supabase getOrders error:', error);
+
+      const docs = await q.lean();
+      if (docs && docs.length > 0) {
+        return docs.map((doc: any) => hydrateOrder(doc));
+      }
     } catch (err) {
-      console.error('Supabase getOrders exception:', err);
+      console.error('[MongoDB getOrders exception]:', err);
     }
   }
 
@@ -53,39 +40,22 @@ export async function getOrders(filter?: { status?: OrderStatus; limit?: number 
 
 export async function getOrderByCode(orderIdCode: string): Promise<Order | null> {
   const clean = orderIdCode.trim();
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean);
-  const client = getDbClient();
 
-  if (isSupabaseConfigured() && client) {
+  if (isDbConfigured()) {
     try {
-      let query = client
-        .from('orders')
-        .select(`
-          *,
-          customer:users(*),
-          items:order_items(*),
-          payments:payments(*),
-          assignments:order_assignments(
-            id,
-            status,
-            claimed_at,
-            worker:workers(*)
-          )
-        `);
+      await connectToDatabase();
+      const doc = await OrderModel.findOne({
+        $or: [
+          { order_id: { $regex: new RegExp(`^${clean}$`, 'i') } },
+          { id: clean }
+        ]
+      }).lean();
 
-      if (isUuid) {
-        query = query.eq('id', clean);
-      } else {
-        query = query.eq('order_id', clean);
+      if (doc) {
+        return hydrateOrder(doc);
       }
-
-      const { data, error } = await query.maybeSingle();
-      if (!error && data) {
-        return hydrateOrder(data);
-      }
-      if (error) console.error('Supabase getOrderByCode error:', error);
     } catch (err) {
-      console.error('Supabase getOrderByCode exception:', err);
+      console.error('[MongoDB getOrderByCode exception]:', err);
     }
   }
 
@@ -102,27 +72,25 @@ export async function getOrderById(id: string): Promise<Order | null> {
 
 export async function getOrdersByPhone(phone: string): Promise<Order[]> {
   const cleanPhone = phone.trim();
-  const client = getDbClient();
-  if (isSupabaseConfigured() && client) {
-    const { data, error } = await client
-      .from('orders')
-      .select(`
-        *,
-        customer:users(*),
-        items:order_items(*),
-        payments:payments(*),
-        assignments:order_assignments(
-          id,
-          status,
-          claimed_at,
-          worker:workers(*)
-        )
-      `)
-      .eq('delivery_phone', cleanPhone)
-      .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      return data.map((order: any) => hydrateOrder(order));
+  if (isDbConfigured()) {
+    try {
+      await connectToDatabase();
+      const docs = await OrderModel.find({
+        $or: [
+          { delivery_phone: cleanPhone },
+          { delivery_phone: cleanPhone.replace(/^\+/, '') },
+          { delivery_phone: `+${cleanPhone.replace(/^\+/, '')}` }
+        ]
+      })
+      .sort({ created_at: -1 })
+      .lean();
+
+      if (docs && docs.length > 0) {
+        return docs.map((doc: any) => hydrateOrder(doc));
+      }
+    } catch (err) {
+      console.error('[MongoDB getOrdersByPhone exception]:', err);
     }
   }
 

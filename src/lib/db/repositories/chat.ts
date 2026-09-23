@@ -1,10 +1,12 @@
 import { Conversation, Message, ConversationSessionState } from '@/types';
-import { getDbClient, isSupabaseConfigured } from '../client';
+import { connectToDatabase, isDbConfigured } from '../client';
+import { ConversationModel } from '../models/Conversation';
+import { MessageModel } from '../models/Message';
+import { UserModel } from '../models/User';
 import { mockStore } from '../mock-store';
 import { usersRepository } from './users';
 
 export const chatRepository = {
-  // SESSION STATES & MULTI-CUSTOMER MEMORY
   // SESSION STATES & MULTI-CUSTOMER MEMORY
   getSessionState(conversationId: string): ConversationSessionState {
     const defaultState: ConversationSessionState = {
@@ -15,12 +17,8 @@ export const chatRepository = {
 
     const existing = mockStore.sessionStates.get(conversationId);
     if (!existing || !existing.draftOrder) {
-      // Cold-start detection: if there WAS a session but it's gone from memory
-      // (e.g. serverless cold start), log a warning so we can diagnose state loss.
-      // The Supabase draft_state is restored in getOrCreateConversation/getConversationById
-      // when a conversation is loaded — this is the recovery path.
       if (!existing) {
-        console.warn(`[SessionState] Cold-start or missing session for conversationId=${conversationId}. Returning default IDLE state. If this is after a restart, state will be recovered from Supabase on next getConversationById call.`);
+        console.warn(`[SessionState] Cold-start or missing session for conversationId=${conversationId}. Returning default IDLE state.`);
       }
       const merged: ConversationSessionState = {
         step: existing?.step || 'IDLE',
@@ -58,18 +56,19 @@ export const chatRepository = {
     };
     mockStore.sessionStates.set(conversationId, updated);
 
-    // Asynchronously sync session state to Supabase conversations table for serverless persistence
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      Promise.resolve(
-        client
-          .from('conversations')
-          .update({
-            draft_state: updated,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', conversationId)
-      ).catch((err: any) => console.error('[State Sync] Error saving draft_state to Supabase:', err));
+    // Asynchronously sync session state to MongoDB for serverless persistence
+    if (isDbConfigured()) {
+      connectToDatabase().then(() => {
+        ConversationModel.updateOne(
+          { id: conversationId },
+          {
+            $set: {
+              draft_state: updated,
+              updated_at: new Date().toISOString()
+            }
+          }
+        ).catch(err => console.error('[State Sync] Error saving draft_state to MongoDB:', err));
+      }).catch(() => {});
     }
 
     return updated;
@@ -85,27 +84,30 @@ export const chatRepository = {
     };
     mockStore.sessionStates.set(conversationId, clearedState);
 
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      Promise.resolve(
-        client
-          .from('conversations')
-          .update({
-            draft_state: clearedState,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', conversationId)
-      ).catch(() => {});
+    if (isDbConfigured()) {
+      connectToDatabase().then(() => {
+        ConversationModel.updateOne(
+          { id: conversationId },
+          {
+            $set: {
+              draft_state: clearedState,
+              updated_at: new Date().toISOString()
+            }
+          }
+        ).catch(() => {});
+      }).catch(() => {});
     }
   },
 
   async updateConversationSummary(conversationId: string, summary: string): Promise<void> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      await client
-        .from('conversations')
-        .update({ summary })
-        .eq('id', conversationId);
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        await ConversationModel.updateOne(
+          { id: conversationId },
+          { $set: { summary, updated_at: new Date().toISOString() } }
+        );
+      } catch (err) {}
     }
     const conv = mockStore.conversations.get(conversationId);
     if (conv) {
@@ -132,29 +134,41 @@ export const chatRepository = {
 
   // CONVERSATIONS & CHAT HISTORY
   async getConversations(): Promise<Conversation[]> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
+    if (isDbConfigured()) {
       try {
-        const { data, error } = await client
-          .from('conversations')
-          .select(`
-            *,
-            customer:users(*),
-            messages(*)
-          `)
-          .order('last_message_at', { ascending: false });
+        await connectToDatabase();
+        const convDocs = await ConversationModel.find().sort({ last_message_at: -1 }).lean();
+        if (convDocs && convDocs.length > 0) {
+          const convIds = convDocs.map(c => c.id);
+          const userIds = convDocs.map(c => c.user_id).filter((id): id is string => Boolean(id));
 
-        if (!error && data) {
-          return data.map((c: any) => ({
+          const [allMessages, allUsers] = await Promise.all([
+            MessageModel.find({ conversation_id: { $in: convIds } }).sort({ created_at: 1 }).lean(),
+            UserModel.find({ id: { $in: userIds } }).lean()
+          ]);
+
+          const messagesByConv = new Map<string, any[]>();
+          for (const msg of allMessages) {
+            const list = messagesByConv.get(msg.conversation_id) || [];
+            list.push(msg);
+            messagesByConv.set(msg.conversation_id, list);
+          }
+
+          const userById = new Map<string, any>();
+          for (const u of allUsers) {
+            userById.set(u.id, u);
+          }
+
+          return convDocs.map((c: any) => ({
             ...c,
-            user: c.customer,
-            messages: (c.messages || []).sort(
-              (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-            )
+            channel: 'WHATSAPP' as const,
+            is_ai_active: c.current_mode !== 'HUMAN',
+            user: c.user_id ? userById.get(c.user_id) : undefined,
+            messages: messagesByConv.get(c.id) || []
           }));
         }
       } catch (err) {
-        console.error('Supabase getConversations error:', err);
+        console.error('[MongoDB getConversations error]:', err);
       }
     }
 
@@ -170,34 +184,31 @@ export const chatRepository = {
   },
 
   async getConversationById(conversationId: string): Promise<Conversation | null> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
+    if (isDbConfigured()) {
       try {
-        const { data, error } = await client
-          .from('conversations')
-          .select(`
-            *,
-            customer:users(*),
-            messages(*)
-          `)
-          .eq('id', conversationId)
-          .single();
-
-        if (!error && data) {
-          if (data.draft_state && data.draft_state.draftOrder && !mockStore.sessionStates.has(data.id)) {
-            mockStore.sessionStates.set(data.id, data.draft_state);
+        await connectToDatabase();
+        const convDoc = await ConversationModel.findOne({ id: conversationId }).lean();
+        if (convDoc) {
+          if (convDoc.draft_state && convDoc.draft_state.draftOrder && !mockStore.sessionStates.has(convDoc.id)) {
+            mockStore.sessionStates.set(convDoc.id, convDoc.draft_state);
           }
-          const sortedMessages = (data.messages || []).sort(
-            (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-          );
+
+          const [messages, user] = await Promise.all([
+            MessageModel.find({ conversation_id: conversationId }).sort({ created_at: 1 }).lean(),
+            convDoc.user_id ? UserModel.findOne({ id: convDoc.user_id }).lean() : null
+          ]);
+
           return {
-            ...data,
-            user: data.customer,
-            messages: sortedMessages
-          };
+            ...convDoc,
+            user_id: convDoc.user_id || '',
+            channel: 'WHATSAPP' as const,
+            is_ai_active: convDoc.current_mode !== 'HUMAN',
+            user: user as any,
+            messages: (messages as any) || []
+          } as Conversation;
         }
       } catch (err) {
-        console.error('Supabase getConversationById error:', err);
+        console.error('[MongoDB getConversationById error]:', err);
       }
     }
 
@@ -214,48 +225,59 @@ export const chatRepository = {
 
   async getOrCreateConversation(phone: string, userName?: string): Promise<Conversation> {
     const user = await usersRepository.getOrCreateUser(phone, userName);
-    const client = getDbClient();
+    const cleanPhone = usersRepository.normalizePhoneNumber(phone);
 
-    if (isSupabaseConfigured() && client) {
-      const { data } = await client
-        .from('conversations')
-        .select(`*, messages(*)`)
-        .eq('user_id', user.id)
-        .single();
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        let convDoc = await ConversationModel.findOne({
+          $or: [
+            { user_id: user.id },
+            { phone: cleanPhone },
+            { phone: cleanPhone.replace(/^\+/, '') }
+          ]
+        }).lean();
 
-      if (data) {
-        if (data.draft_state && data.draft_state.draftOrder && !mockStore.sessionStates.has(data.id)) {
-          mockStore.sessionStates.set(data.id, data.draft_state);
+        if (convDoc) {
+          if (convDoc.draft_state && convDoc.draft_state.draftOrder && !mockStore.sessionStates.has(convDoc.id)) {
+            mockStore.sessionStates.set(convDoc.id, convDoc.draft_state);
+          }
+          const messages = await MessageModel.find({ conversation_id: convDoc.id }).sort({ created_at: 1 }).lean();
+          return {
+            ...convDoc,
+            user_id: convDoc.user_id || user.id,
+            channel: 'WHATSAPP' as const,
+            is_ai_active: convDoc.current_mode !== 'HUMAN',
+            user,
+            messages: (messages as any) || []
+          } as Conversation;
         }
-        const sortedMessages = (data.messages || []).sort(
-          (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        );
-        return {
-          ...data,
-          user,
-          messages: sortedMessages
-        };
-      }
 
-      const newConv: Conversation = {
-        id: crypto.randomUUID(),
-        user_id: user.id,
-        channel: 'WHATSAPP',
-        is_ai_active: true,
-        last_message_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        user,
-        messages: []
-      };
-      await client.from('conversations').insert({
-        id: newConv.id,
-        user_id: newConv.user_id,
-        channel: newConv.channel,
-        is_ai_active: newConv.is_ai_active,
-        last_message_at: newConv.last_message_at,
-        created_at: newConv.created_at
-      });
-      return newConv;
+        const newConvId = crypto.randomUUID();
+        const nowIso = new Date().toISOString();
+        const createdDoc = await ConversationModel.create({
+          id: newConvId,
+          phone: cleanPhone,
+          user_id: user.id,
+          current_mode: 'BOT',
+          last_message_at: nowIso,
+          created_at: nowIso,
+          updated_at: nowIso
+        });
+
+        return {
+          id: createdDoc.id,
+          user_id: user.id,
+          channel: 'WHATSAPP',
+          is_ai_active: true,
+          last_message_at: nowIso,
+          created_at: nowIso,
+          user,
+          messages: []
+        };
+      } catch (err) {
+        console.error('[MongoDB getOrCreateConversation error]:', err);
+      }
     }
 
     for (const c of mockStore.conversations.values()) {
@@ -321,32 +343,37 @@ export const chatRepository = {
     }
 
     const msgId = crypto.randomUUID();
+    const nowIso = new Date().toISOString();
     const newMsg: Message = {
       id: msgId,
       conversation_id: conversationId,
       sender,
       content,
       raw_payload: metadata,
-      created_at: new Date().toISOString()
+      created_at: nowIso
     };
 
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      await client.from('messages').insert({
-        id: msgId,
-        conversation_id: conversationId,
-        sender,
-        content,
-        raw_payload: metadata || null,
-        created_at: newMsg.created_at
-      });
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        await MessageModel.create({
+          id: msgId,
+          conversation_id: conversationId,
+          sender: sender === 'CUSTOMER' ? 'USER' : sender === 'BOT' ? 'BOT' : 'AGENT',
+          content,
+          metadata,
+          created_at: nowIso
+        });
 
-      await client
-        .from('conversations')
-        .update({ last_message_at: newMsg.created_at })
-        .eq('id', conversationId);
+        await ConversationModel.updateOne(
+          { id: conversationId },
+          { $set: { last_message_at: nowIso, updated_at: nowIso } }
+        );
 
-      return newMsg;
+        return newMsg;
+      } catch (err) {
+        console.error('[MongoDB addMessage error]:', err);
+      }
     }
 
     mockStore.messages.set(msgId, newMsg);
@@ -360,13 +387,18 @@ export const chatRepository = {
   },
 
   async setAiMode(conversationId: string, isAiActive: boolean): Promise<void> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
+    if (isDbConfigured()) {
       try {
-        await client
-          .from('conversations')
-          .update({ is_ai_active: isAiActive })
-          .eq('id', conversationId);
+        await connectToDatabase();
+        await ConversationModel.updateOne(
+          { id: conversationId },
+          {
+            $set: {
+              current_mode: isAiActive ? 'BOT' : 'HUMAN',
+              updated_at: new Date().toISOString()
+            }
+          }
+        );
       } catch (err) {}
     }
     const conv = mockStore.conversations.get(conversationId);

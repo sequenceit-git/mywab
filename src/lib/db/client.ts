@@ -1,8 +1,13 @@
-import { supabase, supabaseAdmin, isSupabaseConfigured } from '../supabase/client';
+import { connectToDatabase, isMongoConnected } from './mongodb';
+import { env } from '../config/env';
 
-export const getDbClient = () => {
-  if (!isSupabaseConfigured()) return null;
-  return supabaseAdmin || supabase;
+export const isDbConfigured = (): boolean => {
+  return env.mongodb.isConfigured;
 };
-export { isSupabaseConfigured };
 
+export const getDbClient = async () => {
+  if (!isDbConfigured()) return null;
+  return await connectToDatabase();
+};
+
+export { connectToDatabase, isMongoConnected };

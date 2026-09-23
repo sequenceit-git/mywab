@@ -1,5 +1,6 @@
 import { UserProfile } from '@/types';
-import { getDbClient, isSupabaseConfigured } from '../client';
+import { connectToDatabase, isDbConfigured } from '../client';
+import { UserModel } from '../models/User';
 import { mockStore } from '../mock-store';
 
 /**
@@ -25,31 +26,44 @@ export const usersRepository = {
 
   async getOrCreateUser(phone: string, name?: string, address?: string): Promise<UserProfile> {
     const cleanPhone = normalizePhoneNumber(phone);
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { data } = await client
-        .from('users')
-        .select('*')
-        .eq('phone_number', cleanPhone)
-        .single();
-      
-      if (data) {
-        if (name && !data.name) {
-          await client.from('users').update({ name, updated_at: new Date().toISOString() }).eq('id', data.id);
+
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        const existing = await UserModel.findOne({
+          $or: [
+            { phone_number: cleanPhone },
+            { phone_number: cleanPhone.replace(/^\+/, '') }
+          ]
+        }).lean();
+
+        if (existing) {
+          if (name && !existing.name) {
+            await UserModel.updateOne(
+              { id: existing.id },
+              { $set: { name, updated_at: new Date().toISOString() } }
+            );
+            (existing as any).name = name;
+          }
+          return existing as any;
         }
-        return data;
+
+        const newUserPayload = {
+          id: crypto.randomUUID(),
+          phone_number: cleanPhone,
+          name: name || null,
+          address_profile: address ? { full_address: address } : {},
+          language_pref: 'bn' as const,
+          status_tag: 'REGULAR' as const,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        const created = await UserModel.create(newUserPayload);
+        return created.toObject() as any;
+      } catch (err) {
+        console.error('[MongoDB getOrCreateUser error]:', err);
       }
-      const newUser: UserProfile = {
-        id: crypto.randomUUID(),
-        phone_number: cleanPhone,
-        name: name || null,
-        address_profile: address ? { full_address: address } : {},
-        language_pref: 'bn',
-        status_tag: 'REGULAR',
-        created_at: new Date().toISOString()
-      };
-      await client.from('users').insert(newUser);
-      return newUser;
     }
 
     for (const u of mockStore.users.values()) {
@@ -74,15 +88,22 @@ export const usersRepository = {
 
   async getUserByPhone(phone: string): Promise<UserProfile | null> {
     const cleanPhone = normalizePhoneNumber(phone);
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { data } = await client
-        .from('users')
-        .select('*')
-        .eq('phone_number', cleanPhone)
-        .single();
-      if (data) return data;
+
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        const doc = await UserModel.findOne({
+          $or: [
+            { phone_number: cleanPhone },
+            { phone_number: cleanPhone.replace(/^\+/, '') }
+          ]
+        }).lean();
+        if (doc) return doc as any;
+      } catch (err) {
+        console.error('[MongoDB getUserByPhone error]:', err);
+      }
     }
+
     for (const u of mockStore.users.values()) {
       if (normalizePhoneNumber(u.phone_number) === cleanPhone) return u;
     }
@@ -90,14 +111,14 @@ export const usersRepository = {
   },
 
   async getUserById(id: string): Promise<UserProfile | null> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { data } = await client
-        .from('users')
-        .select('*')
-        .eq('id', id)
-        .single();
-      if (data) return data;
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        const doc = await UserModel.findOne({ id }).lean();
+        if (doc) return doc as any;
+      } catch (err) {
+        console.error('[MongoDB getUserById error]:', err);
+      }
     }
     return mockStore.users.get(id) || null;
   },
@@ -109,16 +130,20 @@ export const usersRepository = {
     postal_code?: string;
     full_address?: string;
   }): Promise<UserProfile | null> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { data } = await client
-        .from('users')
-        .update({ address_profile: address, updated_at: new Date().toISOString() })
-        .eq('id', userId)
-        .select()
-        .single();
-      if (data) return data;
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        const updated = await UserModel.findOneAndUpdate(
+          { id: userId },
+          { $set: { address_profile: address, updated_at: new Date().toISOString() } },
+          { new: true }
+        ).lean();
+        if (updated) return updated as any;
+      } catch (err) {
+        console.error('[MongoDB updateUserAddress error]:', err);
+      }
     }
+
     const user = mockStore.users.get(userId);
     if (user) {
       user.address_profile = address;
@@ -129,16 +154,20 @@ export const usersRepository = {
   },
 
   async updateUserStatus(userId: string, statusTag: 'VIP' | 'REGULAR' | 'FLAGGED'): Promise<UserProfile | null> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      const { data } = await client
-        .from('users')
-        .update({ status_tag: statusTag, updated_at: new Date().toISOString() })
-        .eq('id', userId)
-        .select()
-        .single();
-      if (data) return data;
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        const updated = await UserModel.findOneAndUpdate(
+          { id: userId },
+          { $set: { status_tag: statusTag, updated_at: new Date().toISOString() } },
+          { new: true }
+        ).lean();
+        if (updated) return updated as any;
+      } catch (err) {
+        console.error('[MongoDB updateUserStatus error]:', err);
+      }
     }
+
     const user = mockStore.users.get(userId);
     if (user) {
       user.status_tag = statusTag;
@@ -189,15 +218,21 @@ export const usersRepository = {
       last_used_uid: updates.last_used_uid || currentProfile.last_used_uid || (newSavedUids[0] ?? undefined)
     };
 
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
-      await client
-        .from('users')
-        .update({
-          customer_profile: mergedProfile,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id);
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        await UserModel.updateOne(
+          { id: user.id },
+          {
+            $set: {
+              customer_profile: mergedProfile,
+              updated_at: new Date().toISOString()
+            }
+          }
+        );
+      } catch (err) {
+        console.error('[MongoDB updateCustomerProfile error]:', err);
+      }
     }
 
     user.customer_profile = mergedProfile;
@@ -205,20 +240,18 @@ export const usersRepository = {
   },
 
   async getUsers(): Promise<UserProfile[]> {
-    const client = getDbClient();
-    if (isSupabaseConfigured() && client) {
+    if (isDbConfigured()) {
       try {
-        const { data, error } = await client
-          .from('users')
-          .select('*')
-          .order('created_at', { ascending: false });
-        if (!error && data) {
-          return data;
+        await connectToDatabase();
+        const docs = await UserModel.find().sort({ created_at: -1 }).lean();
+        if (docs && docs.length > 0) {
+          return docs as any;
         }
       } catch (err) {
-        console.error('Supabase getUsers error:', err);
+        console.error('[MongoDB getUsers error]:', err);
       }
     }
+
     return Array.from(mockStore.users.values()).sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
@@ -305,12 +338,11 @@ export const usersRepository = {
         latest_uid: latestUid,
         saved_uids: allUids,
         favorite_game: favoriteGame,
-        rank: 0, // Assigned below
+        rank: 0,
         created_at: user.created_at
       };
     });
 
-    // Sort by total_spent descending, then total_orders descending
     leaderboard.sort((a, b) => {
       if (b.total_spent !== a.total_spent) {
         return b.total_spent - a.total_spent;
@@ -318,7 +350,6 @@ export const usersRepository = {
       return b.total_orders - a.total_orders;
     });
 
-    // Assign rank 1-indexed
     leaderboard.forEach((entry, idx) => {
       entry.rank = idx + 1;
     });

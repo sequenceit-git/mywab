@@ -2,7 +2,7 @@
 ### WhatsApp AI Commerce & Telegram Worker Fulfillment Dispatch Engine
 
 [![Next.js](https://img.shields.io/badge/Next.js-15.2.1-black?logo=next.js)](https://nextjs.org/)
-[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase)](https://supabase.com/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb)](https://www.mongodb.com/)
 [![OpenAI & LangChain](https://img.shields.io/badge/LangChain-OpenAI%20Agents-412991?logo=openai)](https://www.langchain.com/)
 [![WhatsApp Cloud API](https://img.shields.io/badge/Meta-WhatsApp%20Cloud%20API-25D366?logo=whatsapp)](https://developers.facebook.com/)
 [![Telegram Bot API](https://img.shields.io/badge/Telegram-Worker%20Bot-24A1DE?logo=telegram)](https://core.telegram.org/bots)
@@ -16,7 +16,7 @@
 **WapBusiness** is an enterprise conversational commerce platform engineered to automate end-to-end e-commerce operations. It unifies:
 1. **Bilingual Customer Shopping via WhatsApp**: Conversational product discovery, automated FAQ resolution, and dynamic order placement in Bengali & English powered by **LangChain + OpenAI**.
 2. **Real-time Worker Dispatch via Telegram**: Instant dispatch of confirmed orders into a Telegram fulfillment group with **atomic order locking** (preventing race conditions / double-claims).
-3. **Centralized Operations Hub**: A secure Next.js dashboard featuring live order tracking, chat monitoring with one-click human takeover, product catalog management, and staff analytics backed by **Supabase PostgreSQL**.
+3. **Centralized Operations Hub**: A secure Next.js dashboard featuring live order tracking, chat monitoring with one-click human takeover, product catalog management, and staff analytics backed by **MongoDB Atlas & Mongoose**.
 
 ---
 
@@ -52,9 +52,9 @@ flowchart TD
         Admin_Panel["Admin Dashboard & Live Inbox\n(mywab.sequenceit.software)"]
     end
 
-    subgraph Database["Supabase PostgreSQL Cloud"]
-        SQL_DB[("Postgres Database\n• users\n• orders & items\n• products\n• conversations\n• workers & assignments")]
-        Atomic_Proc["claim_order_atomic()\n(Row-Locking Stored Procedure)"]
+    subgraph Database["MongoDB Atlas Cloud"]
+        SQL_DB[("MongoDB Database\n• users\n• orders & items\n• packages\n• conversations\n• workers & assignments")]
+        Atomic_Proc["findOneAndUpdate()\n(Atomic Find & Claim)"]
     end
 
     subgraph Workers["Fulfillment Team Channel (Telegram)"]
@@ -94,7 +94,7 @@ sequenceDiagram
     participant WhatsApp as Meta WhatsApp API
     participant NextApp as WapBusiness Backend
     participant OpenAI as LangChain / OpenAI
-    participant Supabase as Supabase PostgreSQL
+    participant MongoDB as MongoDB Atlas (Mongoose)
     participant Telegram as Telegram Bot API
     actor Worker as 👷 Telegram Worker
 
@@ -103,8 +103,8 @@ sequenceDiagram
     NextApp->>OpenAI: Process intent with Conversation History & Tools
     OpenAI->>NextApp: Invoke `create_order` (Items, Address, Phone)
     
-    NextApp->>Supabase: Insert Order (Status: PENDING_CLAIM) & Order Items
-    Supabase-->>NextApp: Order Created (e.g. WAP-20260914-1001)
+    NextApp->>MongoDB: Insert Order (Status: PENDING_CLAIM) & Order Items
+    MongoDB-->>NextApp: Order Created (e.g. WAP-20260914-1001)
     
     par Worker Dispatch
         NextApp->>Telegram: Send Interactive Order Card + [⚡ Claim] Button
@@ -116,20 +116,20 @@ sequenceDiagram
 
     Worker->>Telegram: Clicks [⚡ Claim Order]
     Telegram->>NextApp: CallbackQuery (`claim:WAP-20260914-1001`)
-    NextApp->>Supabase: Call `claim_order_atomic()` (FOR UPDATE Row Lock)
+    NextApp->>MongoDB: Call `claimOrder()` (Atomic findOneAndUpdate)
     
     alt Order Already Claimed
-        Supabase-->>NextApp: { success: false, code: "ALREADY_CLAIMED" }
+        MongoDB-->>NextApp: { success: false, code: "ALREADY_CLAIMED" }
         NextApp->>Telegram: Alert Worker: "⚠️ Order already claimed by another rider"
     else Claim Successful
-        Supabase-->>NextApp: { success: true, worker_id: "...", status: "CLAIMED" }
+        MongoDB-->>NextApp: { success: true, worker_id: "...", status: "CLAIMED" }
         NextApp->>Telegram: Edit Message -> Update Card to Claimed & Show Action Buttons
         NextApp->>WhatsApp: Notify Customer: "Worker [Name] is preparing your order!"
     end
 
     Worker->>Telegram: Clicks [✅ Mark Delivered]
     Telegram->>NextApp: CallbackQuery (`status_delivered:WAP-...`)
-    NextApp->>Supabase: Update Order Status -> DELIVERED
+    NextApp->>MongoDB: Update Order Status -> DELIVERED
     NextApp->>WhatsApp: Send Delivery Notification & Feedback Request
     WhatsApp->>Customer: "🎉 আপনার অর্ডার সফলভাবে ডেলিভারি করা হয়েছে!"
 ```
@@ -262,7 +262,7 @@ erDiagram
 | **Framework** | Next.js 15.2 (App Router) | Server Actions, API Route Handlers, Standalone output |
 | **Language & Typing** | TypeScript 5.8 & React 19 | Strictly typed components, interfaces, and schemas |
 | **Styling & UI** | Tailwind CSS + Lucide Icons | Responsive dark theme with curated glassmorphism |
-| **Database & Auth** | Supabase (PostgreSQL 15) | Relational store, RLS policies, PL/pgSQL stored procedures |
+| **Database & Auth** | MongoDB Atlas (Mongoose 9) | Document collections, schema validation, atomic operations |
 | **AI / Agent Core** | LangChain + OpenAI | Tool-calling agent (`gpt-4o-mini`, `gpt-5-mini`, etc.) |
 | **Customer Messaging** | Meta WhatsApp Cloud API (v21.0) | Webhook intake, interactive messages, templates |
 | **Worker Dispatch** | Telegram Bot API (GrammY) | Group broadcasts, inline keyboards, callback updates |
@@ -276,7 +276,7 @@ erDiagram
 ### 1. Prerequisites
 - Node.js 20.x or higher
 - npm 10.x or higher
-- Supabase Project or local PostgreSQL
+- MongoDB Atlas Cluster or local MongoDB instance
 
 ### 2. Installation
 ```bash
@@ -296,11 +296,8 @@ cp .env.example .env
 
 Edit `.env`:
 ```env
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_...
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi...
+# MongoDB Atlas Configuration
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<database>?retryWrites=true&w=majority
 
 # OpenAI Configuration
 OPENAI_API_KEY=sk-proj-...
@@ -324,9 +321,7 @@ AUTH_SECRET=your_super_secret_session_key
 ```
 
 ### 4. Database Setup
-The migration files are stored in `supabase/migrations/`:
-- Run `supabase/migrations/20260914000000_initial_schema.sql` on your Supabase SQL Editor.
-- Run `supabase/seed.sql` to populate initial demo products and FAQs.
+The models are defined in `src/lib/db/models/`. Mongoose automatically initializes and indexes the collections upon first connection.
 
 ### 5. Launch Development Server
 ```bash

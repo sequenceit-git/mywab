@@ -5,12 +5,10 @@ export interface SystemStatus {
     url?: string;
     nodeEnv?: string;
   };
-  supabase?: {
+  mongodb?: {
     isConfigured?: boolean;
     connected?: boolean;
-    url?: string;
-    publishableKeyMasked?: string;
-    serviceRoleKeyMasked?: string;
+    uriMasked?: string;
     stats?: {
       ordersCount?: number;
       workersCount?: number;

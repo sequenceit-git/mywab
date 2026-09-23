@@ -102,12 +102,18 @@ export function RocketIcon({ className = 'w-4 h-4' }: { className?: string }) {
   );
 }
 
-export function SupabaseIcon({ className = 'w-4 h-4' }: { className?: string }) {
+export function MongoDbIcon({ className = 'w-4 h-4' }: { className?: string }) {
   return (
     <svg className={`shrink-0 ${className}`} viewBox="0 0 24 24" fill="none">
       <path
-        d="M13.35 2.05a1 1 0 00-1.7.95l1.8 7.5H4a1 1 0 00-.8 1.6l9.5 10.5a1 1 0 001.7-.95l-1.8-7.5H20a1 1 0 00.8-1.6L13.35 2.05z"
-        fill="#3ECF8E"
+        d="M12 2C11.5 2.5 7 8 7 13.5C7 16.5 9.2 19 12 19C14.8 19 17 16.5 17 13.5C17 8 12.5 2.5 12 2Z"
+        fill="#00ED64"
+      />
+      <path
+        d="M12 2V22"
+        stroke="#001E2B"
+        strokeWidth="1.2"
+        strokeLinecap="round"
       />
     </svg>
   );
