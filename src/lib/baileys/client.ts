@@ -506,6 +506,23 @@ export class BaileysManager {
         }
       });
 
+      // Delivery/read receipts for OUR outbound messages. A successful
+      // relayMessage/sendMessage only means WhatsApp's server accepted the
+      // relay — it does NOT mean a real device received it (e.g. the classic
+      // "sent to a nonexistent @lid JID" failure mode). These receipts are
+      // the only real proof a message actually reached the customer's phone.
+      this.sock.ev.on('messages.update', (updates) => {
+        if (generation !== this.connectGeneration) return;
+        for (const { key, update } of updates) {
+          if (!key?.fromMe || update.status == null) continue;
+          const label =
+            { 1: 'PENDING', 2: 'SERVER_ACK', 3: 'DELIVERED', 4: 'READ', 5: 'PLAYED' }[
+              update.status as number
+            ] || `STATUS_${update.status}`;
+          console.log(`[Baileys] 📬 ${label} — to=${key.remoteJid} id=${key.id}`);
+        }
+      });
+
     } catch (err) {
       console.error('[Baileys] Initialization error:', err);
       this.lastError = (err as Error)?.message || String(err);
