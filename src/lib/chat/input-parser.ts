@@ -520,7 +520,7 @@ export function getGameDeliveryConfig(gameTitleOrCode?: string, firstItemName?: 
 
   if (text.includes('pubg') || text.includes('uc')) {
     return {
-      deliveryMessage: 'আমাদের টপ-আপ টিম খুব দ্রুত আপনার আইডিতে ইউসি পাঠিয়ে দেবে! 🎮🚀',
+      deliveryMessage: 'অনুগ্রহ করে ১-১০ মিনিট অপেক্ষা করুন, এর মধ্যে আমাদের টিম আপনাকে QR কোড পাঠিয়ে দেবে।\n\nQR কোড স্ক্যান করার নিয়ম জানতে এই লিংকে ক্লিক করুন 👇\n\nhttps://youtu.be/69dMmHMfDfg?si=3GvVwdfg-yGvaRr5',
       catalogButtonTitle: '💎 UC প্রাইস',
       catalogButtonId: 'game_pubg_uid'
     };
