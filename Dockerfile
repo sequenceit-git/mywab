@@ -41,9 +41,9 @@ RUN adduser --system --uid 1001 nextjs
 # Copy public assets & static output
 COPY --from=builder /app/public ./public
 
-# Set correct permissions for Next.js prerender cache
-RUN mkdir .next
-RUN chown nextjs:nodejs .next
+# Set correct permissions for Next.js prerender cache and Baileys session storage
+RUN mkdir -p .next /app/baileys_auth
+RUN chown -R nextjs:nodejs .next /app/baileys_auth
 
 # Copy standalone build output
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
