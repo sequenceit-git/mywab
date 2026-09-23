@@ -572,6 +572,15 @@ export class BaileysManager {
   }
 
   /**
+   * Outbound sends are network round-trips through libsignal (session setup, prekey fetch, etc).
+   * Without a hard ceiling, a stalled encrypt/relay (common right after a fresh pairing while
+   * WhatsApp is still propagating our device's prekeys) hangs the caller FOREVER with zero
+   * visibility — no success log, no error log, nothing. Bound every outbound call so a hang
+   * always surfaces as a clear, loggable failure within OUTBOUND_SEND_TIMEOUT_MS.
+   */
+  private static readonly OUTBOUND_SEND_TIMEOUT_MS = 25_000;
+
+  /**
    * Send a standard text message
    */
   public async sendMessage(toPhone: string, text: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
@@ -581,11 +590,16 @@ export class BaileysManager {
 
     const jid = this.formatJid(toPhone);
     try {
-      const res = await this.sock.sendMessage(jid, { text });
+      const res = await this.withTimeout(
+        this.sock.sendMessage(jid, { text }),
+        BaileysManager.OUTBOUND_SEND_TIMEOUT_MS,
+        `sendMessage(${toPhone})`
+      );
       this.rememberMessage(res as proto.IWebMessageInfo);
+      console.log(`[Baileys] ✉️ Text sent to ${toPhone} (id=${res?.key?.id || 'n/a'})`);
       return { success: true, messageId: res?.key?.id || undefined };
     } catch (err: any) {
-      console.error(`[Baileys] Send text error to ${toPhone}:`, err);
+      console.error(`[Baileys] Send text error to ${toPhone}:`, err.message || err);
       return { success: false, error: err.message || String(err) };
     }
   }
@@ -654,11 +668,16 @@ export class BaileysManager {
       };
 
       const waMsg = generateWAMessageFromContent(jid, messageContent, { userJid: this.sock.user?.id || jid });
-      await this.sock.relayMessage(jid, waMsg.message!, { messageId: waMsg.key.id! });
+      await this.withTimeout(
+        this.sock.relayMessage(jid, waMsg.message!, { messageId: waMsg.key.id! }),
+        BaileysManager.OUTBOUND_SEND_TIMEOUT_MS,
+        `sendInteractiveButtons(${toPhone})`
+      );
 
+      console.log(`[Baileys] ✉️ Buttons sent to ${toPhone} (id=${waMsg.key.id || 'n/a'})`);
       return { success: true, messageId: waMsg.key.id || undefined };
     } catch (err: any) {
-      console.warn('[Baileys] Error sending nativeFlow buttons, falling back to clean formatted menu:', err);
+      console.warn(`[Baileys] Error sending nativeFlow buttons to ${toPhone}, falling back to formatted text:`, err.message || err);
       // Fallback: Format buttons as numbered list in text so user can reply with number
       const buttonList = buttons
         .map((b, idx) => `${idx + 1}️⃣ ${b.title}${b.type === 'url' && b.value ? `\n👉 ${b.value}` : ''}`)
@@ -721,11 +740,16 @@ export class BaileysManager {
       };
 
       const waMsg = generateWAMessageFromContent(jid, messageContent, { userJid: this.sock.user?.id || jid });
-      await this.sock.relayMessage(jid, waMsg.message!, { messageId: waMsg.key.id! });
+      await this.withTimeout(
+        this.sock.relayMessage(jid, waMsg.message!, { messageId: waMsg.key.id! }),
+        BaileysManager.OUTBOUND_SEND_TIMEOUT_MS,
+        `sendInteractiveList(${toPhone})`
+      );
 
+      console.log(`[Baileys] ✉️ List sent to ${toPhone} (id=${waMsg.key.id || 'n/a'})`);
       return { success: true, messageId: waMsg.key.id || undefined };
     } catch (err: any) {
-      console.warn('[Baileys] Error sending nativeFlow list, falling back to formatted text:', err);
+      console.warn(`[Baileys] Error sending nativeFlow list to ${toPhone}, falling back to formatted text:`, err.message || err);
       let menuText = `${headerTitle ? `*${headerTitle}*\n\n` : ''}${bodyText}\n\n`;
       let counter = 1;
       for (const s of sections) {
@@ -759,10 +783,15 @@ export class BaileysManager {
         ? { image: { url: imageSource }, caption }
         : { image: imageSource, caption };
 
-      const res = await this.sock.sendMessage(jid, payload);
+      const res = await this.withTimeout(
+        this.sock.sendMessage(jid, payload),
+        BaileysManager.OUTBOUND_SEND_TIMEOUT_MS,
+        `sendImage(${toPhone})`
+      );
+      console.log(`[Baileys] 🖼️ Image sent to ${toPhone} (id=${res?.key?.id || 'n/a'})`);
       return { success: true, messageId: res?.key?.id || undefined };
     } catch (err: any) {
-      console.error(`[Baileys] Send image error to ${toPhone}:`, err);
+      console.error(`[Baileys] Send image error to ${toPhone}:`, err.message || err);
       return { success: false, error: err.message || String(err) };
     }
   }

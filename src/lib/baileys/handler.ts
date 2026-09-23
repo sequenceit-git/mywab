@@ -112,16 +112,32 @@ export async function handleBaileysIncomingMessage(msg: proto.IWebMessageInfo): 
     await db.addMessage(conversation.id, 'CUSTOMER', text || buttonId || listId || '');
 
     // 2. Dispatch to State Bot engine
-    await stateBot.handleIncomingMessage({
-      conversationId: conversation.id,
-      userId: user.id,
-      phone: formattedPhone,
-      customerName,
-      text,
-      buttonId,
-      listId
+    // Bounded so a stuck downstream call (WhatsApp send, DB, payment gateway) always
+    // surfaces as a loggable timeout instead of silently hanging the customer forever.
+    const DISPATCH_TIMEOUT_MS = 30_000;
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      stateBot.handleIncomingMessage({
+        conversationId: conversation.id,
+        userId: user.id,
+        phone: formattedPhone,
+        customerName,
+        text,
+        buttonId,
+        listId
+      }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`stateBot dispatch timed out after ${DISPATCH_TIMEOUT_MS}ms`)),
+          DISPATCH_TIMEOUT_MS
+        );
+      })
+    ]).finally(() => {
+      if (timer) clearTimeout(timer);
     });
+
+    console.log(`[Baileys Inbound] ✅ Dispatch complete for ${formattedPhone}`);
   } catch (err) {
-    console.error('[Baileys Inbound Dispatch Error]:', err);
+    console.error(`[Baileys Inbound Dispatch Error] from=${remoteJid}:`, err);
   }
 }
