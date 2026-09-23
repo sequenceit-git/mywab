@@ -8,13 +8,15 @@ export async function GET() {
   try {
     const status = baileysManager.getStatus();
 
-    // Only auto-start when truly idle. Polling while a reconnect is scheduled
-    // used to spawn a second socket → WhatsApp 440 connectionReplaced loops.
-    if (
+    // Auto-start only when idle. Allow recovery from zombie CONNECTING (no socket).
+    const needsStart =
       env.whatsapp.provider === 'baileys' &&
-      status.status === 'DISCONNECTED' &&
-      !baileysManager.isBusy
-    ) {
+      !status.isConnected &&
+      status.status !== 'QR_READY' &&
+      status.status !== 'PAIRING_CODE_READY' &&
+      !baileysManager.isBusy;
+
+    if (needsStart) {
       baileysManager.init().catch(err => {
         console.error('[Baileys API GET] Auto-init error:', err);
       });
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest) {
       }
 
       case 'INIT': {
-        await baileysManager.init();
+        await baileysManager.forceInit();
         return NextResponse.json({
           success: true,
           message: 'Baileys initializing...',

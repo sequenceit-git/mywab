@@ -50,9 +50,13 @@ export class BaileysManager {
   private registeredPhone: string | null = null;
   private reconnectAttempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private connectWatchdog: NodeJS.Timeout | null = null;
   private isInitializing = false;
+  /** Monotonic lock id so aborted inits cannot leave isInitializing stuck true. */
+  private initLockId = 0;
   /** Bumps on every new socket so stale connection.update handlers cannot start a second reconnect. */
   private connectGeneration = 0;
+  private lastError: string | null = null;
   private messageHandler: ((message: proto.IWebMessageInfo) => Promise<void>) | null = null;
   /** Lightweight outbound message cache for Baileys retry / getMessage. */
   private messageStore = new Map<string, proto.IMessage>();
@@ -101,23 +105,50 @@ export class BaileysManager {
       isInitializing: this.isInitializing,
       hasPendingReconnect: this.reconnectTimer !== null,
       reconnectAttempts: this.reconnectAttempts,
+      lastError: this.lastError,
+      hasSocket: this.sock !== null,
     };
   }
 
   /**
-   * True when a socket is already up or a connect/reconnect is in flight.
-   * Used by the status API so polling cannot spawn a second competing socket.
+   * True when a healthy connect is already in progress or connected.
+   * Zombie CONNECTING with no socket is NOT busy — recovery must be allowed.
    */
   public get isBusy(): boolean {
-    return (
-      this.isInitializing ||
-      this.reconnectTimer !== null ||
-      this.sock !== null ||
-      this.status === 'CONNECTING' ||
-      this.status === 'QR_READY' ||
-      this.status === 'PAIRING_CODE_READY' ||
-      this.status === 'CONNECTED'
-    );
+    if (this.status === 'CONNECTED') return true;
+    if (this.status === 'QR_READY' || this.status === 'PAIRING_CODE_READY') return true;
+    if (this.reconnectTimer !== null) return true;
+    if (this.isInitializing && this.sock !== null) return true;
+    if (this.isInitializing && this.status === 'CONNECTING') return true;
+    return false;
+  }
+
+  private clearConnectWatchdog(): void {
+    if (this.connectWatchdog) {
+      clearTimeout(this.connectWatchdog);
+      this.connectWatchdog = null;
+    }
+  }
+
+  /** If we sit in CONNECTING with no QR for too long, force a clean retry (often corrupt auth). */
+  private armConnectWatchdog(generation: number): void {
+    this.clearConnectWatchdog();
+    this.connectWatchdog = setTimeout(() => {
+      this.connectWatchdog = null;
+      if (generation !== this.connectGeneration) return;
+      if (this.status === 'CONNECTED' || this.status === 'QR_READY' || this.status === 'PAIRING_CODE_READY') {
+        return;
+      }
+      console.warn(
+        '[Baileys] ⏱️ Connect watchdog: still no QR/open after 45s. Clearing auth and retrying...'
+      );
+      this.lastError = 'Connection timed out waiting for QR. Cleared session and retrying.';
+      this.destroySocket('watchdog');
+      this.clearAuthFiles();
+      this.status = 'DISCONNECTED';
+      this.isInitializing = false;
+      this.scheduleReconnect(1000);
+    }, 45_000);
   }
 
   /**
@@ -148,11 +179,43 @@ export class BaileysManager {
     if (!msg?.key?.id || !msg.message) return;
     const id = `${msg.key.remoteJid || ''}:${msg.key.id}`;
     this.messageStore.set(id, msg.message);
-    // Cap memory — keep recent outbound/inbound only
     if (this.messageStore.size > 500) {
       const first = this.messageStore.keys().next().value;
       if (first) this.messageStore.delete(first);
     }
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Force-unlock any zombie init state, then start a fresh socket.
+   */
+  public async forceInit(): Promise<void> {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.clearConnectWatchdog();
+    this.connectGeneration++;
+    this.isInitializing = false;
+    this.destroySocket('force-init');
+    this.status = 'DISCONNECTED';
+    this.currentQr = null;
+    this.currentQrDataUrl = null;
+    this.currentPairingCode = null;
+    await this.init();
   }
 
   /**
@@ -161,54 +224,70 @@ export class BaileysManager {
    * @see https://baileys.wiki/advanced/troubleshooting#connection-keeps-dropping-/-reconnecting
    */
   public async init(): Promise<void> {
-    // Already connected or mid-flight — do not open a competing socket (causes 440 loops).
+    // Recover from zombie lock (previous init aborted without clearing the flag)
     if (this.isInitializing) {
-      console.log('[Baileys] init() skipped — already initializing');
-      return;
+      if (this.sock && (this.status === 'CONNECTING' || this.status === 'QR_READY' || this.status === 'PAIRING_CODE_READY' || this.status === 'CONNECTED')) {
+        console.log(`[Baileys] init() skipped — already in status=${this.status}`);
+        return;
+      }
+      console.warn('[Baileys] Clearing zombie isInitializing lock (no live socket)');
+      this.isInitializing = false;
     }
+
     if (this.sock && this.status === 'CONNECTED') {
       return;
     }
-    if (this.sock && (this.status === 'CONNECTING' || this.status === 'QR_READY' || this.status === 'PAIRING_CODE_READY')) {
+    if (this.sock && (this.status === 'QR_READY' || this.status === 'PAIRING_CODE_READY')) {
       console.log(`[Baileys] init() skipped — socket already in status=${this.status}`);
       return;
     }
 
+    const myLock = ++this.initLockId;
     this.isInitializing = true;
     this.status = 'CONNECTING';
+    this.lastError = null;
     const generation = ++this.connectGeneration;
 
-    // Ensure only one live socket exists
     this.destroySocket('before-init');
 
     try {
       this.ensureAuthDir();
       const { state, saveCreds } = await useMultiFileAuthState(this.authPath);
 
-      if (generation !== this.connectGeneration) {
-        console.log('[Baileys] init aborted — a newer connect generation started');
+      if (generation !== this.connectGeneration || myLock !== this.initLockId) {
+        console.log('[Baileys] init aborted — superseded by a newer connect attempt');
         return;
       }
 
       const logger = pino({ level: 'error' });
 
-      // Fetch live WA Web version (primary) → fallback to bundled Baileys version
-      // fetchLatestWaWebVersion() gets the ACTUAL version from web.whatsapp.com
-      // This is critical: using a stale version causes "Couldn't link device" on pairing
       let version: [number, number, number] | undefined;
       try {
-        const versionInfo = await fetchLatestWaWebVersion({});
+        const versionInfo = await this.withTimeout(
+          fetchLatestWaWebVersion({}),
+          8_000,
+          'fetchLatestWaWebVersion'
+        );
         version = versionInfo.version;
         console.log(`[Baileys] Using live WA Web version: ${version.join('.')}`);
-      } catch {
+      } catch (liveErr) {
+        console.warn('[Baileys] Live WA Web version fetch failed/timed out:', (liveErr as Error)?.message || liveErr);
         try {
-          const fallback = await fetchLatestBaileysVersion();
+          const fallback = await this.withTimeout(fetchLatestBaileysVersion(), 5_000, 'fetchLatestBaileysVersion');
           version = fallback.version;
-          console.warn(`[Baileys] Live version fetch failed, using bundled Baileys version: ${version.join('.')}`);
+          console.warn(`[Baileys] Using bundled Baileys version: ${version.join('.')}`);
         } catch (vErr) {
           console.warn('[Baileys] All version fetches failed, using library default:', vErr);
         }
       }
+
+      if (generation !== this.connectGeneration || myLock !== this.initLockId) {
+        console.log('[Baileys] init aborted after version fetch — superseded');
+        return;
+      }
+
+      const isRegistered = Boolean(state.creds?.registered);
+      console.log(`[Baileys] Creating socket (registered=${isRegistered}, authDir=${this.authPath})`);
 
       this.sock = makeWASocket({
         version,
@@ -217,13 +296,11 @@ export class BaileysManager {
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         logger,
-        // Desktop identity (stable for linked-device bots). See baileys.wiki/concepts/socket-config
         browser: Browsers.macOS('Chrome'),
         syncFullHistory: false,
         generateHighQualityLinkPreview: false,
         connectTimeoutMs: 60_000,
         defaultQueryTimeoutMs: 60_000,
-        // Official default is 30s — shorter intervals cause idle 408 disconnect loops
         keepAliveIntervalMs: 30_000,
         markOnlineOnConnect: false,
         retryRequestDelayMs: 250,
@@ -233,31 +310,37 @@ export class BaileysManager {
         },
       });
 
+      this.armConnectWatchdog(generation);
+
       this.sock.ev.on('creds.update', saveCreds);
 
       this.sock.ev.on('connection.update', async (update) => {
-        // Ignore events from a socket that was already replaced
         if (generation !== this.connectGeneration) return;
 
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
+          this.clearConnectWatchdog();
           this.currentQr = qr;
           try {
             this.currentQrDataUrl = await QRCode.toDataURL(qr);
           } catch (qrErr) {
             console.error('[Baileys] QR DataURL generation error:', qrErr);
+            this.lastError = 'Failed to render QR image';
           }
           this.status = 'QR_READY';
+          this.lastError = null;
           console.log('[Baileys] New QR Code generated. Scan from WhatsApp or Admin panel.');
         }
 
         if (connection === 'open') {
+          this.clearConnectWatchdog();
           this.status = 'CONNECTED';
           this.currentQr = null;
           this.currentQrDataUrl = null;
           this.currentPairingCode = null;
           this.reconnectAttempts = 0;
+          this.lastError = null;
           if (this.reconnectTimer) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
@@ -265,9 +348,12 @@ export class BaileysManager {
           this.registeredPhone = this.sock?.user?.id ? this.sock.user.id.split(':')[0] : null;
           console.log(`[Baileys] ✅ Connection open! Connected as: ${this.registeredPhone}`);
         } else if (connection === 'close') {
+          this.clearConnectWatchdog();
           this.status = 'DISCONNECTED';
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
           const errorMessage = (lastDisconnect?.error as Boom)?.message || 'Unknown';
+          this.lastError = `Disconnected (${statusCode}): ${errorMessage}`;
+
           const shouldReconnect =
             statusCode !== DisconnectReason.loggedOut &&
             statusCode !== DisconnectReason.connectionReplaced;
@@ -276,7 +362,6 @@ export class BaileysManager {
             `[Baileys] 🔌 Connection closed. Code: ${statusCode}, Message: "${errorMessage}". Reconnecting: ${shouldReconnect}`
           );
 
-          // Drop this generation's socket reference (do not end again — WA already closed it)
           if (generation === this.connectGeneration) {
             this.sock = null;
           }
@@ -292,8 +377,6 @@ export class BaileysManager {
           }
 
           if (statusCode === DisconnectReason.connectionReplaced) {
-            // 440 = another socket (often our own duplicate init) took over.
-            // Do NOT immediately reconnect — that creates an infinite fight.
             console.warn(
               '[Baileys] Connection replaced (440). Waiting 15s before a single recovery attempt...'
             );
@@ -309,7 +392,6 @@ export class BaileysManager {
           }
 
           if (statusCode === DisconnectReason.restartRequired) {
-            // Expected after QR / pairing — reconnect ASAP (Baileys FAQ).
             console.log(
               '[Baileys] 🔄 WhatsApp requested stream restart (515). Reconnecting immediately...'
             );
@@ -342,10 +424,13 @@ export class BaileysManager {
 
     } catch (err) {
       console.error('[Baileys] Initialization error:', err);
+      this.lastError = (err as Error)?.message || String(err);
       this.status = 'DISCONNECTED';
+      this.clearConnectWatchdog();
       this.scheduleReconnect();
     } finally {
-      if (generation === this.connectGeneration) {
+      // Always release if we still own this lock — prevents permanent CONNECTING stuck state
+      if (myLock === this.initLockId) {
         this.isInitializing = false;
       }
     }
@@ -362,8 +447,9 @@ export class BaileysManager {
     );
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
-      // Only reconnect if still disconnected and not already connecting
-      if (this.status === 'CONNECTED' || this.isInitializing) return;
+      if (this.status === 'CONNECTED') return;
+      // Allow recovery even if a previous init left a zombie lock
+      this.isInitializing = false;
       this.destroySocket('reconnect');
       await this.init();
     }, delay);
@@ -371,6 +457,7 @@ export class BaileysManager {
 
   /**
    * Request an 8-digit Pairing Code for headless phone linking
+   * @see https://baileys.wiki/authentication/pairing-code
    */
   public async requestPairingCode(phone: string): Promise<{ success: boolean; code?: string; error?: string }> {
     let cleanPhone = phone.replace(/\D/g, '');
@@ -378,7 +465,6 @@ export class BaileysManager {
       return { success: false, error: 'Phone number is required.' };
     }
 
-    // Auto-prefix Bangladesh country code if local 11-digit number is provided (e.g. 017XXXXXXXX -> 88017XXXXXXXX)
     if (cleanPhone.startsWith('01') && cleanPhone.length === 11) {
       cleanPhone = '88' + cleanPhone;
     }
@@ -396,35 +482,57 @@ export class BaileysManager {
       this.reconnectTimer = null;
     }
 
+    // Ensure a live socket exists (force if zombie CONNECTING)
     if (!this.sock || this.status === 'DISCONNECTED') {
-      if (!this.isInitializing) {
-        await this.init();
-      }
+      await this.forceInit();
+    } else if (this.status === 'CONNECTING' && !this.sock) {
+      await this.forceInit();
     }
 
-    // Wait for the socket connection to be ready (up to 10 seconds)
+    // Wait for socket + WA handshake (QR event means server linked pairing refs)
     let waitCount = 0;
-    while ((!this.sock || this.status === 'CONNECTING') && waitCount < 20) {
+    while (waitCount < 40) {
+      if (this.sock && (this.currentQr || this.status === 'QR_READY' || this.status === 'PAIRING_CODE_READY')) {
+        break;
+      }
+      if (this.sock && !this.isInitializing && this.status !== 'CONNECTING') {
+        break;
+      }
+      // Sock exists and init finished — enough for pairing code even before QR paints
+      if (this.sock && !this.isInitializing && waitCount >= 6) {
+        break;
+      }
       await new Promise(r => setTimeout(r, 500));
       waitCount++;
     }
 
     try {
       if (!this.sock) {
-        return { success: false, error: 'Socket initialization failed' };
+        return {
+          success: false,
+          error: this.lastError
+            ? `Socket initialization failed: ${this.lastError}`
+            : 'Socket initialization failed. Click "Reset / Clear Session" then try again.',
+        };
       }
 
       if (this.sock.authState?.creds?.registered) {
-        return { success: false, error: 'This session is already registered. If stuck, click "Reset / Clear Session" first.' };
+        return {
+          success: false,
+          error: 'This session already has credentials. Click "Reset / Clear Session" first, then request a new code.',
+        };
       }
 
       const code = await this.sock.requestPairingCode(cleanPhone);
+      this.clearConnectWatchdog();
       this.currentPairingCode = code;
       this.status = 'PAIRING_CODE_READY';
+      this.lastError = null;
       console.log(`[Baileys] 📲 Generated Pairing Code: ${code} for phone: ${cleanPhone}`);
       return { success: true, code };
     } catch (err: any) {
       console.error('[Baileys] Request pairing code exception:', err);
+      this.lastError = err.message || String(err);
       return { success: false, error: err.message || 'Failed to request pairing code' };
     }
   }
@@ -684,18 +792,7 @@ export class BaileysManager {
    * Manually trigger a socket reconnection
    */
   public async reconnect(): Promise<void> {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    this.connectGeneration++; // invalidate in-flight handlers
-    this.destroySocket('manual-reconnect');
-    this.status = 'DISCONNECTED';
-    this.currentQr = null;
-    this.currentQrDataUrl = null;
-    this.currentPairingCode = null;
-    this.isInitializing = false;
-    await this.init();
+    await this.forceInit();
   }
 
   /**
@@ -706,9 +803,11 @@ export class BaileysManager {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.clearConnectWatchdog();
     this.connectGeneration++;
     this.destroySocket('reset');
     this.clearAuthFiles();
+    this.sock = null;
     this.status = 'DISCONNECTED';
     this.currentQr = null;
     this.currentQrDataUrl = null;
@@ -716,6 +815,7 @@ export class BaileysManager {
     this.registeredPhone = null;
     this.reconnectAttempts = 0;
     this.isInitializing = false;
+    this.lastError = null;
     this.messageStore.clear();
     await this.init();
   }
@@ -728,6 +828,7 @@ export class BaileysManager {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.clearConnectWatchdog();
     this.connectGeneration++;
     try {
       if (this.sock) {
@@ -744,6 +845,7 @@ export class BaileysManager {
       this.currentPairingCode = null;
       this.registeredPhone = null;
       this.isInitializing = false;
+      this.lastError = null;
       this.messageStore.clear();
     }
   }

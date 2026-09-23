@@ -72,6 +72,9 @@ interface BaileysStatus {
   pairingCode?: string | null;
   registeredPhone?: string | null;
   authDir?: string;
+  lastError?: string | null;
+  hasSocket?: boolean;
+  isInitializing?: boolean;
 }
 
 export default function ConfigPage() {
@@ -1138,6 +1141,14 @@ export default function ConfigPage() {
                       <div className="py-8 flex flex-col items-center justify-center text-slate-400 space-y-2">
                         <RefreshCw className="w-6 h-6 animate-spin text-brand-400" />
                         <span className="text-xs">Generating WhatsApp Web QR Code...</span>
+                        {baileysData?.lastError && (
+                          <p className="text-[11px] text-rose-300/90 max-w-sm px-2">
+                            {baileysData.lastError}
+                          </p>
+                        )}
+                        <p className="text-[10px] text-slate-500 max-w-xs">
+                          If this stays for more than 30s, click <b>Reset / Clear Session</b> below, then wait for a new QR.
+                        </p>
                         <button
                           onClick={handleBaileysReconnect}
                           className="mt-2 text-[11px] text-brand-400 hover:underline"
