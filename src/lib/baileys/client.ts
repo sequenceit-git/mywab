@@ -12,7 +12,9 @@ import makeWASocket, {
   proto,
   generateWAMessageFromContent,
   WASendableProduct,
-  AnyMessageContent
+  AnyMessageContent,
+  jidDecode,
+  jidNormalizedUser
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
@@ -60,6 +62,20 @@ export class BaileysManager {
   private messageHandler: ((message: proto.IWebMessageInfo) => Promise<void>) | null = null;
   /** Lightweight outbound message cache for Baileys retry / getMessage. */
   private messageStore = new Map<string, proto.IMessage>();
+  /**
+   * WhatsApp identifies contacts by JID, which since 2024 can be either a
+   * phone-number JID (`@s.whatsapp.net`) or an anonymized LID (`@lid`) — see
+   * https://baileys.wiki/concepts/jids. Our app stores/passes around a plain
+   * "+digits" phone string everywhere (DB keys, order records, UI), which loses
+   * the `@lid` vs `@s.whatsapp.net` distinction. If we guess `@s.whatsapp.net`
+   * for a contact that actually messaged us via `@lid`, the reply is addressed
+   * to a JID that doesn't exist — Baileys still reports success (it only
+   * confirms relay acceptance, not delivery), so replies silently vanish.
+   * This cache remembers the REAL JID a contact last messaged us from, keyed
+   * by the numeric "user" portion, so outbound sends always target the
+   * correct address regardless of PN/LID.
+   */
+  private knownJids = new Map<string, string>();
 
   constructor() {
     this.ensureAuthDir();
@@ -84,8 +100,42 @@ export class BaileysManager {
     this.messageHandler = handler;
   }
 
+  /**
+   * Remember the real JID (PN or LID) a contact messaged us from, so replies
+   * to that contact target the correct address instead of a guessed one.
+   * @see https://baileys.wiki/concepts/jids
+   */
+  public rememberContactJid(jid: string | null | undefined): void {
+    if (!jid) return;
+    const decoded = jidDecode(jid);
+    if (!decoded?.user || !decoded.server) return;
+    // Drop the device suffix (":N") — we only key on the user identity.
+    const key = decoded.user;
+    const normalized = jidNormalizedUser(jid);
+    this.knownJids.set(key, normalized);
+    if (this.knownJids.size > 2000) {
+      const first = this.knownJids.keys().next().value;
+      if (first) this.knownJids.delete(first);
+    }
+  }
+
+  /**
+   * Build the JID to send to for a given "phone" string.
+   * - If already a full JID (contains '@'), normalize and use as-is.
+   * - If we've previously received a message from this contact, reuse the
+   *   exact JID (PN or LID) it messaged us from — this is the only reliable
+   *   way to address a `@lid` contact, since LIDs cannot be derived from a
+   *   phone number.
+   * - Otherwise fall back to the legacy phone-number JID (correct for
+   *   admin-triggered sends to a known phone number that hasn't messaged us).
+   */
   public formatJid(phone: string): string {
+    if (phone.includes('@')) {
+      return jidNormalizedUser(phone);
+    }
     const clean = phone.replace(/\D/g, '');
+    const known = this.knownJids.get(clean);
+    if (known) return known;
     return `${clean}@s.whatsapp.net`;
   }
 

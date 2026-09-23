@@ -1,6 +1,7 @@
 import { proto } from '@whiskeysockets/baileys';
 import { db } from '../db';
 import { stateBot } from '../chat/state-bot';
+import { baileysManager } from './client';
 
 const processedMsgIds = new Map<string, number>();
 const INFLIGHT_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -92,6 +93,13 @@ export async function handleBaileysIncomingMessage(msg: proto.IWebMessageInfo): 
   if (remoteJid.endsWith('@g.us') || remoteJid === 'status@broadcast') {
     return;
   }
+
+  // Remember the exact JID (PN or LID — see https://baileys.wiki/concepts/jids)
+  // this contact messaged us from, so every reply below targets the correct
+  // address. Without this, replies to @lid senders are built as a guessed
+  // "@s.whatsapp.net" JID that doesn't exist — the send reports success
+  // (relay accepted) but the customer never receives anything.
+  baileysManager.rememberContactJid(remoteJid);
 
   const rawPhone = remoteJid.split('@')[0];
   const formattedPhone = rawPhone.startsWith('+') ? rawPhone : `+${rawPhone}`;
