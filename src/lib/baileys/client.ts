@@ -1,3 +1,6 @@
+process.env.WS_NO_BUFFER_UTIL = '1';
+process.env.WS_NO_UTF_8_VALIDATE = '1';
+
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
@@ -196,18 +199,25 @@ export class BaileysManager {
    * Request an 8-digit Pairing Code for headless phone linking
    */
   public async requestPairingCode(phone: string): Promise<{ success: boolean; code?: string; error?: string }> {
-    if (!this.sock) {
-      await this.init();
-    }
-
     const cleanPhone = phone.replace(/\D/g, '');
     if (!cleanPhone || cleanPhone.length < 8) {
       return { success: false, error: 'Invalid phone number format' };
     }
 
+    if (!this.sock || this.status === 'DISCONNECTED') {
+      await this.init();
+    }
+
+    // Wait for the socket connection to be ready (up to 6 seconds)
+    let waitCount = 0;
+    while ((!this.sock || this.status === 'CONNECTING') && waitCount < 12) {
+      await new Promise(r => setTimeout(r, 500));
+      waitCount++;
+    }
+
     try {
       if (!this.sock) {
-        return { success: false, error: 'Socket not initialized' };
+        return { success: false, error: 'Socket initialization failed' };
       }
 
       const code = await this.sock.requestPairingCode(cleanPhone);
