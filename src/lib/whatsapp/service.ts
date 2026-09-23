@@ -1,6 +1,7 @@
 import { Order } from '@/types';
 import { env } from '../config/env';
 import { getAccountFieldInfo, formatPaymentDisplayForWhatsApp, getGameDeliveryConfig } from '../chat/input-parser';
+import { baileysManager } from '../baileys';
 
 export interface SendMessageResult {
   success: boolean;
@@ -26,47 +27,24 @@ export interface WhatsAppListSection {
 
 export const whatsappService = {
   /**
-   * Send a free-form text message to customer's WhatsApp via Meta Cloud API
+   * Send a free-form text message to customer's WhatsApp via Baileys
    */
   async sendMessage(toPhone: string, text: string): Promise<SendMessageResult> {
     const cleanPhone = toPhone.replace(/\D/g, '');
 
-    if (!env.whatsapp.isConfigured) {
-      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
-      console.error(errorMsg);
-      return { success: false, error: errorMsg };
+    if (!baileysManager.isConnected) {
+      console.warn(`[WhatsAppService] Socket not connected. Message to ${cleanPhone} queued/failed.`);
+      return {
+        success: false,
+        error: 'WhatsApp Web (Baileys) is not connected. Please scan QR or enter pairing code in Admin Settings (/config).'
+      };
     }
 
-    try {
-      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: cleanPhone,
-          type: 'text',
-          text: { preview_url: false, body: text },
-        }),
-      });
-
-      const data = await response.json();
-      if (response.ok && data.messages?.[0]?.id) {
-        return { success: true, messageId: data.messages[0].id };
-      }
-      console.error('WhatsApp API Error:', data);
-      return { success: false, error: JSON.stringify(data) };
-    } catch (err) {
-      console.error('WhatsApp API Network Exception:', err);
-      return { success: false, error: String(err) };
-    }
+    return await baileysManager.sendMessage(cleanPhone, text);
   },
 
   /**
-   * Send an interactive Quick Reply Buttons message (up to 3 buttons) via Meta Cloud API
+   * Send an interactive Quick Reply Buttons message (nativeFlowMessage) via Baileys
    */
   async sendInteractiveButtons(
     toPhone: string,
@@ -76,62 +54,22 @@ export const whatsappService = {
     footerText = 'DS Dukan — 24/7 Gaming Shop'
   ): Promise<SendMessageResult> {
     const cleanPhone = toPhone.replace(/\D/g, '');
-    const validButtons = buttons.slice(0, 3).map((b, idx) => ({
-      type: 'reply',
-      reply: {
-        id: b.id || `btn_${idx}`,
-        title: b.title.slice(0, 20) // WhatsApp limit is 20 chars per button title
-      }
-    }));
 
-    if (!env.whatsapp.isConfigured) {
-      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
-      console.error(errorMsg);
-      return { success: false, error: errorMsg };
-    }
-
-    try {
-      const payload: Record<string, any> = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: cleanPhone,
-        type: 'interactive',
-        interactive: {
-          type: 'button',
-          body: { text: bodyText },
-          footer: { text: footerText },
-          action: { buttons: validButtons }
-        }
-      };
-
-      if (headerText) {
-        payload.interactive.header = { type: 'text', text: headerText };
-      }
-
-      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-      if (response.ok && data.messages?.[0]?.id) {
-        return { success: true, messageId: data.messages[0].id };
-      }
-      console.error('WhatsApp Interactive Button API Error:', JSON.stringify(data));
-      console.log(`[WhatsApp Fallback] Sending plain text message to ${cleanPhone}...`);
-      return await this.sendMessage(toPhone, bodyText);
-    } catch (err) {
-      console.error('WhatsApp Interactive Button Network Exception:', err);
+    if (!baileysManager.isConnected) {
       return await this.sendMessage(toPhone, bodyText);
     }
+
+    return await baileysManager.sendInteractiveButtons(
+      cleanPhone,
+      bodyText,
+      buttons.map(b => ({ id: b.id, title: b.title })),
+      headerText,
+      footerText
+    );
   },
 
   /**
-   * Send an interactive List message (up to 10 options) via Meta Cloud API
+   * Send an interactive single-select List message via Baileys
    */
   async sendInteractiveList(
     toPhone: string,
@@ -143,62 +81,86 @@ export const whatsappService = {
   ): Promise<SendMessageResult> {
     const cleanPhone = toPhone.replace(/\D/g, '');
 
-    if (!env.whatsapp.isConfigured) {
-      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
-      console.error(errorMsg);
-      return { success: false, error: errorMsg };
+    if (!baileysManager.isConnected) {
+      return await this.sendMessage(toPhone, bodyText);
     }
 
-    try {
-      const formattedSections = sections.map((sec, sIdx) => ({
-        title: (sec.title || `Category ${sIdx + 1}`).slice(0, 24),
-        rows: sec.rows.map((row, rIdx) => ({
-          id: row.id || `row_${sIdx}_${rIdx}`,
-          title: row.title.slice(0, 24),
-          description: row.description ? row.description.slice(0, 72) : undefined
-        }))
-      }));
+    return await baileysManager.sendInteractiveList(
+      cleanPhone,
+      bodyText,
+      buttonLabel,
+      sections.map(s => ({
+        title: s.title,
+        rows: s.rows.map(r => ({ id: r.id, title: r.title, description: r.description }))
+      })),
+      headerText,
+      footerText
+    );
+  },
 
-      const payload: Record<string, any> = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: cleanPhone,
-        type: 'interactive',
-        interactive: {
-          type: 'list',
-          body: { text: bodyText },
-          footer: { text: footerText },
-          action: {
-            button: buttonLabel.slice(0, 20),
-            sections: formattedSections
-          }
-        }
+  /**
+   * Send an interactive CTA URL button (opens webpage directly) via Baileys
+   */
+  async sendInteractiveCtaUrl(
+    toPhone: string,
+    bodyText: string,
+    buttonText: string,
+    url: string,
+    headerText?: string,
+    footerText = 'DS Dukan — 24/7 Gaming Shop'
+  ): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+
+    if (!baileysManager.isConnected) {
+      return await this.sendMessage(toPhone, `${bodyText}\n\n👉 *পেমেন্ট করতে এখানে চাপ দিন:*\n${url}`);
+    }
+
+    return await baileysManager.sendInteractiveCtaUrl(
+      cleanPhone,
+      bodyText,
+      buttonText,
+      url,
+      headerText,
+      footerText
+    );
+  },
+
+  /**
+   * Send an image or photo message (e.g. login QR code screenshot) via Baileys
+   */
+  async sendImage(
+    toPhone: string,
+    imageSource: string | ArrayBuffer | Buffer,
+    caption?: string
+  ): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+
+    if (!baileysManager.isConnected) {
+      return {
+        success: false,
+        error: 'WhatsApp Web (Baileys) is not connected. Please connect via Admin Settings.'
       };
-
-      if (headerText) {
-        payload.interactive.header = { type: 'text', text: headerText.slice(0, 60) };
-      }
-
-      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-      if (response.ok && data.messages?.[0]?.id) {
-        return { success: true, messageId: data.messages[0].id };
-      }
-      console.error('WhatsApp Interactive List API Error:', JSON.stringify(data));
-      console.log(`[WhatsApp Fallback] Sending plain text message to ${cleanPhone}...`);
-      return await this.sendMessage(toPhone, bodyText);
-    } catch (err) {
-      console.error('WhatsApp Interactive List Network Exception:', err);
-      return await this.sendMessage(toPhone, bodyText);
     }
+
+    const bufferOrUrl = Buffer.isBuffer(imageSource)
+      ? imageSource
+      : (imageSource instanceof ArrayBuffer ? Buffer.from(imageSource) : imageSource);
+
+    return await baileysManager.sendImage(cleanPhone, bufferOrUrl, caption);
+  },
+
+  /**
+   * Mark incoming message as seen
+   */
+  async markAsRead(messageId: string): Promise<boolean> {
+    return true;
+  },
+
+  /**
+   * Send typing indicator
+   */
+  async markAsReadAndType(messageId: string): Promise<boolean> {
+    return true;
   },
 
   /**
@@ -311,11 +273,6 @@ DS Dukan থেকে কেনাকাটা করার জন্য ধন�
    * Send Order Cancelled notification to customer
    */
   async sendOrderCancelledNotification(order: Order, reason?: string): Promise<SendMessageResult> {
-    const firstItem = order.items?.[0];
-    const gameTitle = 
-      order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || 
-      firstItem?.product_name || 
-      '';
     const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
 
     const messageText = 
@@ -333,159 +290,6 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
     ];
 
     return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Support');
-  },
-
-  /**
-   * Mark incoming message as seen (blue ticks) via WhatsApp Cloud API
-   */
-  async markAsRead(messageId: string): Promise<boolean> {
-    if (!env.whatsapp.isConfigured || !messageId) {
-      return false;
-    }
-
-    try {
-      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          status: 'read',
-          message_id: messageId,
-        }),
-      });
-
-      const data = await response.json();
-      return response.ok && Boolean(data.success);
-    } catch (err) {
-      console.warn('[WhatsApp markAsRead Error]:', err);
-      return false;
-    }
-  },
-
-  /**
-   * Upload media buffer to Meta WhatsApp Media endpoint and get a media_id
-   */
-  async uploadMedia(
-    imageBuffer: ArrayBuffer | Buffer | Uint8Array,
-    mimeType = 'image/jpeg',
-    filename = 'qr_code.jpg'
-  ): Promise<{ success: boolean; mediaId?: string; error?: string }> {
-    if (!env.whatsapp.isConfigured) {
-      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
-      console.error(errorMsg);
-      return { success: false, error: errorMsg };
-    }
-
-    try {
-      const formData = new FormData();
-      const blob = new Blob([imageBuffer as any], { type: mimeType });
-      formData.append('file', blob, filename);
-      formData.append('type', mimeType);
-      formData.append('messaging_product', 'whatsapp');
-
-      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/media`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
-        },
-        body: formData,
-      });
-
-      const data = await response.json();
-      if (response.ok && data.id) {
-        console.log(`[WhatsApp Media Upload] Successfully uploaded media, media_id: ${data.id}`);
-        return { success: true, mediaId: data.id };
-      }
-      console.error('[WhatsApp Media Upload Error]:', JSON.stringify(data));
-      return { success: false, error: JSON.stringify(data) };
-    } catch (err) {
-      console.error('[WhatsApp Media Upload Exception]:', err);
-      return { success: false, error: String(err) };
-    }
-  },
-
-  /**
-   * Send an image with optional caption to customer's WhatsApp
-   * Automatically handles direct image URLs, Telegram file URLs (by downloading & uploading to Meta), and raw buffers.
-   */
-  async sendImage(
-    toPhone: string,
-    imageSource: string | ArrayBuffer | Buffer,
-    caption?: string
-  ): Promise<SendMessageResult> {
-    const cleanPhone = toPhone.replace(/\D/g, '');
-
-    if (!env.whatsapp.isConfigured) {
-      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
-      console.error(errorMsg);
-      return { success: false, error: errorMsg };
-    }
-
-    try {
-      let mediaId: string | undefined;
-
-      // 1. If imageSource is a buffer / ArrayBuffer
-      if (typeof imageSource !== 'string') {
-        const uploadRes = await this.uploadMedia(imageSource, 'image/jpeg', 'image.jpg');
-        if (uploadRes.success && uploadRes.mediaId) {
-          mediaId = uploadRes.mediaId;
-        }
-      } else if (typeof imageSource === 'string' && imageSource.startsWith('http')) {
-        // 2. If imageSource is an external URL (e.g. Telegram file URL), download to buffer first and upload to Meta
-        try {
-          console.log(`[WhatsApp sendImage] Fetching image from URL: ${imageSource.slice(0, 45)}...`);
-          const imgFetch = await fetch(imageSource, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-          });
-          if (imgFetch.ok) {
-            const buffer = await imgFetch.arrayBuffer();
-            const uploadRes = await this.uploadMedia(buffer, 'image/jpeg', 'qr_code.jpg');
-            if (uploadRes.success && uploadRes.mediaId) {
-              mediaId = uploadRes.mediaId;
-            }
-          }
-        } catch (fetchErr) {
-          console.warn('[WhatsApp sendImage Fetch Error]: Could not pre-upload buffer, will try link fallback:', fetchErr);
-        }
-      }
-
-      const payload: Record<string, any> = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: cleanPhone,
-        type: 'image',
-        image: mediaId
-          ? { id: mediaId, ...(caption ? { caption } : {}) }
-          : { link: imageSource, ...(caption ? { caption } : {}) }
-      };
-
-      console.log(`[WhatsApp sendImage] Dispatching image payload (Mode: ${mediaId ? `media_id (${mediaId})` : 'direct_link'}) to ${cleanPhone}...`);
-
-      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-      if (response.ok && data.messages?.[0]?.id) {
-        console.log(`[WhatsApp sendImage Success] Message ID: ${data.messages[0].id}`);
-        return { success: true, messageId: data.messages[0].id };
-      }
-      console.error('[WhatsApp Send Image API Error]:', JSON.stringify(data));
-      return { success: false, error: JSON.stringify(data) };
-    } catch (err) {
-      console.error('[WhatsApp Send Image Network Exception]:', err);
-      return { success: false, error: String(err) };
-    }
   },
 
   /**
@@ -510,7 +314,7 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
 ২. স্ক্যান সম্পন্ন হলে নিচের *"✅ QR স্ক্যান করেছি"* বাটনে চাপ দিন।
 ৩. কোডের মেয়াদ শেষ হলে *"🔄 নতুন QR কোড দিন"* বাটনে চাপ দিন।`;
 
-    // 1. Send the QR Code Image (automatically uploads buffer to Meta CDN for 100% delivery)
+    // 1. Send the QR Code Image
     const imageResult = await this.sendImage(cleanPhone, imageUrl, caption);
     if (!imageResult.success) {
       console.error(`[sendQrCodePrompt Image Error]: Failed to send image to ${cleanPhone}:`, imageResult.error);
@@ -526,111 +330,6 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
     await this.sendInteractiveButtons(cleanPhone, buttonBody, buttons, 'PUBG QR Login');
 
     return imageResult;
-  },
-
-  /**
-   * Send typing indicator and mark as read (shows "typing..." to customer in WhatsApp chat)
-   */
-  async markAsReadAndType(messageId: string): Promise<boolean> {
-    if (!env.whatsapp.isConfigured || !messageId) {
-      return false;
-    }
-
-    try {
-      // First attempt: Cloud API typing indicator combined with read status
-      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          status: 'read',
-          message_id: messageId,
-          typing_indicator: {
-            type: 'text'
-          }
-        }),
-      });
-
-      if (response.ok) {
-        return true;
-      }
-
-      // Fallback to standard mark as read if typing indicator is not supported
-      return await this.markAsRead(messageId);
-    } catch (err) {
-      console.warn('[WhatsApp markAsReadAndType Error]:', err);
-      return await this.markAsRead(messageId);
-    }
-  },
-
-  /**
-   * Send an interactive CTA URL button (opens a webpage in browser directly from WhatsApp)
-   */
-  async sendInteractiveCtaUrl(
-    toPhone: string,
-    bodyText: string,
-    buttonText: string,
-    url: string,
-    headerText?: string,
-    footerText = 'DS Dukan — 24/7 Gaming Shop'
-  ): Promise<SendMessageResult> {
-    const cleanPhone = toPhone.replace(/\D/g, '');
-
-    if (!env.whatsapp.isConfigured) {
-      const errorMsg = 'WhatsApp Cloud API credentials not configured in environment';
-      console.error(errorMsg);
-      return { success: false, error: errorMsg };
-    }
-
-    try {
-      const payload: Record<string, any> = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: cleanPhone,
-        type: 'interactive',
-        interactive: {
-          type: 'cta_url',
-          body: { text: bodyText },
-          footer: { text: footerText },
-          action: {
-            name: 'cta_url',
-            parameters: {
-              display_text: buttonText.slice(0, 20),
-              url
-            }
-          }
-        }
-      };
-
-      if (headerText) {
-        payload.interactive.header = { type: 'text', text: headerText.slice(0, 60) };
-      }
-
-      console.log(`[WhatsApp sendInteractiveCtaUrl] Dispatching CTA URL button to ${cleanPhone}...`);
-
-      const response = await fetch(`${env.whatsapp.apiUrl}/${env.whatsapp.phoneNumberId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${env.whatsapp.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-      if (response.ok && data.messages?.[0]?.id) {
-        return { success: true, messageId: data.messages[0].id };
-      }
-
-      console.warn('[WhatsApp CTA URL API Error]: Falling back to standard message with link:', JSON.stringify(data));
-      return await this.sendMessage(toPhone, `${bodyText}\n\n👉 *পেমেন্ট করতে এখানে চাপ দিন:*\n${url}`);
-    } catch (err) {
-      console.error('[WhatsApp CTA URL Exception]:', err);
-      return await this.sendMessage(toPhone, `${bodyText}\n\n👉 *পেমেন্ট করতে এখানে চাপ দিন:*\n${url}`);
-    }
   },
 
   /**
@@ -685,6 +384,3 @@ ${paymentUrl}
     return ctaRes;
   }
 };
-
-
-

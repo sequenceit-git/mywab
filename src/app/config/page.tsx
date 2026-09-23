@@ -18,7 +18,10 @@ import {
   ShieldCheck,
   Bot,
   CreditCard,
-  ExternalLink
+  ExternalLink,
+  QrCode,
+  Smartphone,
+  Unlink
 } from 'lucide-react';
 import { SupabaseIcon, WhatsAppIcon, TelegramIcon, PubgUidIcon, BkashIcon, NagadIcon } from '@/components/BrandIcons';
 
@@ -44,10 +47,10 @@ interface SystemStatus {
   };
   whatsapp?: {
     isConfigured?: boolean;
-    phoneNumberId?: string;
-    verifyToken?: string;
-    accessTokenMasked?: string;
-    webhookUrl?: string;
+    provider?: string;
+    isConnected?: boolean;
+    status?: string;
+    registeredPhone?: string | null;
   };
   telegram?: {
     isConfigured?: boolean;
@@ -58,6 +61,17 @@ interface SystemStatus {
   admin?: {
     email?: string;
   };
+}
+
+interface BaileysStatus {
+  provider?: 'baileys' | 'cloud_api';
+  status?: 'DISCONNECTED' | 'CONNECTING' | 'QR_READY' | 'PAIRING_CODE_READY' | 'CONNECTED';
+  isConnected?: boolean;
+  qrCode?: string | null;
+  qrDataUrl?: string | null;
+  pairingCode?: string | null;
+  registeredPhone?: string | null;
+  authDir?: string;
 }
 
 export default function ConfigPage() {
@@ -94,6 +108,15 @@ export default function ConfigPage() {
   const [zinipayRedirectUrl, setZinipayRedirectUrl] = useState<string>('');
   const [zinipayTestLoading, setZinipayTestLoading] = useState<boolean>(false);
   const [zinipayTestResult, setZinipayTestResult] = useState<{ status?: boolean; payment_url?: string; error?: string } | null>(null);
+
+  // Baileys WhatsApp Web State
+  const [baileysData, setBaileysData] = useState<BaileysStatus | null>(null);
+  const [baileysLoading, setBaileysLoading] = useState<boolean>(false);
+  const [pairingPhone, setPairingPhone] = useState<string>('');
+  const [pairingLoading, setPairingLoading] = useState<boolean>(false);
+  const [pairingMsg, setPairingMsg] = useState<{ success: boolean; message: string } | null>(null);
+  const [baileysActionLoading, setBaileysActionLoading] = useState<boolean>(false);
+  const [baileysTab, setBaileysTab] = useState<'qr' | 'code'>('qr');
 
   const fetchKokosStatus = async () => {
     try {
@@ -230,12 +253,105 @@ export default function ConfigPage() {
       await fetchKokosStatus();
       await fetchPinexStatus();
       await fetchZinipayStatus();
+      await fetchBaileysStatus();
     } catch (err) {
       console.error('Failed to fetch system status:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  const fetchBaileysStatus = async () => {
+    try {
+      setBaileysLoading(true);
+      const res = await fetch('/api/system/baileys');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setBaileysData(data);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch Baileys status:', e);
+    } finally {
+      setBaileysLoading(false);
+    }
+  };
+
+  const handleRequestPairingCode = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!pairingPhone.trim()) {
+      setPairingMsg({ success: false, message: 'Please enter a valid phone number with country code (e.g. 88017XXXXXXXX)' });
+      return;
+    }
+    setPairingLoading(true);
+    setPairingMsg(null);
+    try {
+      const res = await fetch('/api/system/baileys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'REQUEST_PAIRING_CODE', phone: pairingPhone.trim() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBaileysData(data);
+        setPairingMsg({ success: true, message: `Pairing Code generated: ${data.pairingCode}` });
+      } else {
+        setPairingMsg({ success: false, message: data.error || 'Failed to generate pairing code' });
+      }
+    } catch (e: any) {
+      setPairingMsg({ success: false, message: e.message || 'Network error requesting pairing code' });
+    } finally {
+      setPairingLoading(false);
+    }
+  };
+
+  const handleBaileysReconnect = async () => {
+    setBaileysActionLoading(true);
+    try {
+      const res = await fetch('/api/system/baileys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'RECONNECT' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBaileysData(data);
+      }
+    } catch (e) {
+      console.error('Failed to reconnect Baileys:', e);
+    } finally {
+      setBaileysActionLoading(false);
+    }
+  };
+
+  const handleBaileysLogout = async () => {
+    if (!confirm('Are you sure you want to disconnect and clear WhatsApp Web credentials?')) return;
+    setBaileysActionLoading(true);
+    try {
+      const res = await fetch('/api/system/baileys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'LOGOUT' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBaileysData(data);
+      }
+    } catch (e) {
+      console.error('Failed to logout Baileys:', e);
+    } finally {
+      setBaileysActionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const intervalTime = baileysData?.isConnected ? 20000 : 5000;
+    const timer = setInterval(() => {
+      fetchBaileysStatus();
+    }, intervalTime);
+    return () => clearInterval(timer);
+  }, [baileysData?.isConnected]);
 
   useEffect(() => {
     setMounted(true);
@@ -397,7 +513,6 @@ export default function ConfigPage() {
 
   // Safe client-side derived values
   const currentDomain = status?.app?.domain || (mounted && typeof window !== 'undefined' ? window.location.host : 'Loading...');
-  const currentWhatsAppWebhook = status?.whatsapp?.webhookUrl || (mounted && typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp` : '');
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-slate-950">
@@ -831,7 +946,7 @@ export default function ConfigPage() {
             </div>
           </div>
 
-          {/* 5. WhatsApp Cloud API Webhook Card */}
+          {/* 4.5 WhatsApp Web (Baileys) Connection & Pairing Card */}
           <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
@@ -839,77 +954,238 @@ export default function ConfigPage() {
                   <WhatsAppIcon className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-white text-sm">WhatsApp Business Cloud API</h4>
-                  <p className="text-[11px] text-slate-400">Meta Developer Webhook Gateway</p>
+                  <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                    <span>WhatsApp Web (Baileys)</span>
+                    {baileysData?.isConnected && (
+                      <span className="flex h-2 w-2 relative">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                    )}
+                  </h4>
+                  <p className="text-[11px] text-slate-400">Direct Socket Integration • Interactive Buttons & Pairing</p>
                 </div>
               </div>
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 shrink-0">
-                {status?.whatsapp?.isConfigured ? 'Configured' : 'Setup Required'}
-              </span>
-            </div>
-
-            <div className="space-y-2.5 text-xs">
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Callback URL:</span>
-                  <button
-                    onClick={() => handleCopy(currentWhatsAppWebhook, 'wa_url')}
-                    className="text-[11px] font-mono text-brand-400 hover:text-brand-300 flex items-center gap-1"
-                  >
-                    <span>{copiedKey === 'wa_url' ? 'Copied!' : 'Copy URL'}</span>
-                    <Copy className="w-3 h-3" />
-                  </button>
-                </div>
-                <code suppressHydrationWarning className="block text-[11px] font-mono text-slate-200 break-all">
-                  {currentWhatsAppWebhook}
-                </code>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Verify Token:</span>
-                  <button
-                    onClick={() => handleCopy(status?.whatsapp?.verifyToken || '', 'wa_token')}
-                    className="text-[11px] font-mono text-brand-400 hover:text-brand-300 flex items-center gap-1"
-                  >
-                    <span>{copiedKey === 'wa_token' ? 'Copied!' : 'Copy Token'}</span>
-                    <Copy className="w-3 h-3" />
-                  </button>
-                </div>
-                <code className="block text-[11px] font-mono text-brand-400 font-bold">
-                  {status?.whatsapp?.verifyToken || 'verify_token'}
-                </code>
-              </div>
-
-              {waTestMsg && (
-                <div
-                  className={`p-3 rounded-xl text-xs flex items-start gap-2 ${
-                    waTestMsg.success
-                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
-                      : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
-                  }`}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleBaileysReconnect}
+                  disabled={baileysActionLoading}
+                  title="Reconnect Baileys"
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition disabled:opacity-50"
                 >
-                  {waTestMsg.success ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />}
-                  <span className="break-all">{waTestMsg.message}</span>
-                </div>
-              )}
-
-              <button
-                onClick={handleSendWhatsAppTest}
-                disabled={waTestLoading || !status?.whatsapp?.isConfigured}
-                className="w-full py-2.5 px-4 rounded-xl bg-brand-500/15 hover:bg-brand-500/25 border border-brand-500/30 text-brand-400 font-bold text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {waTestLoading ? (
-                  <span>Delivering Test WhatsApp Message...</span>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Send Test Message to +8801705785272</span>
-                  </>
-                )}
-              </button>
+                  <RefreshCw className={`w-3.5 h-3.5 ${baileysActionLoading ? 'animate-spin' : ''}`} />
+                </button>
+                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full shrink-0 border ${
+                  baileysData?.isConnected
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : baileysData?.status === 'QR_READY'
+                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                    : baileysData?.status === 'PAIRING_CODE_READY'
+                    ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+                    : baileysData?.status === 'CONNECTING'
+                    ? 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30'
+                    : 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                }`}>
+                  {baileysData?.isConnected
+                    ? 'Connected'
+                    : baileysData?.status === 'QR_READY'
+                    ? 'QR Ready'
+                    : baileysData?.status === 'PAIRING_CODE_READY'
+                    ? 'Code Ready'
+                    : baileysData?.status === 'CONNECTING'
+                    ? 'Connecting...'
+                    : 'Disconnected'}
+                </span>
+              </div>
             </div>
+
+            {baileysData?.isConnected ? (
+              <div className="space-y-3 text-xs">
+                <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-800/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Connected Phone:</span>
+                    <span className="font-mono text-emerald-400 font-bold text-sm">
+                      +{baileysData.registeredPhone}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">Session Directory:</span>
+                    <code className="text-slate-300 font-mono text-[10px]">{baileysData.authDir || './baileys_auth'}</code>
+                  </div>
+                  <p className="text-[11px] text-emerald-300/80 pt-1">
+                    ✅ Active WebSocket stream receiving inbound customer chats and dispatching interactive nativeFlow buttons, single-select lists, and QR login images directly.
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleBaileysReconnect}
+                    disabled={baileysActionLoading}
+                    className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs transition flex items-center justify-center gap-1.5"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${baileysActionLoading ? 'animate-spin' : ''}`} />
+                    <span>Reconnect Socket</span>
+                  </button>
+                  <button
+                    onClick={handleBaileysLogout}
+                    disabled={baileysActionLoading}
+                    className="py-2 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 font-medium text-xs transition flex items-center justify-center gap-1.5"
+                  >
+                    <Unlink className="w-3.5 h-3.5" />
+                    <span>Logout Session</span>
+                  </button>
+                </div>
+
+                {waTestMsg && (
+                  <div
+                    className={`p-3 rounded-xl text-xs flex items-start gap-2 ${
+                      waTestMsg.success
+                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
+                        : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+                    }`}
+                  >
+                    {waTestMsg.success ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />}
+                    <span className="break-all">{waTestMsg.message}</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSendWhatsAppTest}
+                  disabled={waTestLoading}
+                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 font-bold text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {waTestLoading ? (
+                    <span>Delivering Test WhatsApp Message...</span>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Send Test Message to +8801705785272</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3 text-xs">
+                {/* Connection Method Tabs */}
+                <div className="flex rounded-xl bg-slate-950/70 p-1 border border-slate-800/60">
+                  <button
+                    type="button"
+                    onClick={() => setBaileysTab('qr')}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5 ${
+                      baileysTab === 'qr'
+                        ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>Scan QR Code</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBaileysTab('code')}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5 ${
+                      baileysTab === 'code'
+                        ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>8-Digit Pairing Code</span>
+                  </button>
+                </div>
+
+                {baileysTab === 'qr' ? (
+                  <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/60 text-center space-y-3">
+                    {baileysData?.qrDataUrl ? (
+                      <div className="flex flex-col items-center justify-center space-y-2">
+                        <div className="p-2 bg-white rounded-xl shadow-lg border border-slate-700">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={baileysData.qrDataUrl}
+                            alt="WhatsApp QR Code"
+                            className="w-44 h-44 object-contain"
+                          />
+                        </div>
+                        <p className="text-[11px] text-slate-300 font-medium">
+                          1. Open WhatsApp on phone &gt; <b>Linked Devices</b> &gt; <b>Link a Device</b>
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          Point camera at this QR code. QR auto-refreshes every 20 seconds.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="py-8 flex flex-col items-center justify-center text-slate-400 space-y-2">
+                        <RefreshCw className="w-6 h-6 animate-spin text-brand-400" />
+                        <span className="text-xs">Generating WhatsApp Web QR Code...</span>
+                        <button
+                          onClick={handleBaileysReconnect}
+                          className="mt-2 text-[11px] text-brand-400 hover:underline"
+                        >
+                          Click to retry connection
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/60 space-y-3">
+                    <p className="text-[11px] text-slate-400">
+                      Link your phone without camera scanning by requesting an 8-digit pairing code:
+                    </p>
+                    <form onSubmit={handleRequestPairingCode} className="space-y-2">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. 8801705785272"
+                          value={pairingPhone}
+                          onChange={(e) => setPairingPhone(e.target.value)}
+                          className="flex-1 px-3 py-2 rounded-xl bg-dark-900 border border-slate-700 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyan-500"
+                        />
+                        <button
+                          type="submit"
+                          disabled={pairingLoading || !pairingPhone.trim()}
+                          className="px-3 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-300 font-bold text-xs transition disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          {pairingLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Smartphone className="w-3.5 h-3.5" />}
+                          <span>Get Code</span>
+                        </button>
+                      </div>
+                    </form>
+
+                    {baileysData?.pairingCode && (
+                      <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-800/50 text-center space-y-1.5">
+                        <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Your 8-Digit Pairing Code</span>
+                        <div className="flex items-center justify-center gap-3">
+                          <span className="text-xl sm:text-2xl font-mono font-black text-cyan-300 tracking-widest">
+                            {baileysData.pairingCode}
+                          </span>
+                          <button
+                            onClick={() => handleCopy(baileysData.pairingCode || '', 'pairing_code')}
+                            className="p-1.5 rounded-lg bg-cyan-900/60 hover:bg-cyan-800 text-cyan-300 transition"
+                            title="Copy Code"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          {copiedKey === 'pairing_code' ? 'Copied to clipboard!' : 'Open WhatsApp > Linked Devices > Link with phone number instead > Enter code'}
+                        </p>
+                      </div>
+                    )}
+
+                    {pairingMsg && (
+                      <div className={`p-2.5 rounded-xl text-[11px] flex items-center gap-2 ${
+                        pairingMsg.success ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-300 border border-rose-500/20'
+                      }`}>
+                        {pairingMsg.success ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+                        <span>{pairingMsg.message}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+
 
           {/* 4. Telegram Worker Bot Card */}
           <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">

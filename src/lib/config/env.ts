@@ -21,26 +21,17 @@ export const env = {
     },
   },
   whatsapp: {
-    get phoneNumberId() {
-      return process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+    get provider() {
+      return (process.env.WHATSAPP_PROVIDER || 'baileys').toLowerCase() as 'baileys';
     },
-    get businessAccountId() {
-      return process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '';
-    },
-    get accessToken() {
-      return process.env.WHATSAPP_ACCESS_TOKEN || '';
-    },
-    get verifyToken() {
-      return process.env.WHATSAPP_VERIFY_TOKEN || 'wapbusiness_secure_verify_token';
+    get authDir() {
+      return process.env.BAILEYS_AUTH_DIR || process.env.WHATSAPP_AUTH_DIR || './baileys_auth';
     },
     get botPhone() {
       return process.env.NEXT_PUBLIC_WHATSAPP_PHONE || '15551419791';
     },
-    get apiUrl() {
-      return process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v21.0';
-    },
     get isConfigured() {
-      return Boolean(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN);
+      return true;
     },
   },
   telegram: {

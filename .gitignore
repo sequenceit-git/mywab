@@ -38,3 +38,4 @@ yarn-error.log*
 scripts/test-supabase.mjs
 scripts/setup-db.mjs
 scratch/
+baileys_auth/

@@ -25,3 +25,8 @@ services:
       
       # Container port for Traefik load balancer
       - "traefik.http.services.wapbusiness.loadbalancer.server.port=3000"
+    volumes:
+      - baileys_auth:/app/baileys_auth
+
+volumes:
+  baileys_auth:

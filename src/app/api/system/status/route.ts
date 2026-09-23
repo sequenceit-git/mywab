@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from '@/lib/config/env';
 import { supabase, supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase/client';
+import { baileysManager } from '@/lib/baileys';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,11 +88,11 @@ export async function GET(request: NextRequest) {
         stats
       },
       whatsapp: {
-        isConfigured: env.whatsapp.isConfigured,
-        phoneNumberId: env.whatsapp.phoneNumberId || 'Not configured',
-        verifyToken: env.whatsapp.verifyToken,
-        accessTokenMasked: mask(env.whatsapp.accessToken),
-        webhookUrl: `${activeUrl}/api/webhooks/whatsapp`
+        provider: 'baileys',
+        isConnected: baileysManager.isConnected,
+        status: baileysManager.getStatus().status,
+        registeredPhone: baileysManager.getStatus().registeredPhone,
+        isConfigured: true,
       },
       telegram: {
         isConfigured: env.telegram.isConfigured,
