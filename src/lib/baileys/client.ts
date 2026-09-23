@@ -6,6 +6,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   makeCacheableSignalKeyStore,
   fetchLatestBaileysVersion,
+  fetchLatestWaWebVersion,
   Browsers,
   WASocket,
   proto,
@@ -110,13 +111,22 @@ export class BaileysManager {
 
       const logger = pino({ level: 'error' });
 
-      // Fetch latest official WA Web version gracefully (falls back to bundled if offline)
+      // Fetch live WA Web version (primary) → fallback to bundled Baileys version
+      // fetchLatestWaWebVersion() gets the ACTUAL version from web.whatsapp.com
+      // This is critical: using a stale version causes "Couldn't link device" on pairing
       let version: [number, number, number] | undefined;
       try {
-        const versionInfo = await fetchLatestBaileysVersion();
+        const versionInfo = await fetchLatestWaWebVersion({});
         version = versionInfo.version;
-      } catch (vErr) {
-        console.warn('[Baileys] Using default protocol version:', vErr);
+        console.log(`[Baileys] Using live WA Web version: ${version.join('.')}`);
+      } catch {
+        try {
+          const fallback = await fetchLatestBaileysVersion();
+          version = fallback.version;
+          console.warn(`[Baileys] Live version fetch failed, using bundled Baileys version: ${version.join('.')}`);
+        } catch (vErr) {
+          console.warn('[Baileys] All version fetches failed, using library default:', vErr);
+        }
       }
 
       this.sock = makeWASocket({
@@ -127,13 +137,14 @@ export class BaileysManager {
         },
         logger,
         printQRInTerminal: false,
-        browser: Browsers.ubuntu('Chrome'),
+        browser: Browsers.windows('Chrome'),
         syncFullHistory: false,
         generateHighQualityLinkPreview: true,
-        connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 60000,
-        keepAliveIntervalMs: 25000,
+        connectTimeoutMs: 120_000,
+        defaultQueryTimeoutMs: 60_000,
+        keepAliveIntervalMs: 25_000,
         markOnlineOnConnect: true,
+        retryRequestDelayMs: 250,
       });
 
       this.sock.ev.on('creds.update', saveCreds);
@@ -163,9 +174,10 @@ export class BaileysManager {
         } else if (connection === 'close') {
           this.status = 'DISCONNECTED';
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+          const errorMessage = (lastDisconnect?.error as Boom)?.message || 'Unknown';
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-          console.warn(`[Baileys] 🔌 Connection closed. Reason code: ${statusCode}. Reconnecting: ${shouldReconnect}`);
+          console.warn(`[Baileys] 🔌 Connection closed. Code: ${statusCode}, Message: "${errorMessage}". Reconnecting: ${shouldReconnect}`);
 
           // Release the old socket reference immediately on close
           this.sock = null;
@@ -188,6 +200,12 @@ export class BaileysManager {
             console.warn('[Baileys] Bad session detected (500). Clearing invalid session files...');
             this.clearAuthFiles();
             this.scheduleReconnect();
+          } else if (statusCode === DisconnectReason.timedOut) {
+            console.warn('[Baileys] Connection timed out (408). Retrying...');
+            this.scheduleReconnect();
+          } else if (statusCode === DisconnectReason.connectionReplaced) {
+            console.warn('[Baileys] Connection replaced by another session (440). Not reconnecting.');
+            // Don't reconnect — another session took over
           } else if (shouldReconnect) {
             this.scheduleReconnect();
           }
