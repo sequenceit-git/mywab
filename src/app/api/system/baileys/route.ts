@@ -74,6 +74,15 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      case 'RESET_SESSION': {
+        await baileysManager.resetSession();
+        return NextResponse.json({
+          success: true,
+          message: 'Baileys auth wiped and fresh session started.',
+          ...baileysManager.getStatus()
+        });
+      }
+
       case 'LOGOUT': {
         await baileysManager.logout();
         return NextResponse.json({

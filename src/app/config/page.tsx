@@ -345,6 +345,27 @@ export default function ConfigPage() {
     }
   };
 
+  const handleBaileysReset = async () => {
+    if (!confirm('This will wipe all existing WhatsApp auth files and generate a brand-new clean session. Continue?')) return;
+    setBaileysActionLoading(true);
+    try {
+      const res = await fetch('/api/system/baileys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'RESET_SESSION' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBaileysData(data);
+        setPairingMsg(null);
+      }
+    } catch (e) {
+      console.error('Failed to reset Baileys session:', e);
+    } finally {
+      setBaileysActionLoading(false);
+    }
+  };
+
   useEffect(() => {
     const intervalTime = baileysData?.isConnected ? 20000 : 5000;
     const timer = setInterval(() => {
@@ -1182,6 +1203,29 @@ export default function ConfigPage() {
                     )}
                   </div>
                 )}
+
+                {/* Session Reset & Reconnect helpers */}
+                <div className="flex items-center justify-between pt-1 px-1 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={handleBaileysReset}
+                    disabled={baileysActionLoading}
+                    className="text-rose-400/90 hover:text-rose-300 transition flex items-center gap-1.5 disabled:opacity-50"
+                    title="Wipes auth files and starts a fresh session"
+                  >
+                    <Unlink className="w-3.5 h-3.5" />
+                    <span>Reset / Clear Session (if stuck)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBaileysReconnect}
+                    disabled={baileysActionLoading}
+                    className="text-slate-400 hover:text-slate-200 transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${baileysActionLoading ? 'animate-spin' : ''}`} />
+                    <span>Refresh QR / Socket</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
