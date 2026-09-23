@@ -2,17 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: [
-    '@whiskeysockets/baileys',
-    'ws',
-    'pino',
-    'qrcode',
-    '@hapi/boom'
-  ],
-  env: {
-    WS_NO_BUFFER_UTIL: '1',
-    WS_NO_UTF_8_VALIDATE: '1',
-  },
+  serverExternalPackages: ['@whiskeysockets/baileys'],
   reactStrictMode: true,
   eslint: {
     ignoreDuringBuilds: true,
