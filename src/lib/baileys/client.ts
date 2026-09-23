@@ -136,14 +136,13 @@ export class BaileysManager {
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         logger,
-        printQRInTerminal: false,
-        browser: Browsers.windows('Chrome'),
+        browser: Browsers.macOS('Desktop'),
         syncFullHistory: false,
         generateHighQualityLinkPreview: true,
-        connectTimeoutMs: 120_000,
+        connectTimeoutMs: 60_000,
         defaultQueryTimeoutMs: 60_000,
         keepAliveIntervalMs: 25_000,
-        markOnlineOnConnect: true,
+        markOnlineOnConnect: false,
         retryRequestDelayMs: 250,
       });
 
@@ -175,9 +174,13 @@ export class BaileysManager {
           this.status = 'DISCONNECTED';
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
           const errorMessage = (lastDisconnect?.error as Boom)?.message || 'Unknown';
+          const errorDetails = (lastDisconnect?.error as any)?.stack || (lastDisconnect?.error as any);
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
           console.warn(`[Baileys] 🔌 Connection closed. Code: ${statusCode}, Message: "${errorMessage}". Reconnecting: ${shouldReconnect}`);
+          if (errorDetails && statusCode !== DisconnectReason.loggedOut && statusCode !== DisconnectReason.restartRequired) {
+            console.warn('[Baileys] Disconnect details:', errorDetails);
+          }
 
           // Release the old socket reference immediately on close
           this.sock = null;
@@ -195,6 +198,8 @@ export class BaileysManager {
             // MUST reconnect immediately without backoff delay so phone doesn't time out or get stuck on "Logging in...".
             console.log('[Baileys] 🔄 WhatsApp requested stream restart (515) to finalize handshake. Reconnecting immediately...');
             this.reconnectAttempts = 0;
+            this.sock = null;
+            this.isInitializing = false;
             this.init().catch(err => console.error('[Baileys] Immediate restart error:', err));
           } else if (statusCode === DisconnectReason.badSession) {
             console.warn('[Baileys] Bad session detected (500). Clearing invalid session files...');
@@ -250,8 +255,17 @@ export class BaileysManager {
    * Request an 8-digit Pairing Code for headless phone linking
    */
   public async requestPairingCode(phone: string): Promise<{ success: boolean; code?: string; error?: string }> {
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 8) {
+    let cleanPhone = phone.replace(/\D/g, '');
+    if (!cleanPhone) {
+      return { success: false, error: 'Phone number is required.' };
+    }
+
+    // Auto-prefix Bangladesh country code if local 11-digit number is provided (e.g. 017XXXXXXXX -> 88017XXXXXXXX)
+    if (cleanPhone.startsWith('01') && cleanPhone.length === 11) {
+      cleanPhone = '88' + cleanPhone;
+    }
+
+    if (cleanPhone.length < 8) {
       return { success: false, error: 'Invalid phone number format. Please include country code (e.g. 88017XXXXXXXX)' };
     }
 
@@ -276,6 +290,10 @@ export class BaileysManager {
     try {
       if (!this.sock) {
         return { success: false, error: 'Socket initialization failed' };
+      }
+
+      if (this.sock.authState?.creds?.registered) {
+        return { success: false, error: 'This session is already registered. If stuck, click "Reset / Clear Session" first.' };
       }
 
       const code = await this.sock.requestPairingCode(cleanPhone);
