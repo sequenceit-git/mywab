@@ -717,21 +717,21 @@ export class BaileysManager {
         }
       });
 
+      // NOTE: previously this was wrapped in `viewOnceMessage`, which made
+      // recipients see a generic "You received a view once message" bubble
+      // instead of the tappable buttons. Sending the interactiveMessage
+      // directly renders inline on current WhatsApp clients.
       const messageContent = {
-        viewOnceMessage: {
-          message: {
-            interactiveMessage: proto.Message.InteractiveMessage.create({
-              body: proto.Message.InteractiveMessage.Body.create({ text: bodyText }),
-              footer: proto.Message.InteractiveMessage.Footer.create({ text: footerText }),
-              header: headerTitle
-                ? proto.Message.InteractiveMessage.Header.create({ title: headerTitle, hasMediaAttachment: false })
-                : undefined,
-              nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                buttons: nativeButtons
-              })
-            })
-          }
-        }
+        interactiveMessage: proto.Message.InteractiveMessage.create({
+          body: proto.Message.InteractiveMessage.Body.create({ text: bodyText }),
+          footer: proto.Message.InteractiveMessage.Footer.create({ text: footerText }),
+          header: headerTitle
+            ? proto.Message.InteractiveMessage.Header.create({ title: headerTitle, hasMediaAttachment: false })
+            : undefined,
+          nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+            buttons: nativeButtons
+          })
+        })
       };
 
       const waMsg = generateWAMessageFromContent(jid, messageContent, { userJid: this.sock.user?.id || jid });
@@ -784,26 +784,26 @@ export class BaileysManager {
         }))
       };
 
+      // NOTE: previously this was wrapped in `viewOnceMessage`, which made
+      // recipients see a generic "You received a view once message" bubble
+      // instead of the tappable list. Sending the interactiveMessage
+      // directly renders inline on current WhatsApp clients.
       const messageContent = {
-        viewOnceMessage: {
-          message: {
-            interactiveMessage: proto.Message.InteractiveMessage.create({
-              body: proto.Message.InteractiveMessage.Body.create({ text: bodyText }),
-              footer: proto.Message.InteractiveMessage.Footer.create({ text: footerText }),
-              header: headerTitle
-                ? proto.Message.InteractiveMessage.Header.create({ title: headerTitle, hasMediaAttachment: false })
-                : undefined,
-              nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                buttons: [
-                  {
-                    name: 'single_select',
-                    buttonParamsJson: JSON.stringify(listParams)
-                  }
-                ]
-              })
-            })
-          }
-        }
+        interactiveMessage: proto.Message.InteractiveMessage.create({
+          body: proto.Message.InteractiveMessage.Body.create({ text: bodyText }),
+          footer: proto.Message.InteractiveMessage.Footer.create({ text: footerText }),
+          header: headerTitle
+            ? proto.Message.InteractiveMessage.Header.create({ title: headerTitle, hasMediaAttachment: false })
+            : undefined,
+          nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+            buttons: [
+              {
+                name: 'single_select',
+                buttonParamsJson: JSON.stringify(listParams)
+              }
+            ]
+          })
+        })
       };
 
       const waMsg = generateWAMessageFromContent(jid, messageContent, { userJid: this.sock.user?.id || jid });
