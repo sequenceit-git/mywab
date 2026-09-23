@@ -82,6 +82,38 @@ export function sanitizeReplyMarkup(markup?: any): any {
   return { ...markup, inline_keyboard: newKeyboard };
 }
 
+/**
+ * Detect whether an order is a PUBG QR Login Order
+ */
+export function isQrLoginOrder(order: { customer_notes?: string; items?: Array<{ product_name?: string }> }): boolean {
+  const firstItem = order.items?.[0];
+  const gameTitle = 
+    order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || 
+    firstItem?.product_name || 
+    '';
+  return (
+    gameTitle.toLowerCase().includes('qr') || 
+    (firstItem?.product_name || '').toLowerCase().includes('qr') ||
+    (order.customer_notes || '').toLowerCase().includes('pubg_login') ||
+    (order.customer_notes || '').toLowerCase().includes('login uc')
+  );
+}
+
+/**
+ * Detect whether the worker has already provided/sent the QR screenshot to the customer
+ */
+export function hasQrCodeBeenSent(order: { customer_notes?: string; status?: string }): boolean {
+  const notes = order.customer_notes || '';
+  return (
+    notes.includes('QR Code forwarded') ||
+    notes.includes('Storage:') ||
+    notes.includes('Customer Scanned') ||
+    notes.includes('QR_SCANNED') ||
+    order.status === 'PROCESSING' ||
+    order.status === 'DELIVERED'
+  );
+}
+
 export const telegramBot = {
   /**
    * Pending cancellation session helpers
@@ -158,14 +190,9 @@ export const telegramBot = {
     const accountInfo = getAccountFieldInfo(playerUid, gameTitle);
     const { methodLabel, proofLines, isAutoVerified } = formatPaymentDisplayForTelegram(trxId, paymentMethod, invoiceId);
 
-    const isQrOrder = 
-      gameTitle.toLowerCase().includes('qr') || 
-      (firstItem?.product_name || '').toLowerCase().includes('qr') ||
-      (order.customer_notes || '').toLowerCase().includes('pubg_login') ||
-      (order.customer_notes || '').toLowerCase().includes('login uc');
-
+    const isQrOrder = isQrLoginOrder(order);
     const qrBanner = isQrOrder ? `\n📲 <b>[PUBG QR LOGIN ORDER]</b>\n` : '';
-    const hasQrSent = (order.customer_notes || '').includes('QR Code forwarded') || (order.customer_notes || '').includes('Storage:');
+    const hasQrSent = hasQrCodeBeenSent(order);
     const hasQrScanned = (order.customer_notes || '').includes('Customer Scanned') || (order.customer_notes || '').includes('QR_SCANNED');
 
     // Email Verification "Code Method" orders (PUBG KR + eFootball Android/iOS only)
@@ -684,14 +711,10 @@ ${queueBadge}${pendingQrHint}`,
 
     // QR Interactive Hints
     if (action === 'qr_hint') {
-      const hasQrSent = 
-        (existingOrder.customer_notes || '').includes('QR Code forwarded') || 
-        (existingOrder.customer_notes || '').includes('Storage:') ||
-        existingOrder.status === 'PROCESSING' ||
-        existingOrder.status === 'DELIVERED';
+      const qrAlreadySent = hasQrCodeBeenSent(existingOrder);
 
       // If the screenshot has already been dropped/sent, suppress the modal completely!
-      if (hasQrSent) {
+      if (qrAlreadySent) {
         await this.answerCallbackQuery(
           id,
           '✅ QR কোড ইতোমধ্যে পাঠানো হয়েছে! কাস্টমার স্ক্যান করার অপেক্ষায় রয়েছে।',
@@ -700,7 +723,7 @@ ${queueBadge}${pendingQrHint}`,
         return { success: true, message: 'QR already sent, hint suppressed' };
       }
 
-      // Only show popup modal if admin has NOT dropped the image yet and clicks send screenshot button
+      // Only show popup modal if worker has NOT provided the image yet and clicks send screenshot button
       await this.answerCallbackQuery(
         id,
         '📸 অনুগ্রহ করে এই মেসেজে রিপ্লাই করে লগইন QR কোডের ছবি/স্ক্রিনশট পাঠান। বট সাথে সাথে কাস্টমারের WhatsApp-এ পাঠিয়ে দেবে।',
@@ -865,6 +888,16 @@ ${queueBadge}${pendingQrHint}`,
         return { success: false, message: `Unauthorized: Claimed by ${assignedWorkerName}` };
       }
 
+      // QR Order Validation: Worker must provide the QR screenshot first!
+      if (isQrLoginOrder(existingOrder) && !hasQrCodeBeenSent(existingOrder)) {
+        await this.answerCallbackQuery(
+          id,
+          '📸 অনুগ্রহ করে এই মেসেজে রিপ্লাই করে লগইন QR কোডের ছবি/স্ক্রিনশট পাঠান। বট সাথে সাথে কাস্টমারের WhatsApp-এ পাঠিয়ে দেবে।',
+          true
+        );
+        return { success: false, message: 'Worker must provide QR screenshot first' };
+      }
+
       try {
         const updateResult = await db.updateOrderStatus(orderIdCode, 'OUT_FOR_DELIVERY', { workerTelegramId: from.id });
         if (!updateResult.success) {
@@ -903,6 +936,16 @@ ${queueBadge}${pendingQrHint}`,
           true
         );
         return { success: false, message: `Unauthorized: Claimed by ${assignedWorkerName}` };
+      }
+
+      // QR Order Validation: Worker must provide the QR screenshot first!
+      if (isQrLoginOrder(existingOrder) && !hasQrCodeBeenSent(existingOrder)) {
+        await this.answerCallbackQuery(
+          id,
+          '📸 অনুগ্রহ করে এই মেসেজে রিপ্লাই করে লগইন QR কোডের ছবি/স্ক্রিনশট পাঠান। বট সাথে সাথে কাস্টমারের WhatsApp-এ পাঠিয়ে দেবে।',
+          true
+        );
+        return { success: false, message: 'Worker must provide QR screenshot first' };
       }
 
       try {
@@ -1814,20 +1857,21 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
       const updatedNotes = `QR Code forwarded to WhatsApp at ${new Date().toLocaleTimeString()} (5m expiry timer) | Storage: ${finalImageUrl}`;
       targetOrder.status = 'PROCESSING';
       targetOrder.customer_notes = `${targetOrder.customer_notes || ''} | ${updatedNotes}`;
-      await db.updateOrderStatus(targetOrder.id, 'PROCESSING', {
+      await db.updateOrderStatus(targetOrder.order_id, 'PROCESSING', {
         notes: updatedNotes
       });
 
       // 5b. Remove the previous order card message above the screenshot so group stays clean
       const oldMessageId = targetOrder.telegram_message_id;
       if (oldMessageId) {
+        const targetChatId = message.chat.id || env.telegram.workerGroupId;
         try {
-          await this.deleteMessage(env.telegram.workerGroupId, oldMessageId);
+          await this.deleteMessage(targetChatId, oldMessageId);
           console.log(`[Telegram Photo] Cleaned up previous order card message #${oldMessageId} for Order #${targetOrder.order_id}`);
         } catch (delErr) {
           console.warn('[Telegram Photo] Could not delete old order card:', delErr);
-          await this.editMessageReplyMarkup(env.telegram.workerGroupId, oldMessageId, { inline_keyboard: [] });
         }
+        await this.editMessageReplyMarkup(targetChatId, oldMessageId, { inline_keyboard: [] }).catch(() => {});
       }
 
       // 6. Post the new active order card directly below the worker's screenshot with the action buttons
@@ -1876,9 +1920,10 @@ ${cardHtml}`;
 
     if (action === 'SCANNED') {
       order.status = 'PROCESSING';
-      order.customer_notes = `${order.customer_notes || ''} | Customer Scanned QR`;
-      await db.updateOrderStatus(order.id, 'PROCESSING', {
-        notes: 'Customer Scanned QR'
+      const scannedNotes = `${order.customer_notes || ''} | Customer Scanned QR`;
+      order.customer_notes = scannedNotes;
+      await db.updateOrderStatus(order.order_id, 'PROCESSING', {
+        notes: scannedNotes
       });
 
       // Remove the previous card so there are never duplicate messages with buttons
@@ -1889,8 +1934,8 @@ ${cardHtml}`;
           console.log(`[Telegram Scanned Sync] Deleted previous order card #${prevMsgId} for Order #${order.order_id}`);
         } catch (delErr) {
           console.warn('[Telegram Scanned Sync] Failed to delete previous card:', delErr);
-          await this.editMessageReplyMarkup(env.telegram.workerGroupId, prevMsgId, { inline_keyboard: [] });
         }
+        await this.editMessageReplyMarkup(env.telegram.workerGroupId, prevMsgId, { inline_keyboard: [] }).catch(() => {});
       }
 
       const { cardHtml, replyMarkup } = this.generateOrderCard(order, workerName);

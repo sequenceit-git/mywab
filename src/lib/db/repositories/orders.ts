@@ -417,17 +417,23 @@ export const ordersRepository = {
       }
     }
 
+    const mergedNotes = finalNotes
+      ? (order.customer_notes && !finalNotes.includes(order.customer_notes) && !order.customer_notes.includes(finalNotes)
+          ? `${order.customer_notes} | ${finalNotes}`
+          : finalNotes)
+      : order.customer_notes;
+
     order.status = status;
-    if (finalNotes) {
-      order.customer_notes = finalNotes;
+    if (mergedNotes) {
+      order.customer_notes = mergedNotes;
     }
     order.updated_at = new Date().toISOString();
 
     for (const o of mockStore.orders.values()) {
       if (o.order_id.toUpperCase() === orderIdCode.toUpperCase() || o.id === order.id) {
         o.status = status;
-        if (finalNotes) {
-          o.customer_notes = finalNotes;
+        if (mergedNotes) {
+          o.customer_notes = mergedNotes;
         }
         o.updated_at = new Date().toISOString();
         if (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT') {
@@ -443,13 +449,13 @@ export const ordersRepository = {
         status,
         updated_at: new Date().toISOString()
       };
-      if (finalNotes) {
-        updatePayload.customer_notes = finalNotes;
+      if (mergedNotes) {
+        updatePayload.customer_notes = mergedNotes;
       }
       await client
         .from('orders')
         .update(updatePayload)
-        .eq('order_id', orderIdCode);
+        .eq('id', order.id);
       
       if (status === 'DELIVERED') {
         await client
