@@ -2,63 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
-import {
-  CheckCircle2,
-  AlertCircle,
-  Copy,
-  RefreshCw,
-  Server,
-  Send,
-  Zap,
-  ToggleLeft,
-  ToggleRight,
-  Search,
-  Layers,
-  Package,
-  ShieldCheck,
-  Bot,
-  CreditCard,
-  ExternalLink
-} from 'lucide-react';
-import { SupabaseIcon, WhatsAppIcon, TelegramIcon, PubgUidIcon, BkashIcon, NagadIcon } from '@/components/BrandIcons';
-
-interface SystemStatus {
-  timestamp?: string;
-  app?: {
-    domain?: string;
-    url?: string;
-    nodeEnv?: string;
-  };
-  supabase?: {
-    isConfigured?: boolean;
-    connected?: boolean;
-    url?: string;
-    publishableKeyMasked?: string;
-    serviceRoleKeyMasked?: string;
-    stats?: {
-      ordersCount?: number;
-      workersCount?: number;
-      conversationsCount?: number;
-      faqsCount?: number;
-    };
-  };
-  whatsapp?: {
-    isConfigured?: boolean;
-    phoneNumberId?: string;
-    verifyToken?: string;
-    accessTokenMasked?: string;
-    webhookUrl?: string;
-  };
-  telegram?: {
-    isConfigured?: boolean;
-    workerGroupId?: string;
-    botTokenMasked?: string;
-    webhookUrl?: string;
-  };
-  admin?: {
-    email?: string;
-  };
-}
+import { Server, RefreshCw } from 'lucide-react';
+import { SystemStatus } from './types';
+import { SupabaseConfigCard } from './components/SupabaseConfigCard';
+import { KokosConfigCard } from './components/KokosConfigCard';
+import { PinexConfigCard } from './components/PinexConfigCard';
+import { ZiniPayConfigCard } from './components/ZiniPayConfigCard';
+import { WhatsAppConfigCard } from './components/WhatsAppConfigCard';
+import { TelegramConfigCard } from './components/TelegramConfigCard';
 
 export default function ConfigPage() {
   const [mounted, setMounted] = useState(false);
@@ -94,6 +45,10 @@ export default function ConfigPage() {
   const [zinipayRedirectUrl, setZinipayRedirectUrl] = useState<string>('');
   const [zinipayTestLoading, setZinipayTestLoading] = useState<boolean>(false);
   const [zinipayTestResult, setZinipayTestResult] = useState<{ status?: boolean; payment_url?: string; error?: string } | null>(null);
+
+  // WhatsApp Test State
+  const [waTestLoading, setWaTestLoading] = useState(false);
+  const [waTestMsg, setWaTestMsg] = useState<{ success: boolean; message: string } | null>(null);
 
   const fetchKokosStatus = async () => {
     try {
@@ -276,7 +231,7 @@ export default function ConfigPage() {
           message: 'Server returned non-JSON response'
         });
       }
-    } catch (e) {
+    } catch {
       setTgWebhookMsg({
         success: false,
         message: 'Network error registering webhook'
@@ -285,9 +240,6 @@ export default function ConfigPage() {
       setTgWebhookLoading(false);
     }
   };
-
-  const [waTestLoading, setWaTestLoading] = useState(false);
-  const [waTestMsg, setWaTestMsg] = useState<{ success: boolean; message: string } | null>(null);
 
   const handleSendWhatsAppTest = async () => {
     setWaTestLoading(true);
@@ -315,7 +267,7 @@ export default function ConfigPage() {
           });
         }
       }
-    } catch (e) {
+    } catch {
       setWaTestMsg({
         success: false,
         message: 'Network error sending test message'
@@ -388,7 +340,7 @@ export default function ConfigPage() {
       } else {
         setKokosLookupResult({ error: data.error || 'Player not found' });
       }
-    } catch (e) {
+    } catch {
       setKokosLookupResult({ error: 'Network lookup error' });
     } finally {
       setKokosLookupLoading(false);
@@ -435,550 +387,71 @@ export default function ConfigPage() {
           </button>
         </div>
 
-        {/* 4 Connected Services Grid (2x2 on desktop) */}
+        {/* 6 Connected Services Grid (2 columns on desktop) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           {/* 1. Supabase Database Card */}
-          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                  <SupabaseIcon className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-sm">Supabase PostgreSQL</h4>
-                  <p className="text-[11px] text-slate-400">Database, RLS & Atomic Locking</p>
-                </div>
-              </div>
-              <span
-                className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0 ${
-                  status?.supabase?.connected
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                }`}
-              >
-                <CheckCircle2 className="w-3 h-3" />
-                {status?.supabase?.connected ? 'Connected' : 'Disconnected'}
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-2 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-slate-400 shrink-0">Database URL:</span>
-                <span className="font-mono text-slate-200 text-[11px] truncate max-w-[200px] sm:max-w-[240px]">
-                  {status?.supabase?.url || 'Not set'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-slate-400 shrink-0">Service Role Key:</span>
-                <span className="font-mono text-slate-400 text-[11px]">
-                  {status?.supabase?.serviceRoleKeyMasked || 'Not Configured'}
-                </span>
-              </div>
-            </div>
-
-            {/* Real Database Table Stats */}
-            <div className="pt-2 border-t border-slate-800/60">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Live Table Row Counts</span>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-800/40">
-                  <div className="text-base font-extrabold text-white">{status?.supabase?.stats?.faqsCount ?? 0}</div>
-                  <div className="text-[10px] text-slate-400">FAQs / Q&A</div>
-                </div>
-                <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-800/40">
-                  <div className="text-base font-extrabold text-brand-400">{status?.supabase?.stats?.ordersCount ?? 0}</div>
-                  <div className="text-[10px] text-slate-400">Orders</div>
-                </div>
-                <div className="p-2 rounded-lg bg-slate-950/50 border border-slate-800/40">
-                  <div className="text-base font-extrabold text-telegram-500">{status?.supabase?.stats?.workersCount ?? 0}</div>
-                  <div className="text-[10px] text-slate-400">Workers</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SupabaseConfigCard status={status} />
 
           {/* 2. Kokos Activator API Card (PUBG UID Auto-Fulfillment) */}
-          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-brand-500/30 space-y-4 shadow-lg relative overflow-hidden">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
-                  <PubgUidIcon className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-sm flex items-center gap-1.5">
-                    <span>Kokos Activator API</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold">PUBG UID</span>
-                  </h4>
-                  <p className="text-[11px] text-slate-400">Instant UC Code Redemption & Auto-Fulfillment</p>
-                </div>
-              </div>
-              <span
-                className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0 ${
-                  kokosConfigured
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                }`}
-              >
-                {kokosConfigured ? 'API Key Configured' : 'Missing KOKOS_API_TOKEN'}
-              </span>
-            </div>
-
-            {/* Auto-Fulfillment Master Toggle Switch */}
-            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
-              <div>
-                <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-brand-400" />
-                  <span>PUBG UID Auto-Fulfill Mode</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  {kokosAutoFulfill
-                    ? '🟢 ON: Orders redeem instantly via Kokos API & notify on WhatsApp'
-                    : '🔵 OFF: Orders dispatch to Telegram Worker Bot for manual claims'}
-                </p>
-              </div>
-
-              <button
-                onClick={handleToggleKokos}
-                disabled={kokosToggling}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-                  kokosAutoFulfill
-                    ? 'bg-emerald-500 hover:bg-emerald-400 text-dark-950 shadow-md shadow-emerald-500/20'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-                }`}
-              >
-                {kokosAutoFulfill ? (
-                  <>
-                    <ToggleRight className="w-4 h-4" />
-                    <span>ON</span>
-                  </>
-                ) : (
-                  <>
-                    <ToggleLeft className="w-4 h-4" />
-                    <span>OFF</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {kokosToggleMsg && (
-              <div className="p-2.5 rounded-xl bg-brand-500/10 border border-brand-500/20 text-brand-300 text-xs flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>{kokosToggleMsg}</span>
-              </div>
-            )}
-
-            {/* Live Kokos Inventory Check */}
-            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-300 font-semibold flex items-center gap-1.5">
-                  <Package className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Database Code Stock</span>
-                </span>
-                <button
-                  onClick={handleCheckInventory}
-                  disabled={kokosInvLoading || !kokosConfigured}
-                  className="text-[11px] text-brand-400 hover:underline flex items-center gap-1 disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3 h-3 ${kokosInvLoading ? 'animate-spin' : ''}`} />
-                  <span>{kokosInventory ? 'Refresh Stock' : 'Check Stock'}</span>
-                </button>
-              </div>
-
-              {kokosInventory && (
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 pt-1">
-                  {['60', '325', '660', '1800', '3850', '8100'].map((uc) => (
-                    <div key={uc} className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-center">
-                      <div className="text-[10px] text-slate-400">{uc} UC</div>
-                      <div className={`text-xs font-mono font-bold ${
-                        (kokosInventory[uc] || 0) > 0 ? 'text-emerald-400' : 'text-slate-500'
-                      }`}>
-                        {kokosInventory[uc] ?? 0}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Test Player Character Lookup */}
-            <form onSubmit={handleLookupPlayer} className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Test Player UID (e.g. 51709255708)"
-                  value={kokosLookupUid}
-                  onChange={(e) => setKokosLookupUid(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={kokosLookupLoading || !kokosConfigured}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold disabled:opacity-50"
-              >
-                {kokosLookupLoading ? 'Checking...' : 'Verify'}
-              </button>
-            </form>
-
-            {kokosLookupResult && (
-              <div className={`p-2 rounded-xl text-xs flex items-center gap-2 ${
-                kokosLookupResult.name
-                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
-                  : 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
-              }`}>
-                {kokosLookupResult.name ? (
-                  <span>✅ Player In-Game Name: <b className="font-bold text-white">{kokosLookupResult.name}</b></span>
-                ) : (
-                  <span>❌ {kokosLookupResult.error}</span>
-                )}
-              </div>
-            )}
-          </div>
+          <KokosConfigCard
+            kokosConfigured={kokosConfigured}
+            kokosAutoFulfill={kokosAutoFulfill}
+            kokosToggling={kokosToggling}
+            kokosToggleMsg={kokosToggleMsg}
+            kokosInventory={kokosInventory}
+            kokosInvLoading={kokosInvLoading}
+            kokosLookupUid={kokosLookupUid}
+            setKokosLookupUid={setKokosLookupUid}
+            kokosLookupLoading={kokosLookupLoading}
+            kokosLookupResult={kokosLookupResult}
+            onToggleKokos={handleToggleKokos}
+            onCheckInventory={handleCheckInventory}
+            onLookupPlayer={handleLookupPlayer}
+          />
 
           {/* 3. Pinex API (Free Fire Auto-Fulfillment) */}
-          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
-                  <Zap className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-sm">Pinex API (Free Fire Auto-Fulfillment)</h4>
-                  <p className="text-[11px] text-slate-400">Direct Free Fire Diamonds & Shells Redemption</p>
-                </div>
-              </div>
-              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${
-                pinexConfigured
-                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                  : 'bg-slate-800 text-slate-400 border-slate-700'
-              }`}>
-                {pinexConfigured ? 'Connected' : 'Key Missing in .env'}
-              </span>
-            </div>
-
-            {/* Pinex Auto-Fulfill Switch */}
-            <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/60 flex items-center justify-between gap-3">
-              <div>
-                <span className="font-bold text-white text-xs block">Free Fire Auto-Fulfillment</span>
-                <span className="text-[11px] text-slate-400">
-                  {pinexAutoFulfill
-                    ? 'Orders are automatically fulfilled via Pinex API without Telegram'
-                    : 'Auto-fulfillment is paused'}
-                </span>
-              </div>
-              <button
-                onClick={handleTogglePinex}
-                disabled={pinexToggling || !pinexConfigured}
-                className={`py-1.5 px-3 rounded-xl font-bold text-xs transition flex items-center gap-1.5 shrink-0 ${
-                  pinexAutoFulfill
-                    ? 'bg-amber-500 hover:bg-amber-600 text-slate-950'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                } disabled:opacity-50`}
-              >
-                {pinexToggling ? (
-                  <span>Saving...</span>
-                ) : (
-                  <>
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>{pinexAutoFulfill ? 'Active (ON)' : 'Disabled (OFF)'}</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {pinexToggleMsg && (
-              <div className="p-2 rounded-xl text-xs bg-amber-500/10 border border-amber-500/20 text-amber-300">
-                {pinexToggleMsg}
-              </div>
-            )}
-
-            <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-1.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">Pinex Endpoint:</span>
-                <span className="font-mono text-slate-300 text-[11px]">https://sohan.pinexbot.shop/pinex/brand</span>
-              </div>
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-slate-400">Callback Gateway:</span>
-                <span className="font-mono text-slate-400 text-[11px]">/api/system/pinex/callback</span>
-              </div>
-            </div>
-          </div>
+          <PinexConfigCard
+            pinexConfigured={pinexConfigured}
+            pinexAutoFulfill={pinexAutoFulfill}
+            pinexToggling={pinexToggling}
+            pinexToggleMsg={pinexToggleMsg}
+            onTogglePinex={handleTogglePinex}
+          />
 
           {/* 4. ZiniPay Payment Gateway (Auto-Verification) */}
-          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shrink-0">
-                  <CreditCard className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-sm">ZiniPay Gateway (Auto Payment)</h4>
-                  <p className="text-[11px] text-slate-400">bKash, Nagad, Rocket Automated Invoicing & Webhook</p>
-                </div>
-              </div>
-              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${
-                zinipayConfigured
-                  ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
-                  : 'bg-slate-800 text-slate-400 border-slate-700'
-              }`}>
-                {zinipayConfigured ? 'Connected' : 'Key Missing in .env'}
-              </span>
-            </div>
-
-            {/* ZiniPay Auto-Payment Switch */}
-            <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/60 flex items-center justify-between gap-3">
-              <div>
-                <span className="font-bold text-white text-xs block">Automatic Payment Verification</span>
-                <span className="text-[11px] text-slate-400">
-                  {zinipayAutoPayment
-                    ? 'Generates 1-click checkout links and auto-verifies payments'
-                    : 'Auto-payment paused (falls back to manual personal numbers)'}
-                </span>
-              </div>
-              <button
-                onClick={handleToggleZinipay}
-                disabled={zinipayToggling || !zinipayConfigured}
-                className={`py-1.5 px-3 rounded-xl font-bold text-xs transition flex items-center gap-1.5 shrink-0 ${
-                  zinipayAutoPayment
-                    ? 'bg-cyan-500 hover:bg-cyan-600 text-slate-950'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                } disabled:opacity-50`}
-              >
-                {zinipayToggling ? (
-                  <span>Saving...</span>
-                ) : (
-                  <>
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>{zinipayAutoPayment ? 'Active (ON)' : 'Disabled (OFF)'}</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {zinipayToggleMsg && (
-              <div className="p-2 rounded-xl text-xs bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
-                {zinipayToggleMsg}
-              </div>
-            )}
-
-            {/* Webhook & Redirect URLs */}
-            <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-2 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-slate-400 shrink-0">Webhook URL:</span>
-                <div className="flex items-center gap-2 overflow-hidden">
-                  <span className="font-mono text-cyan-300 text-[11px] truncate">
-                    {zinipayWebhookUrl || `${status?.app?.url}/api/webhooks/zinipay`}
-                  </span>
-                  <button
-                    onClick={() => handleCopy(zinipayWebhookUrl || `${status?.app?.url}/api/webhooks/zinipay`, 'zinipay_webhook')}
-                    className="p-1 hover:text-white transition shrink-0"
-                    title="Copy Webhook URL"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/40">
-                <span className="text-slate-400 shrink-0">Success Redirect:</span>
-                <span className="font-mono text-slate-400 text-[11px] truncate">
-                  {zinipayRedirectUrl || `${status?.app?.url}/payment/success`}
-                </span>
-              </div>
-            </div>
-
-            {/* Test Invoice Trigger */}
-            <div className="pt-1">
-              <button
-                onClick={handleTestCreateInvoice}
-                disabled={zinipayTestLoading || !zinipayConfigured}
-                className="w-full py-2 px-3 rounded-xl text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-slate-700/60 transition flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {zinipayTestLoading ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Creating Test Invoice on ZiniPay...</span>
-                  </>
-                ) : (
-                  <>
-                    <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Create Test Sandbox Invoice (৳10)</span>
-                  </>
-                )}
-              </button>
-
-              {zinipayTestResult && (
-                <div className="mt-2.5 p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs space-y-1">
-                  {zinipayTestResult.status && zinipayTestResult.payment_url ? (
-                    <div>
-                      <span className="text-emerald-400 font-bold block">Invoice Created Successfully:</span>
-                      <a
-                        href={zinipayTestResult.payment_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-cyan-400 underline font-mono text-[11px] break-all inline-flex items-center gap-1 mt-1"
-                      >
-                        {zinipayTestResult.payment_url}
-                        <ExternalLink className="w-3 h-3 shrink-0" />
-                      </a>
-                    </div>
-                  ) : (
-                    <span className="text-rose-400">
-                      Error: {zinipayTestResult.error || 'Failed to create invoice'}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          <ZiniPayConfigCard
+            zinipayConfigured={zinipayConfigured}
+            zinipayAutoPayment={zinipayAutoPayment}
+            zinipayToggling={zinipayToggling}
+            zinipayToggleMsg={zinipayToggleMsg}
+            zinipayWebhookUrl={zinipayWebhookUrl}
+            zinipayRedirectUrl={zinipayRedirectUrl}
+            appUrl={status?.app?.url}
+            zinipayTestLoading={zinipayTestLoading}
+            zinipayTestResult={zinipayTestResult}
+            onToggleZinipay={handleToggleZinipay}
+            onTestCreateInvoice={handleTestCreateInvoice}
+            onCopy={handleCopy}
+          />
 
           {/* 5. WhatsApp Cloud API Webhook Card */}
-          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                  <WhatsAppIcon className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-sm">WhatsApp Business Cloud API</h4>
-                  <p className="text-[11px] text-slate-400">Meta Developer Webhook Gateway</p>
-                </div>
-              </div>
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 shrink-0">
-                {status?.whatsapp?.isConfigured ? 'Configured' : 'Setup Required'}
-              </span>
-            </div>
+          <WhatsAppConfigCard
+            status={status}
+            currentWhatsAppWebhook={currentWhatsAppWebhook}
+            copiedKey={copiedKey}
+            waTestLoading={waTestLoading}
+            waTestMsg={waTestMsg}
+            onCopy={handleCopy}
+            onSendWhatsAppTest={handleSendWhatsAppTest}
+          />
 
-            <div className="space-y-2.5 text-xs">
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Callback URL:</span>
-                  <button
-                    onClick={() => handleCopy(currentWhatsAppWebhook, 'wa_url')}
-                    className="text-[11px] font-mono text-brand-400 hover:text-brand-300 flex items-center gap-1"
-                  >
-                    <span>{copiedKey === 'wa_url' ? 'Copied!' : 'Copy URL'}</span>
-                    <Copy className="w-3 h-3" />
-                  </button>
-                </div>
-                <code suppressHydrationWarning className="block text-[11px] font-mono text-slate-200 break-all">
-                  {currentWhatsAppWebhook}
-                </code>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Verify Token:</span>
-                  <button
-                    onClick={() => handleCopy(status?.whatsapp?.verifyToken || '', 'wa_token')}
-                    className="text-[11px] font-mono text-brand-400 hover:text-brand-300 flex items-center gap-1"
-                  >
-                    <span>{copiedKey === 'wa_token' ? 'Copied!' : 'Copy Token'}</span>
-                    <Copy className="w-3 h-3" />
-                  </button>
-                </div>
-                <code className="block text-[11px] font-mono text-brand-400 font-bold">
-                  {status?.whatsapp?.verifyToken || 'verify_token'}
-                </code>
-              </div>
-
-              {waTestMsg && (
-                <div
-                  className={`p-3 rounded-xl text-xs flex items-start gap-2 ${
-                    waTestMsg.success
-                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
-                      : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
-                  }`}
-                >
-                  {waTestMsg.success ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />}
-                  <span className="break-all">{waTestMsg.message}</span>
-                </div>
-              )}
-
-              <button
-                onClick={handleSendWhatsAppTest}
-                disabled={waTestLoading || !status?.whatsapp?.isConfigured}
-                className="w-full py-2.5 px-4 rounded-xl bg-brand-500/15 hover:bg-brand-500/25 border border-brand-500/30 text-brand-400 font-bold text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {waTestLoading ? (
-                  <span>Delivering Test WhatsApp Message...</span>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Send Test Message to +8801705785272</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* 4. Telegram Worker Bot Card */}
-          <div className="p-5 sm:p-6 rounded-2xl bg-dark-900/90 border border-slate-800/80 space-y-4 shadow-lg">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-telegram-500/10 text-telegram-500 border border-telegram-500/20 shrink-0">
-                  <TelegramIcon className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-white text-sm">Telegram Worker Bot</h4>
-                  <p className="text-[11px] text-slate-400">Order Dispatch & Atomic Claim Engine</p>
-                </div>
-              </div>
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-telegram-500/10 text-telegram-500 border border-telegram-500/20 shrink-0">
-                {status?.telegram?.isConfigured ? 'Active' : 'Setup Required'}
-              </span>
-            </div>
-
-            <div className="space-y-2.5 text-xs">
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/60 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Worker Group ID:</span>
-                  <span className="font-mono text-slate-200 font-bold">{status?.telegram?.workerGroupId || 'Not configured'}</span>
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-slate-400">Bot Token:</span>
-                  <span className="font-mono text-slate-400 text-[11px]">{status?.telegram?.botTokenMasked || 'Not configured'}</span>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-slate-300 text-xs space-y-1">
-                <div className="text-emerald-400 font-bold flex items-center gap-1.5 text-[11px]">
-                  <span>🟢 ZiniPay Auto-Payment Integration</span>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  When ZiniPay gateway receives payment, manual fulfillment orders (like PUBG QR login or manual queues) are automatically pushed to the Telegram Worker Group with an unmistakable <b>[AUTO-PAID]</b> badge and verified invoice.
-                </p>
-              </div>
-
-              {tgWebhookMsg && (
-                <div
-                  className={`p-3 rounded-xl text-xs flex items-start gap-2 ${
-                    tgWebhookMsg.success
-                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
-                      : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
-                  }`}
-                >
-                  {tgWebhookMsg.success ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />}
-                  <span>{tgWebhookMsg.message}</span>
-                </div>
-              )}
-
-              {/* 1-Click Telegram Webhook Auto-Registration */}
-              <button
-                onClick={handleRegisterTelegramWebhook}
-                disabled={tgWebhookLoading || !status?.telegram?.isConfigured}
-                className="w-full py-2.5 px-4 rounded-xl bg-telegram-500/15 hover:bg-telegram-500/25 border border-telegram-500/30 text-telegram-500 font-bold text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {tgWebhookLoading ? (
-                  <span>Registering webhook with Telegram...</span>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Auto-Register Telegram Webhook (1-Click)</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+          {/* 6. Telegram Worker Bot Card */}
+          <TelegramConfigCard
+            status={status}
+            tgWebhookLoading={tgWebhookLoading}
+            tgWebhookMsg={tgWebhookMsg}
+            onRegisterTelegramWebhook={handleRegisterTelegramWebhook}
+          />
         </div>
       </main>
     </div>
