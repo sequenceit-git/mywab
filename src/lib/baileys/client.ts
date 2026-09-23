@@ -130,7 +130,19 @@ export class BaileysManager {
     }
   }
 
-  /** If we sit in CONNECTING with no QR for too long, force a clean retry (often corrupt auth). */
+  /** Fast, bounded peek at creds.json — avoids trusting a hung useMultiFileAuthState read. */
+  private hasRegisteredCreds(): boolean {
+    try {
+      const credsPath = path.join(this.authPath, 'creds.json');
+      if (!fs.existsSync(credsPath)) return false;
+      const raw = fs.readFileSync(credsPath, 'utf8');
+      return Boolean(JSON.parse(raw)?.registered);
+    } catch {
+      return false;
+    }
+  }
+
+  /** If we sit in CONNECTING with no QR/open for too long, force a clean retry (often corrupt/stuck auth). */
   private armConnectWatchdog(generation: number): void {
     this.clearConnectWatchdog();
     this.connectWatchdog = setTimeout(() => {
@@ -139,12 +151,24 @@ export class BaileysManager {
       if (this.status === 'CONNECTED' || this.status === 'QR_READY' || this.status === 'PAIRING_CODE_READY') {
         return;
       }
-      console.warn(
-        '[Baileys] ⏱️ Connect watchdog: still no QR/open after 45s. Clearing auth and retrying...'
-      );
-      this.lastError = 'Connection timed out waiting for QR. Cleared session and retrying.';
+
+      // Don't destroy a real linked session just because this attempt is slow —
+      // only wipe auth when there is no completed pairing to lose.
+      const registered = this.hasRegisteredCreds();
+      if (registered) {
+        console.warn(
+          '[Baileys] ⏱️ Connect watchdog: registered session stuck 45s with no open event. Retrying without wiping auth...'
+        );
+        this.lastError = 'Reconnect is taking longer than expected. Retrying...';
+      } else {
+        console.warn(
+          '[Baileys] ⏱️ Connect watchdog: no QR/open after 45s and no registered session. Clearing auth and retrying...'
+        );
+        this.lastError = 'Connection timed out waiting for QR. Cleared session and retrying.';
+        this.clearAuthFiles();
+      }
+
       this.destroySocket('watchdog');
-      this.clearAuthFiles();
       this.status = 'DISCONNECTED';
       this.isInitializing = false;
       this.scheduleReconnect(1000);
@@ -250,9 +274,19 @@ export class BaileysManager {
 
     this.destroySocket('before-init');
 
+    // Bound the ENTIRE init flow, including the pre-socket phase. Without this,
+    // a hang in useMultiFileAuthState (corrupt/huge auth dir, stuck disk I/O)
+    // leaves isInitializing=true / hasSocket=false forever — no socket, no QR,
+    // and the post-socket QR watchdog below never gets a chance to arm.
+    this.armConnectWatchdog(generation);
+
     try {
       this.ensureAuthDir();
-      const { state, saveCreds } = await useMultiFileAuthState(this.authPath);
+      const { state, saveCreds } = await this.withTimeout(
+        useMultiFileAuthState(this.authPath),
+        15_000,
+        'useMultiFileAuthState'
+      );
 
       if (generation !== this.connectGeneration || myLock !== this.initLockId) {
         console.log('[Baileys] init aborted — superseded by a newer connect attempt');
