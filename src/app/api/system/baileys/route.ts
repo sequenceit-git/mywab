@@ -8,8 +8,13 @@ export async function GET() {
   try {
     const status = baileysManager.getStatus();
 
-    // Auto-initialize if provider is set to baileys and status is DISCONNECTED
-    if (env.whatsapp.provider === 'baileys' && status.status === 'DISCONNECTED') {
+    // Only auto-start when truly idle. Polling while a reconnect is scheduled
+    // used to spawn a second socket → WhatsApp 440 connectionReplaced loops.
+    if (
+      env.whatsapp.provider === 'baileys' &&
+      status.status === 'DISCONNECTED' &&
+      !baileysManager.isBusy
+    ) {
       baileysManager.init().catch(err => {
         console.error('[Baileys API GET] Auto-init error:', err);
       });
@@ -18,7 +23,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       provider: env.whatsapp.provider,
-      ...status
+      ...baileysManager.getStatus()
     });
   } catch (err: any) {
     console.error('[Baileys API GET Error]:', err);

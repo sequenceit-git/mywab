@@ -12,6 +12,8 @@ services:
       - PORT=3000
       - WS_NO_BUFFER_UTIL=1
       - WS_NO_UTF_8_VALIDATE=1
+      - BAILEYS_AUTH_DIR=/app/baileys_auth
+      - WHATSAPP_PROVIDER=baileys
     labels:
       - "traefik.enable=true"
       

@@ -51,7 +51,11 @@ export class BaileysManager {
   private reconnectAttempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isInitializing = false;
+  /** Bumps on every new socket so stale connection.update handlers cannot start a second reconnect. */
+  private connectGeneration = 0;
   private messageHandler: ((message: proto.IWebMessageInfo) => Promise<void>) | null = null;
+  /** Lightweight outbound message cache for Baileys retry / getMessage. */
+  private messageStore = new Map<string, proto.IMessage>();
 
   constructor() {
     this.ensureAuthDir();
@@ -93,21 +97,98 @@ export class BaileysManager {
       qrDataUrl: this.currentQrDataUrl,
       pairingCode: this.currentPairingCode,
       registeredPhone: this.registeredPhone,
-      authDir: this.authPath
+      authDir: this.authPath,
+      isInitializing: this.isInitializing,
+      hasPendingReconnect: this.reconnectTimer !== null,
+      reconnectAttempts: this.reconnectAttempts,
     };
   }
 
   /**
-   * Start Baileys socket connection
+   * True when a socket is already up or a connect/reconnect is in flight.
+   * Used by the status API so polling cannot spawn a second competing socket.
+   */
+  public get isBusy(): boolean {
+    return (
+      this.isInitializing ||
+      this.reconnectTimer !== null ||
+      this.sock !== null ||
+      this.status === 'CONNECTING' ||
+      this.status === 'QR_READY' ||
+      this.status === 'PAIRING_CODE_READY' ||
+      this.status === 'CONNECTED'
+    );
+  }
+
+  /**
+   * Tear down the active socket cleanly so a new makeWASocket cannot fight it (440 connectionReplaced).
+   */
+  private destroySocket(reason = 'replace'): void {
+    const sock = this.sock;
+    this.sock = null;
+    if (!sock) return;
+
+    try {
+      sock.ev.removeAllListeners('connection.update');
+      sock.ev.removeAllListeners('creds.update');
+      sock.ev.removeAllListeners('messages.upsert');
+    } catch {
+      // ignore
+    }
+
+    try {
+      // end() closes the WS without logging out of WhatsApp (creds stay on disk).
+      sock.end(undefined);
+    } catch (err) {
+      console.warn(`[Baileys] destroySocket(${reason}) end error:`, err);
+    }
+  }
+
+  private rememberMessage(msg: proto.IWebMessageInfo | undefined | null): void {
+    if (!msg?.key?.id || !msg.message) return;
+    const id = `${msg.key.remoteJid || ''}:${msg.key.id}`;
+    this.messageStore.set(id, msg.message);
+    // Cap memory — keep recent outbound/inbound only
+    if (this.messageStore.size > 500) {
+      const first = this.messageStore.keys().next().value;
+      if (first) this.messageStore.delete(first);
+    }
+  }
+
+  /**
+   * Start Baileys socket connection.
+   * Single-flight: never create a second socket while one is connecting or reconnecting.
+   * @see https://baileys.wiki/advanced/troubleshooting#connection-keeps-dropping-/-reconnecting
    */
   public async init(): Promise<void> {
-    if (this.isInitializing || this.sock) return;
+    // Already connected or mid-flight — do not open a competing socket (causes 440 loops).
+    if (this.isInitializing) {
+      console.log('[Baileys] init() skipped — already initializing');
+      return;
+    }
+    if (this.sock && this.status === 'CONNECTED') {
+      return;
+    }
+    if (this.sock && (this.status === 'CONNECTING' || this.status === 'QR_READY' || this.status === 'PAIRING_CODE_READY')) {
+      console.log(`[Baileys] init() skipped — socket already in status=${this.status}`);
+      return;
+    }
+
     this.isInitializing = true;
     this.status = 'CONNECTING';
+    const generation = ++this.connectGeneration;
+
+    // Ensure only one live socket exists
+    this.destroySocket('before-init');
 
     try {
       this.ensureAuthDir();
       const { state, saveCreds } = await useMultiFileAuthState(this.authPath);
+
+      if (generation !== this.connectGeneration) {
+        console.log('[Baileys] init aborted — a newer connect generation started');
+        return;
+      }
 
       const logger = pino({ level: 'error' });
 
@@ -136,19 +217,28 @@ export class BaileysManager {
           keys: makeCacheableSignalKeyStore(state.keys, logger),
         },
         logger,
-        browser: Browsers.macOS('Desktop'),
+        // Desktop identity (stable for linked-device bots). See baileys.wiki/concepts/socket-config
+        browser: Browsers.macOS('Chrome'),
         syncFullHistory: false,
-        generateHighQualityLinkPreview: true,
+        generateHighQualityLinkPreview: false,
         connectTimeoutMs: 60_000,
         defaultQueryTimeoutMs: 60_000,
-        keepAliveIntervalMs: 25_000,
+        // Official default is 30s — shorter intervals cause idle 408 disconnect loops
+        keepAliveIntervalMs: 30_000,
         markOnlineOnConnect: false,
         retryRequestDelayMs: 250,
+        getMessage: async (key) => {
+          const id = `${key.remoteJid || ''}:${key.id || ''}`;
+          return this.messageStore.get(id);
+        },
       });
 
       this.sock.ev.on('creds.update', saveCreds);
 
       this.sock.ev.on('connection.update', async (update) => {
+        // Ignore events from a socket that was already replaced
+        if (generation !== this.connectGeneration) return;
+
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
@@ -168,22 +258,28 @@ export class BaileysManager {
           this.currentQrDataUrl = null;
           this.currentPairingCode = null;
           this.reconnectAttempts = 0;
+          if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+          }
           this.registeredPhone = this.sock?.user?.id ? this.sock.user.id.split(':')[0] : null;
           console.log(`[Baileys] ✅ Connection open! Connected as: ${this.registeredPhone}`);
         } else if (connection === 'close') {
           this.status = 'DISCONNECTED';
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
           const errorMessage = (lastDisconnect?.error as Boom)?.message || 'Unknown';
-          const errorDetails = (lastDisconnect?.error as any)?.stack || (lastDisconnect?.error as any);
-          const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+          const shouldReconnect =
+            statusCode !== DisconnectReason.loggedOut &&
+            statusCode !== DisconnectReason.connectionReplaced;
 
-          console.warn(`[Baileys] 🔌 Connection closed. Code: ${statusCode}, Message: "${errorMessage}". Reconnecting: ${shouldReconnect}`);
-          if (errorDetails && statusCode !== DisconnectReason.loggedOut && statusCode !== DisconnectReason.restartRequired) {
-            console.warn('[Baileys] Disconnect details:', errorDetails);
+          console.warn(
+            `[Baileys] 🔌 Connection closed. Code: ${statusCode}, Message: "${errorMessage}". Reconnecting: ${shouldReconnect}`
+          );
+
+          // Drop this generation's socket reference (do not end again — WA already closed it)
+          if (generation === this.connectGeneration) {
+            this.sock = null;
           }
-
-          // Release the old socket reference immediately on close
-          this.sock = null;
 
           if (statusCode === DisconnectReason.loggedOut) {
             console.warn('[Baileys] Device was logged out (401). Clearing auth credentials...');
@@ -192,34 +288,47 @@ export class BaileysManager {
             this.currentQrDataUrl = null;
             this.currentPairingCode = null;
             this.registeredPhone = null;
-          } else if (statusCode === DisconnectReason.restartRequired) {
-            // CRITICAL: 515 restartRequired happens immediately after QR scan / pairing code!
-            // WhatsApp forces connection restart to complete key exchange.
-            // MUST reconnect immediately without backoff delay so phone doesn't time out or get stuck on "Logging in...".
-            console.log('[Baileys] 🔄 WhatsApp requested stream restart (515) to finalize handshake. Reconnecting immediately...');
-            this.reconnectAttempts = 0;
-            this.sock = null;
-            this.isInitializing = false;
-            this.init().catch(err => console.error('[Baileys] Immediate restart error:', err));
-          } else if (statusCode === DisconnectReason.badSession) {
+            return;
+          }
+
+          if (statusCode === DisconnectReason.connectionReplaced) {
+            // 440 = another socket (often our own duplicate init) took over.
+            // Do NOT immediately reconnect — that creates an infinite fight.
+            console.warn(
+              '[Baileys] Connection replaced (440). Waiting 15s before a single recovery attempt...'
+            );
+            this.scheduleReconnect(15_000);
+            return;
+          }
+
+          if (statusCode === DisconnectReason.badSession) {
             console.warn('[Baileys] Bad session detected (500). Clearing invalid session files...');
             this.clearAuthFiles();
             this.scheduleReconnect();
-          } else if (statusCode === DisconnectReason.timedOut) {
-            console.warn('[Baileys] Connection timed out (408). Retrying...');
-            this.scheduleReconnect();
-          } else if (statusCode === DisconnectReason.connectionReplaced) {
-            console.warn('[Baileys] Connection replaced by another session (440). Not reconnecting.');
-            // Don't reconnect — another session took over
-          } else if (shouldReconnect) {
+            return;
+          }
+
+          if (statusCode === DisconnectReason.restartRequired) {
+            // Expected after QR / pairing — reconnect ASAP (Baileys FAQ).
+            console.log(
+              '[Baileys] 🔄 WhatsApp requested stream restart (515). Reconnecting immediately...'
+            );
+            this.reconnectAttempts = 0;
+            this.scheduleReconnect(500);
+            return;
+          }
+
+          if (shouldReconnect) {
             this.scheduleReconnect();
           }
         }
       });
 
       this.sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (generation !== this.connectGeneration) return;
         if (type !== 'notify') return;
         for (const msg of messages) {
+          this.rememberMessage(msg);
           if (msg.key?.fromMe) continue;
           if (this.messageHandler) {
             try {
@@ -236,17 +345,26 @@ export class BaileysManager {
       this.status = 'DISCONNECTED';
       this.scheduleReconnect();
     } finally {
-      this.isInitializing = false;
+      if (generation === this.connectGeneration) {
+        this.isInitializing = false;
+      }
     }
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(forcedDelayMs?: number): void {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 30000);
-    console.log(`[Baileys] Scheduling reconnect in ${Math.round(delay / 1000)}s (Attempt #${this.reconnectAttempts})...`);
+    const delay =
+      forcedDelayMs ??
+      Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 30_000);
+    console.log(
+      `[Baileys] Scheduling reconnect in ${Math.round(delay / 1000)}s (Attempt #${this.reconnectAttempts})...`
+    );
     this.reconnectTimer = setTimeout(async () => {
-      this.sock = null;
+      this.reconnectTimer = null;
+      // Only reconnect if still disconnected and not already connecting
+      if (this.status === 'CONNECTED' || this.isInitializing) return;
+      this.destroySocket('reconnect');
       await this.init();
     }, delay);
   }
@@ -273,11 +391,15 @@ export class BaileysManager {
       return { success: false, error: 'WhatsApp is already connected!' };
     }
 
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
 
     if (!this.sock || this.status === 'DISCONNECTED') {
-      this.sock = null;
-      await this.init();
+      if (!this.isInitializing) {
+        await this.init();
+      }
     }
 
     // Wait for the socket connection to be ready (up to 10 seconds)
@@ -318,6 +440,7 @@ export class BaileysManager {
     const jid = this.formatJid(toPhone);
     try {
       const res = await this.sock.sendMessage(jid, { text });
+      this.rememberMessage(res as proto.IWebMessageInfo);
       return { success: true, messageId: res?.key?.id || undefined };
     } catch (err: any) {
       console.error(`[Baileys] Send text error to ${toPhone}:`, err);
@@ -561,19 +684,17 @@ export class BaileysManager {
    * Manually trigger a socket reconnection
    */
   public async reconnect(): Promise<void> {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    try {
-      if (this.sock) {
-        this.sock.end(undefined);
-      }
-    } catch (e) {
-      console.warn('[Baileys] Error ending sock on reconnect:', e);
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
-    this.sock = null;
+    this.connectGeneration++; // invalidate in-flight handlers
+    this.destroySocket('manual-reconnect');
     this.status = 'DISCONNECTED';
     this.currentQr = null;
     this.currentQrDataUrl = null;
     this.currentPairingCode = null;
+    this.isInitializing = false;
     await this.init();
   }
 
@@ -581,22 +702,21 @@ export class BaileysManager {
    * Reset session: wipe auth directory and start a fresh socket
    */
   public async resetSession(): Promise<void> {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    try {
-      if (this.sock) {
-        this.sock.end(undefined);
-      }
-    } catch (e) {
-      console.warn('[Baileys] Error ending sock on reset:', e);
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
+    this.connectGeneration++;
+    this.destroySocket('reset');
     this.clearAuthFiles();
-    this.sock = null;
     this.status = 'DISCONNECTED';
     this.currentQr = null;
     this.currentQrDataUrl = null;
     this.currentPairingCode = null;
     this.registeredPhone = null;
     this.reconnectAttempts = 0;
+    this.isInitializing = false;
+    this.messageStore.clear();
     await this.init();
   }
 
@@ -604,7 +724,11 @@ export class BaileysManager {
    * Disconnect and clear credentials
    */
   public async logout(): Promise<void> {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.connectGeneration++;
     try {
       if (this.sock) {
         await this.sock.logout();
@@ -612,13 +736,15 @@ export class BaileysManager {
     } catch (err) {
       console.warn('[Baileys] Logout error:', err);
     } finally {
+      this.destroySocket('logout');
       this.clearAuthFiles();
-      this.sock = null;
       this.status = 'DISCONNECTED';
       this.currentQr = null;
       this.currentQrDataUrl = null;
       this.currentPairingCode = null;
       this.registeredPhone = null;
+      this.isInitializing = false;
+      this.messageStore.clear();
     }
   }
 
