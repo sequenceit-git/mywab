@@ -274,11 +274,15 @@ ${cardHtml}`;
     messageText?: string;
     conversationId?: string;
   }): Promise<boolean> {
-    if (!env.telegram.isConfigured) return false;
+    if (!env.telegram.isConfigured) {
+      console.warn('[Telegram Human Support Alert] Telegram bot is not configured!');
+      return false;
+    }
 
-    const name = data.customerName || 'Customer';
+    const escapeHtml = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const name = escapeHtml(data.customerName || 'Customer');
     const cleanPhone = data.phone.replace(/\D/g, '');
-    const textPreview = data.messageText ? data.messageText.slice(0, 300) : 'Requested Human Support';
+    const textPreview = escapeHtml(data.messageText ? data.messageText.slice(0, 300) : 'Requested Human Support');
 
     const alertHtml =
 `🚨 <b>HUMAN SUPPORT REQUESTED / হিউম্যান সাপোর্ট রিকোয়েস্ট</b>
@@ -304,6 +308,7 @@ ${cardHtml}`;
         parse_mode: 'HTML',
         reply_markup: { inline_keyboard: inlineKeyboard }
       });
+      console.log(`[Telegram Human Support Alert] Sent to group ${env.telegram.workerGroupId}: ok=${sendRes.ok}`);
       return Boolean(sendRes.ok);
     } catch (err) {
       console.error('[Telegram Human Support Alert Error]:', err);

@@ -208,9 +208,30 @@ export async function handleHumanSupportRequest(
   customerName?: string,
   rawText?: string
 ): Promise<void> {
-  // 1. Turn off AI Bot for this conversation
-  await db.setAiMode(conversationId, false);
+  console.log(`[Human Support] Initiating human takeover for phone=${phone} conv=${conversationId}`);
 
+  // 1. Immediately dispatch alert to Telegram Worker Group
+  try {
+    const { telegramBot } = await import('../../telegram/bot');
+    const alertOk = await telegramBot.notifyHumanSupportRequest({
+      phone,
+      customerName,
+      messageText: rawText,
+      conversationId
+    });
+    console.log(`[Human Support] Telegram alert sent: ${alertOk}`);
+  } catch (tgErr) {
+    console.error('[Telegram Alert Error in handleHumanSupportRequest]:', tgErr);
+  }
+
+  // 2. Turn off AI Bot for this conversation (Human Takeover mode)
+  try {
+    await db.setAiMode(conversationId, false);
+  } catch (err) {
+    console.error('[SetAiMode Error]:', err);
+  }
+
+  // 3. Send confirmation WhatsApp message to customer
   const nameGreeting = customerName ? ` *${customerName}*` : '';
   const text = 
 `👤 *হিউম্যান সাপোর্ট এজেন্টের সাথে কানেক্ট করা হচ্ছে${nameGreeting}...*
@@ -220,30 +241,24 @@ export async function handleHumanSupportRequest(
 _(বট সাময়িকভাবে বন্ধ রাখা হয়েছে। পুনরায় অটোমেটিক বট চালু করতে */bot* বা */menu* লিখুন)_`;
 
   const buttons = [
-    { id: 'btn_main_menu', title: '🤖 বট পুনরায় চালু করুন' }
+    { id: 'btn_main_menu', title: '🤖 বট অন করুন' },
+    { id: 'btn_website', title: '🌐 ওয়েবসাইট' }
   ];
 
-  await whatsappService.sendInteractiveButtons(phone, text, buttons, 'Human Support');
+  try {
+    await whatsappService.sendInteractiveButtons(phone, text, buttons, 'Human Support');
+  } catch (waErr) {
+    console.warn('[WhatsApp Button Error, fallback to text]:', waErr);
+    await whatsappService.sendMessage(phone, text);
+  }
 
+  // 4. Save to database
   await db.addMessage({
     conversationId,
     sender: 'BOT',
     content: text,
     metadata: { type: 'HUMAN_SUPPORT_TAKEOVER' }
   });
-
-  // 2. Dispatch alert to Telegram Group
-  try {
-    const { telegramBot } = await import('../../telegram/bot');
-    await telegramBot.notifyHumanSupportRequest({
-      phone,
-      customerName,
-      messageText: rawText,
-      conversationId
-    });
-  } catch (tgErr) {
-    console.warn('[Telegram Alert Error]:', tgErr);
-  }
 }
 
 /**

@@ -3,7 +3,9 @@ import { db } from '@/lib/db';
 import { whatsappService } from '@/lib/whatsapp/service';
 import { env } from '@/lib/config/env';
 import { stateBot } from '@/lib/chat/state-bot';
-import { parseSlashCommand } from '@/lib/chat/input-parser';
+import { parseSlashCommand, isHumanSupportRequest } from '@/lib/chat/input-parser';
+import { handleHumanSupportRequest } from '@/lib/chat/handlers/info-handlers';
+import { sendWelcomeAndGameList } from '@/lib/chat/handlers/catalog-navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,23 +134,35 @@ export async function POST(request: NextRequest) {
 
             console.log(`[DB] Saved | conv=${conversation.id} | phone=${formattedPhone} | is_ai_active=${conversation.is_ai_active}`);
 
-            // Check if user is requesting to re-enable the AI bot
+            // 1. Explicit Human Support Request (/human, /agent, human, support, etc.)
+            // This MUST always trigger even if the conversation is already in Human Mode!
             const slash = parseSlashCommand(messageText);
-            const wantsBotReenable = slash?.command === 'bot' || slash?.command === 'menu' || buttonId === 'btn_main_menu';
+            const isHumanReq = slash?.command === 'human' || buttonId === 'btn_human_support' || isHumanSupportRequest(messageText);
 
-            if (wantsBotReenable && !conversation.is_ai_active) {
+            if (isHumanReq) {
+              console.log(`[Human Support Request] Triggered by ${formattedPhone} (conv=${conversation.id})`);
+              await handleHumanSupportRequest(formattedPhone, conversation.id, customerName, messageText);
+              continue;
+            }
+
+            // 2. Explicit Bot Re-enable Request (/bot, /menu, btn_main_menu)
+            const wantsBotReenable = slash?.command === 'bot' || buttonId === 'btn_main_menu' || (slash?.command === 'menu' && !conversation.is_ai_active);
+
+            if (wantsBotReenable) {
               console.log(`[Bot Re-enabled] Activating AI bot for ${formattedPhone} via command /${slash?.command || buttonId}`);
               await db.setAiMode(conversation.id, true);
               conversation.is_ai_active = true;
+              await sendWelcomeAndGameList(formattedPhone, conversation.id, customerName);
+              continue;
             }
 
-            // If Human Takeover is ACTIVE (is_ai_active is false), DO NOT allow the bot to auto-reply!
+            // 3. If Human Takeover is ACTIVE (is_ai_active is false), DO NOT allow the bot to auto-reply!
             if (!conversation.is_ai_active) {
               console.log(`[Human Takeover] AI Bot is paused for ${formattedPhone}. Inbound message saved to admin inbox.`);
               continue;
             }
 
-            // Process with deterministic sequential State Bot
+            // 4. Process with deterministic sequential State Bot
             await stateBot.handleIncomingMessage({
               conversationId: conversation.id,
               userId: user.id,
