@@ -198,11 +198,16 @@ export async function handlePackageSelection(
     draftOrder
   });
 
+  const isYouTube = pkg.id.includes('youtube') || pkg.name.toLowerCase().includes('youtube');
+  const inputInstruction = isYouTube
+    ? '▶️ আপনার *Email / Gmail অ্যাড্রেস* লিখে পাঠান (যেখানে YouTube Premium সাবস্ক্রিপশন নিতে চান):'
+    : game.inputPrompt;
+
   const promptMessage = 
 `✅ *সিলেক্টেড প্যাকেজ:* ${pkg.name}
 💰 *মূল্য:* ৳${pkg.price} Tk
 
-${game.inputPrompt}`;
+${inputInstruction}`;
 
   const buttons = [
     { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }

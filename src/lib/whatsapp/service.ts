@@ -321,6 +321,8 @@ ${deliveryConfig.deliveryMessage}
       fullOrderContext.includes('efb') ||
       fullOrderContext.includes('konami');
 
+    const isYouTube = fullOrderContext.includes('youtube');
+
     let completionNote = `আপনার আইডিতে টপ-আপ যুক্ত করা হয়েছে।`;
     if (accountInfo.isEmail) {
       completionNote = `আপনার সাবস্ক্রিপশন চালু করে অ্যাকাউন্ট/লগইন তথ্য সফলভাবে সরবরাহ করা হয়েছে।`;
@@ -333,6 +335,11 @@ ${deliveryConfig.deliveryMessage}
 `প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* (${playerUid}) সফলভাবে সম্পন্ন হয়েছে এবং আপনার টপ-আপ সফলভাবে সম্পন্ন হয়েছে।
 
 🔒 *নিরাপত্তার জন্য আপনি অবশ্যই আপনার পাসওয়ার্ড পরিবর্তন করে নিবেন।* ✨`;
+    } else if (isYouTube) {
+      orderDetailsText = 
+`প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* (${playerUid}) সফলভাবে সম্পন্ন হয়েছে এবং আপনার YouTube Premium সাবস্ক্রিপশন চালু করা হয়েছে। ✨
+
+📩 *অনুগ্রহ করে আপনার Gmail ইনবক্স বা স্প্যাম ফোল্ডার চেক করে ইনভাইটেশন এক্সেপ্ট করে নিন।* ❤️`;
     }
 
     const messageText = 

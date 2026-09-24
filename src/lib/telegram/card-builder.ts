@@ -254,7 +254,40 @@ export function generateOrderCard(
   const hasNetflixCodeRequested = lastNetflixCodeReqIdx !== -1 && (lastNetflixCodeSentIdx === -1 || lastNetflixCodeReqIdx > lastNetflixCodeSentIdx);
   const hasNetflixLoginDone = netflixNotes.includes('NETFLIX_LOGIN_DONE');
 
+  // YouTube Premium Order Detection
+  const isYouTube = combinedGameStr.includes('youtube');
+  const youtubeBanner = isYouTube ? `\n▶️ <b>[YOUTUBE PREMIUM SUBSCRIPTION]</b>\n` : '';
+
   if (order.status === 'CLAIMED' || order.status === 'PROCESSING') {
+    if (isYouTube) {
+      return {
+        cardHtml: 
+`▶️ <b>ORDER CLAIMED [AUTO-PAID] / অর্ডার গ্রহণ করা হয়েছে</b>${youtubeBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+📧 <b>YouTube Email:</b> <code>${playerUid}</code>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+💎 <b>Packages:</b>
+${itemsText}
+
+👉 <b>অ্যাকশন:</b> কাস্টমারের ইমেইলে (<code>${playerUid}</code>) YouTube Premium ফ্যামিলি ইনভাইটেশন পাঠিয়ে নিচের <b>"✅ Order Completed"</b> বাটনে চাপ দিন।`,
+        replyMarkup: {
+          inline_keyboard: [
+            [
+              { text: '✅ Order Completed (ডেলিভারি সম্পন্ন)', callback_data: `status_delivered:${order.order_id}` }
+            ],
+            [
+              { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+            ]
+          ]
+        }
+      };
+    }
+
     if (isNetflix) {
       if (hasNetflixLoginDone) {
         return {
