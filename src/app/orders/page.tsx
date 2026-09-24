@@ -48,6 +48,17 @@ export default function OrdersPage() {
   const [redispatchingId, setRedispatchingId] = useState<string | null>(null);
   const [redispatchSuccess, setRedispatchSuccess] = useState<string | null>(null);
 
+  // Ref to track user's active selected order ID across periodic polling intervals
+  const selectedOrderIdRef = React.useRef<string | null>(null);
+
+  const handleSelectOrder = (order: Order) => {
+    selectedOrderIdRef.current = order.order_id || order.id;
+    setSelectedOrder(order);
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setShowMobileDetail(true);
+    }
+  };
+
   const fetchOrders = async () => {
     try {
       const res = await fetch('/api/orders', {
@@ -57,13 +68,22 @@ export default function OrdersPage() {
         const data = await res.json();
         if (data.success && Array.isArray(data.orders)) {
           setOrders(data.orders);
-          if (!selectedOrder && data.orders.length > 0) {
-            setSelectedOrder(data.orders[0]);
-          } else if (selectedOrder) {
-            // Keep selected order updated
-            const updated = data.orders.find((o: Order) => o.id === selectedOrder.id || o.order_id === selectedOrder.order_id);
-            if (updated) setSelectedOrder(updated);
-          }
+          setSelectedOrder(prev => {
+            const currentSelectedId = selectedOrderIdRef.current || prev?.order_id || prev?.id;
+            if (!currentSelectedId) {
+              const firstOrder = data.orders[0] || null;
+              if (firstOrder) {
+                selectedOrderIdRef.current = firstOrder.order_id || firstOrder.id;
+              }
+              return firstOrder;
+            }
+            // Keep the user's chosen order selected and update with any fresh data from server
+            const updated = data.orders.find((o: Order) => 
+              (o.order_id && o.order_id === currentSelectedId) || 
+              (o.id && o.id === currentSelectedId)
+            );
+            return updated || prev || data.orders[0] || null;
+          });
         }
       }
     } catch (e) {
@@ -98,9 +118,7 @@ export default function OrdersPage() {
         const data = await res.json();
         if (data.success) {
           fetchOrders();
-          if (selectedOrder?.order_id === orderIdCode) {
-            setSelectedOrder(prev => prev ? { ...prev, status: newStatus } : null);
-          }
+          setSelectedOrder(prev => (prev && (prev.order_id === orderIdCode || prev.id === orderIdCode) ? { ...prev, status: newStatus } : prev));
         }
       }
     } catch (e) {
@@ -458,12 +476,7 @@ export default function OrdersPage() {
                 return (
                   <div
                     key={order.id || order.order_id}
-                    onClick={() => {
-                      setSelectedOrder(order);
-                      if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-                        setShowMobileDetail(true);
-                      }
-                    }}
+                    onClick={() => handleSelectOrder(order)}
                     className={`p-4 rounded-2xl border transition-all cursor-pointer ${
                       isSelected
                         ? isCancelled
