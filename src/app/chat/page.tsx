@@ -538,18 +538,18 @@ export default function ChatAdminPage() {
 
   return (
     <div className="flex-1 flex flex-col h-full max-h-full min-h-0 overflow-hidden bg-dark-950">
-      {/* Top Operations Header */}
-      <div className="shrink-0">
+      {/* Top Operations Header (Hidden on mobile when conversation is active) */}
+      <div className={`shrink-0 ${showMobileDetail ? 'hidden lg:block' : 'block'}`}>
         <Header
           title="Live Customer Chat & Bot Inbox"
           subtitle="Manage WhatsApp live customer streams, autonomous bot sessions, and human agent takeover"
         />
       </div>
 
-      {/* Control Bar & Stats Ribbon */}
-      <div className="bg-dark-900/90 border-b border-slate-800/80 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0 z-10">
+      {/* Control Bar & Stats Ribbon (Hidden on mobile when conversation is active) */}
+      <div className={`bg-dark-900/90 border-b border-slate-800/80 px-3 sm:px-4 py-2 sm:py-2.5 items-center justify-between gap-2 text-xs shrink-0 z-10 ${showMobileDetail ? 'hidden lg:flex' : 'flex flex-wrap'}`}>
         {/* Left: Summary Metrics */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-3 flex-wrap">
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/60 border border-slate-700/60 font-semibold text-slate-200">
             <MessageSquare className="w-3.5 h-3.5 text-brand-400" />
             <span>{stats.total} Conversations</span>
@@ -824,31 +824,32 @@ export default function ChatAdminPage() {
         {/* ========================================================================= */}
         <div
           className={`${
-            showMobileDetail ? 'flex' : 'hidden'
-          } lg:flex flex-1 flex-col h-full min-h-0 bg-dark-950/70 overflow-hidden min-w-0`}
+            showMobileDetail ? 'fixed inset-0 z-50 lg:static lg:inset-auto lg:z-auto flex' : 'hidden'
+          } lg:flex flex-1 flex-col h-full min-h-0 bg-dark-950 overflow-hidden min-w-0`}
         >
           {activeConversation ? (
             <>
               {/* Active Conversation Header */}
-              <div className="p-3.5 border-b border-slate-800/80 bg-dark-900/80 backdrop-blur-md flex items-center justify-between gap-3 shrink-0">
-                <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="px-3 py-2 sm:p-3.5 border-b border-slate-800/80 bg-dark-900/95 backdrop-blur-md flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2 overflow-hidden min-w-0">
                   {/* Mobile Back Button */}
                   <button
                     onClick={() => setShowMobileDetail(false)}
-                    className="lg:hidden p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
+                    className="lg:hidden p-1.5 -ml-1 rounded-lg bg-slate-800/80 text-slate-300 hover:text-white shrink-0 active:scale-95"
+                    title="Back to inbox"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
 
                   {/* Customer Info */}
-                  <div className="overflow-hidden">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-sm text-white truncate">
+                  <div className="overflow-hidden min-w-0">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <h3 className="font-bold text-xs sm:text-sm text-white truncate">
                         {activeConversation.user?.name || (activeConversation as any).phone || 'Customer'}
                       </h3>
 
                       {activeConversation.user?.status_tag === 'VIP' && (
-                        <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                        <span className="text-[9px] sm:text-[10px] font-black uppercase px-1 py-0.2 sm:px-1.5 sm:py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 shrink-0">
                           VIP
                         </span>
                       )}
@@ -862,38 +863,39 @@ export default function ChatAdminPage() {
                         ).replace(/\D/g, '')}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 hover:border-emerald-500/40 transition"
+                        className="flex items-center gap-1 text-[10px] sm:text-[11px] text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 hover:border-emerald-500/40 transition shrink-0"
+                        title="Open in WhatsApp"
                       >
                         <WhatsAppIcon className="w-3 h-3" />
-                        <span className="font-mono">
+                        <span className="font-mono hidden xs:inline sm:inline">
                           {activeConversation.user?.phone_number || (activeConversation as any).phone}
                         </span>
-                        <ExternalLink className="w-2.5 h-2.5 ml-0.5" />
+                        <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                     </div>
 
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                      <span>Channel: WhatsApp Business</span>
+                    <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-400 truncate">
+                      <span className="truncate">{activeConversation.user?.phone_number || (activeConversation as any).phone}</span>
                       <span>•</span>
-                      <span>Total Orders: {activeConversation.user?.customer_profile?.total_completed_orders || customerOrders.length || 0}</span>
+                      <span className="shrink-0">{activeConversation.user?.customer_profile?.total_completed_orders || customerOrders.length || 0} orders</span>
                     </div>
                   </div>
                 </div>
 
                 {/* AI Bot Takeover Switch & Reset */}
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                   {/* Human Takeover vs AI Switch */}
-                  <div className="flex items-center gap-2 p-1 pl-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold">
+                  <div className="flex items-center gap-1.5 sm:gap-2 p-1 sm:pl-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                    <div className="flex items-center gap-1 text-[11px] sm:text-xs font-semibold">
                       {activeConversation.is_ai_active ? (
-                        <span className="flex items-center gap-1 text-emerald-400">
+                        <span className="flex items-center gap-1 text-emerald-400" title="Bot Auto-Reply">
                           <Bot className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Bot Auto-Reply</span>
+                          <span className="hidden md:inline">Bot</span>
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-amber-400">
+                        <span className="flex items-center gap-1 text-amber-400" title="Human Takeover">
                           <User className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Human Takeover</span>
+                          <span className="hidden md:inline">Human</span>
                         </span>
                       )}
                     </div>
@@ -901,13 +903,13 @@ export default function ChatAdminPage() {
                     <button
                       onClick={handleToggleAiMode}
                       disabled={isTogglingAi}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      className={`relative inline-flex h-5 w-9 sm:h-6 sm:w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                         activeConversation.is_ai_active ? 'bg-emerald-500' : 'bg-slate-700'
                       }`}
                     >
                       <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          activeConversation.is_ai_active ? 'translate-x-5' : 'translate-x-0'
+                        className={`pointer-events-none inline-block h-4 w-4 sm:h-5 sm:w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          activeConversation.is_ai_active ? 'translate-x-4 sm:translate-x-5' : 'translate-x-0'
                         }`}
                       />
                     </button>
@@ -918,41 +920,40 @@ export default function ChatAdminPage() {
                     onClick={handleResetSession}
                     disabled={isResettingSession}
                     title="Reset customer flow to Welcome Menu"
-                    className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-amber-400 border border-slate-700 transition"
+                    className="p-1.5 sm:p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-amber-400 border border-slate-700 transition active:scale-95"
                   >
-                    <RotateCcw className={`w-4 h-4 ${isResettingSession ? 'animate-spin' : ''}`} />
+                    <RotateCcw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isResettingSession ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
               </div>
 
               {/* Bot State Notification Banner */}
               {!activeConversation.is_ai_active ? (
-                <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-1.5 flex items-center justify-between text-xs text-amber-300 shrink-0">
-                  <div className="flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                    <span>
-                      <strong>Human Takeover Active:</strong> The AI Bot is currently paused for this customer. Only your
-                      messages will be sent.
+                <div className="bg-amber-500/10 border-b border-amber-500/30 px-3 py-1 sm:py-1.5 flex items-center justify-between text-[11px] sm:text-xs text-amber-300 shrink-0">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="truncate">
+                      <strong>Human Takeover:</strong> AI Bot is paused.
                     </span>
                   </div>
                   <button
                     onClick={handleToggleAiMode}
-                    className="underline text-[11px] hover:text-amber-200 font-bold ml-2"
+                    className="underline text-[10px] sm:text-[11px] hover:text-amber-200 font-bold ml-2 shrink-0"
                   >
                     Resume Bot
                   </button>
                 </div>
               ) : (
-                <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-4 py-1 flex items-center justify-between text-[11px] text-emerald-300 shrink-0">
-                  <div className="flex items-center gap-1.5">
-                    <Bot className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Autonomous State Bot is responding to messages in real-time.</span>
+                <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-3 py-1 flex items-center justify-between text-[10px] sm:text-[11px] text-emerald-300 shrink-0">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Bot className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="truncate">Bot is replying to messages in real-time.</span>
                   </div>
                   <button
                     onClick={handleToggleAiMode}
-                    className="text-slate-400 hover:text-emerald-200 underline font-medium"
+                    className="text-slate-400 hover:text-emerald-200 underline font-medium ml-2 shrink-0"
                   >
-                    Take Over Chat
+                    Take Over
                   </button>
                 </div>
               )}
@@ -961,7 +962,7 @@ export default function ChatAdminPage() {
               <div
                 ref={messageContainerRef}
                 onScroll={handleScroll}
-                className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4 bg-gradient-to-b from-dark-950 via-dark-950 to-black"
+                className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-5 space-y-3 sm:space-y-4 bg-gradient-to-b from-dark-950 via-dark-950 to-black"
               >
                 {/* Lazy Load Older Messages Pill / Button */}
                 {hasMoreMessages && (
@@ -1039,7 +1040,7 @@ export default function ChatAdminPage() {
 
                         {/* Bubble Content */}
                         <div
-                          className={`max-w-[85%] sm:max-w-lg rounded-2xl p-3.5 text-xs shadow-md ${
+                          className={`max-w-[85%] sm:max-w-lg rounded-2xl p-3 sm:p-3.5 text-xs shadow-md ${
                             isCustomer
                               ? 'bg-slate-900 border border-slate-800/90 text-slate-100 rounded-tl-xs'
                               : isBot
@@ -1089,15 +1090,15 @@ export default function ChatAdminPage() {
               </div>
 
               {/* Quick Canned Response Pills */}
-              <div className="bg-dark-900/90 border-t border-slate-800/80 px-4 py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-none text-[11px]">
+              <div className="bg-dark-900/95 border-t border-slate-800/80 px-2.5 sm:px-4 py-1.5 sm:py-2 flex items-center gap-1.5 overflow-x-auto scrollbar-none text-[11px] shrink-0">
                 <span className="text-slate-500 font-bold uppercase text-[9px] mr-1 shrink-0 flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-brand-400" /> Fast Reply:
+                  <Sparkles className="w-3 h-3 text-brand-400" /> <span className="hidden sm:inline">Fast Reply:</span>
                 </span>
                 {CANNED_RESPONSES.map((item, idx) => (
                   <button
                     key={idx}
                     onClick={() => setMessageInput(item.text)}
-                    className="px-2.5 py-1 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 whitespace-nowrap transition shrink-0 active:scale-95"
+                    className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 text-[10px] sm:text-[11px] whitespace-nowrap transition shrink-0 active:scale-95"
                   >
                     {item.label}
                   </button>
@@ -1105,17 +1106,17 @@ export default function ChatAdminPage() {
               </div>
 
               {/* Chat Input Box */}
-              <div className="p-3 bg-dark-900 border-t border-slate-800/90 shrink-0">
+              <div className="p-2 sm:p-3 bg-dark-900 border-t border-slate-800/90 shrink-0">
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
                     handleSendMessage();
                   }}
-                  className="flex items-end gap-2"
+                  className="flex items-end gap-1.5 sm:gap-2"
                 >
                   <div className="flex-1 relative">
                     <textarea
-                      rows={2}
+                      rows={1}
                       value={messageInput}
                       onChange={(e) => setMessageInput(e.target.value)}
                       onKeyDown={(e) => {
@@ -1126,22 +1127,22 @@ export default function ChatAdminPage() {
                       }}
                       placeholder={`Reply to ${
                         activeConversation.user?.name || 'customer'
-                      } via WhatsApp Business Cloud... (Press Enter to Send)`}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 resize-none transition"
+                      }...`}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 sm:py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 resize-none transition min-h-[38px] max-h-24 leading-snug"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={!messageInput.trim() || isSending}
-                    className="h-10 px-4 rounded-xl bg-gradient-to-r from-brand-500 to-emerald-600 hover:from-brand-600 hover:to-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-brand-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition shrink-0 active:scale-95"
+                    className="h-[38px] px-3 sm:px-4 rounded-xl bg-gradient-to-r from-brand-500 to-emerald-600 hover:from-brand-600 hover:to-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-brand-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition shrink-0 active:scale-95"
                   >
                     <Send className={`w-3.5 h-3.5 ${isSending ? 'animate-pulse' : ''}`} />
-                    <span className="hidden sm:inline">Send WhatsApp</span>
+                    <span className="hidden sm:inline">Send</span>
                   </button>
                 </form>
 
-                <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-400">
+                <div className="mt-1 hidden sm:flex items-center justify-between text-[10px] text-slate-400">
                   <span className="flex items-center gap-1">
                     <WhatsAppIcon className="w-2.5 h-2.5 text-emerald-400" />
                     Messages deliver straight to customer's WhatsApp screen.
