@@ -183,8 +183,8 @@ export class KokosClient {
 
     try {
       const url = new URL(`${this.baseUrl}/character`);
-      url.searchParams.set('player_id', cleanPlayerId);
-      url.searchParams.set('game_id', gameId);
+      url.searchParams.set('playerId', cleanPlayerId);
+      url.searchParams.set('gameId', gameId);
 
       const response = await fetch(url.toString(), {
         method: 'GET',
@@ -222,7 +222,8 @@ export class KokosClient {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/database/inventory`, {
+      // Official docs: GET https://api.kokos.cc/db
+      const response = await fetch(`${this.baseUrl}/db`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -231,20 +232,6 @@ export class KokosClient {
       });
 
       if (!response.ok) {
-        // Try fallback endpoint /inventory
-        const fbRes = await fetch(`${this.baseUrl}/inventory`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
-          signal: AbortSignal.timeout(10000)
-        });
-
-        if (fbRes.ok) {
-          const data = await fbRes.json();
-          return { success: true, inventory: data };
-        }
-
         return { success: false, error: `Inventory request failed with status ${response.status}` };
       }
 
