@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Users,
   Trophy,
@@ -18,11 +18,193 @@ import {
   CheckCircle2,
   RefreshCw,
   Copy,
-  Check
+  Check,
+  ChevronDown
 } from 'lucide-react';
 import { UserLeaderboardEntry } from '@/types';
 import { WhatsAppIcon } from '@/components/BrandIcons';
 import { Header } from '@/components/Header';
+
+function StatusBadgeDropdown({
+  currentStatus,
+  disabled,
+  onSelect,
+  align = 'right'
+}: {
+  currentStatus: 'VIP' | 'REGULAR' | 'FLAGGED';
+  disabled?: boolean;
+  onSelect: (status: 'VIP' | 'REGULAR' | 'FLAGGED') => void;
+  align?: 'left' | 'right';
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const options: Array<{ value: 'VIP' | 'REGULAR' | 'FLAGGED'; label: string; desc: string }> = [
+    { value: 'REGULAR', label: 'REGULAR', desc: 'Standard customer' },
+    { value: 'VIP', label: '👑 VIP', desc: 'VIP priority member' },
+    { value: 'FLAGGED', label: '🚩 FLAGGED', desc: 'Flagged / restricted' }
+  ];
+
+  const currentInfo = options.find((o) => o.value === (currentStatus || 'REGULAR')) || options[0];
+
+  return (
+    <div className="relative inline-block text-left" ref={dropdownRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition active:scale-95 disabled:opacity-60 ${
+          currentStatus === 'VIP'
+            ? 'bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/30 shadow-sm shadow-amber-500/10'
+            : currentStatus === 'FLAGGED'
+            ? 'bg-red-500/20 text-red-300 border-red-500/30 hover:bg-red-500/30 shadow-sm shadow-red-500/10'
+            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 shadow-sm'
+        }`}
+      >
+        <span>{currentInfo.label}</span>
+        <ChevronDown
+          className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${
+            isOpen ? 'rotate-180 text-white' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          className={`absolute ${
+            align === 'right' ? 'right-0' : 'left-0'
+          } mt-1.5 w-44 rounded-xl bg-slate-900 border border-slate-700/80 shadow-2xl z-50 p-1 divide-y divide-slate-800/60 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100`}
+        >
+          <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            Select Customer Tag
+          </div>
+          <div className="py-1 space-y-0.5">
+            {options.map((opt) => {
+              const isSelected = (currentStatus || 'REGULAR') === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    onSelect(opt.value);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-left ${
+                    isSelected
+                      ? 'bg-slate-800 text-white border border-slate-700'
+                      : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                  }`}
+                >
+                  <div className="flex flex-col">
+                    <span className="flex items-center gap-1.5">{opt.label}</span>
+                    <span className="text-[9px] text-slate-400 font-normal">{opt.desc}</span>
+                  </div>
+                  {isSelected && <Check className="w-3.5 h-3.5 text-brand-400 shrink-0 ml-1.5" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SortDropdownMenu({
+  sortBy,
+  onSortChange
+}: {
+  sortBy: 'SPENT' | 'ORDERS' | 'RECENT';
+  onSortChange: (val: 'SPENT' | 'ORDERS' | 'RECENT') => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const sortRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (sortRef.current && !sortRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const sortOptions = [
+    { value: 'SPENT' as const, label: 'Highest Spent' },
+    { value: 'ORDERS' as const, label: 'Most Orders' },
+    { value: 'RECENT' as const, label: 'Recently Active' }
+  ];
+
+  const currentLabel = sortOptions.find((o) => o.value === sortBy)?.label || 'Highest Spent';
+
+  return (
+    <div className="relative inline-block text-left" ref={sortRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="flex items-center gap-2 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 px-3 py-1.5 rounded-xl text-xs text-slate-300 hover:text-white transition active:scale-95"
+      >
+        <ArrowUpDown className="w-3.5 h-3.5 text-brand-400" />
+        <span className="font-medium">{currentLabel}</span>
+        <ChevronDown
+          className={`w-3 h-3 text-slate-400 transition-transform duration-200 ${
+            isOpen ? 'rotate-180 text-white' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 sm:right-0 sm:left-auto mt-1.5 w-44 rounded-xl bg-slate-900 border border-slate-700/80 shadow-2xl z-50 p-1 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100">
+          <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800/60 mb-1">
+            Sort Customers
+          </div>
+          <div className="space-y-0.5">
+            {sortOptions.map((opt) => {
+              const isSelected = sortBy === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    onSortChange(opt.value);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-left ${
+                    isSelected
+                      ? 'bg-slate-800 text-white border border-slate-700'
+                      : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                  }`}
+                >
+                  <span>{opt.label}</span>
+                  {isSelected && <Check className="w-3.5 h-3.5 text-brand-400 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function UsersLeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<UserLeaderboardEntry[]>([]);
@@ -312,18 +494,7 @@ export default function UsersLeaderboardPage() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-xl text-xs text-slate-400">
-            <ArrowUpDown className="w-3.5 h-3.5" />
-            <select
-              value={sortBy}
-              onChange={e => setSortBy(e.target.value as any)}
-              className="bg-transparent text-white text-xs font-medium focus:outline-none cursor-pointer"
-            >
-              <option value="SPENT" className="bg-slate-900">Highest Spent</option>
-              <option value="ORDERS" className="bg-slate-900">Most Orders</option>
-              <option value="RECENT" className="bg-slate-900">Recently Active</option>
-            </select>
-          </div>
+          <SortDropdownMenu sortBy={sortBy} onSortChange={setSortBy} />
         </div>
       </div>
 
@@ -362,22 +533,12 @@ export default function UsersLeaderboardPage() {
                     </div>
                   </div>
 
-                  <select
-                    value={user.status_tag || 'REGULAR'}
+                  <StatusBadgeDropdown
+                    currentStatus={user.status_tag || 'REGULAR'}
                     disabled={updatingUserId === user.id}
-                    onChange={e => handleUpdateStatus(user.id, e.target.value as any)}
-                    className={`text-[11px] font-bold px-2 py-1 rounded-lg border focus:outline-none transition ${
-                      user.status_tag === 'VIP'
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                        : user.status_tag === 'FLAGGED'
-                        ? 'bg-red-500/20 text-red-300 border-red-500/30'
-                        : 'bg-slate-800 text-slate-300 border-slate-700'
-                    }`}
-                  >
-                    <option value="REGULAR" className="bg-slate-900 text-slate-300">REGULAR</option>
-                    <option value="VIP" className="bg-slate-900 text-amber-300">👑 VIP</option>
-                    <option value="FLAGGED" className="bg-slate-900 text-red-300">🚩 FLAGGED</option>
-                  </select>
+                    onSelect={(newStatus) => handleUpdateStatus(user.id, newStatus)}
+                    align="right"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/60 text-xs">
@@ -507,22 +668,12 @@ export default function UsersLeaderboardPage() {
 
                       {/* Status Tag */}
                       <td className="py-4 px-4">
-                        <select
-                          value={user.status_tag || 'REGULAR'}
+                        <StatusBadgeDropdown
+                          currentStatus={user.status_tag || 'REGULAR'}
                           disabled={updatingUserId === user.id}
-                          onChange={e => handleUpdateStatus(user.id, e.target.value as any)}
-                          className={`text-xs font-bold px-2.5 py-1 rounded-lg border focus:outline-none cursor-pointer transition ${
-                            user.status_tag === 'VIP'
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30 hover:bg-amber-500/30'
-                              : user.status_tag === 'FLAGGED'
-                              ? 'bg-red-500/20 text-red-300 border-red-500/30 hover:bg-red-500/30'
-                              : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700/80'
-                          }`}
-                        >
-                          <option value="REGULAR" className="bg-slate-900 text-slate-300">REGULAR</option>
-                          <option value="VIP" className="bg-slate-900 text-amber-300">👑 VIP</option>
-                          <option value="FLAGGED" className="bg-slate-900 text-red-300">🚩 FLAGGED</option>
-                        </select>
+                          onSelect={(newStatus) => handleUpdateStatus(user.id, newStatus)}
+                          align="left"
+                        />
                       </td>
 
                       {/* Total Spent */}
