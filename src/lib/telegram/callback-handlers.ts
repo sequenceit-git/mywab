@@ -112,6 +112,16 @@ export async function handleCallbackQuery(callbackQuery: {
     return { success: true, message: 'Netflix code hint shown' };
   }
 
+  // Crunchyroll Action: Show Credential Input Hint
+  if (action === 'crunchyroll_creds_hint') {
+    await telegramClient.answerCallbackQuery(
+      id,
+      '🔑 এই মেসেজে রিপ্লাই করে Crunchyroll Email ও Password পাঠান। যেমন:\nuser@crunchyroll.com\npass123',
+      true
+    );
+    return { success: true, message: 'Crunchyroll credentials hint shown' };
+  }
+
   // Email Verification "Code Method" action (PUBG KR / eFootball) — worker requests/re-requests code
   if (action === 'code_request') {
     // Must be claimed first

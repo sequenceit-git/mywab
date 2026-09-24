@@ -323,6 +323,8 @@ ${deliveryConfig.deliveryMessage}
 
     const isYouTube = fullOrderContext.includes('youtube');
 
+    const isCrunchyroll = fullOrderContext.includes('crunchyroll');
+
     let completionNote = `আপনার আইডিতে টপ-আপ যুক্ত করা হয়েছে।`;
     if (accountInfo.isEmail) {
       completionNote = `আপনার সাবস্ক্রিপশন চালু করে অ্যাকাউন্ট/লগইন তথ্য সফলভাবে সরবরাহ করা হয়েছে।`;
@@ -340,6 +342,9 @@ ${deliveryConfig.deliveryMessage}
 `প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* (${playerUid}) সফলভাবে সম্পন্ন হয়েছে এবং আপনার YouTube Premium সাবস্ক্রিপশন চালু করা হয়েছে। ✨
 
 📩 *অনুগ্রহ করে আপনার Gmail ইনবক্স বা স্প্যাম ফোল্ডার চেক করে ইনভাইটেশন এক্সেপ্ট করে নিন।* ❤️`;
+    } else if (isCrunchyroll) {
+      orderDetailsText = 
+`প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* (${playerUid}) সফলভাবে সম্পন্ন হয়েছে এবং আপনার Crunchyroll অ্যাকাউন্ট সফলভাবে সরবরাহ করা হয়েছে। ✨`;
     }
 
     const messageText = 
@@ -658,6 +663,44 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
       bodyText,
       buttons,
       'Netflix অ্যাকাউন্ট'
+    );
+  },
+
+  /**
+   * Send Crunchyroll Account Credentials (Email, Password) to customer via WhatsApp
+   */
+  async sendCrunchyrollAccountInfo(
+    toPhone: string,
+    orderIdCode: string,
+    email: string,
+    pass: string
+  ): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+
+    const bodyText = 
+`🍥 *আপনার Crunchyroll অ্যাকাউন্ট ও লগইন তথ্য:*
+
+📧 *ইমেইল / Email:* \`${email}\`
+🔑 *পাসওয়ার্ড / Password:* \`${pass}\`
+📦 *অর্ডার আইডি:* \`#${orderIdCode}\`
+
+📲 *লগইন নির্দেশিকা:*
+অনুগ্রহ করে Crunchyroll অ্যাপ বা ওয়েবসাইটে লগইন করুন। সফলভাবে লগইন হলে নিচের *'✅ লগইন সম্পন্ন'* বাটনে চাপ দিন।`;
+
+    const buttons: WhatsAppButton[] = [
+      { id: `crunchyroll_login_done:${orderIdCode}`, title: '✅ লগইন সম্পন্ন' }
+    ];
+
+    logBotMessageToConversation(cleanPhone, bodyText, {
+      type: 'CRUNCHYROLL_CREDS_SENT',
+      orderId: orderIdCode
+    });
+
+    return await this.sendInteractiveButtons(
+      cleanPhone,
+      bodyText,
+      buttons,
+      'Crunchyroll অ্যাকাউন্ট'
     );
   },
 

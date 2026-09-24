@@ -37,7 +37,9 @@ import {
 } from './handlers/info-handlers';
 import {
   handleNetflixCustomerAction,
-  findActiveNetflixOrder
+  findActiveNetflixOrder,
+  handleCrunchyrollCustomerAction,
+  findActiveCrunchyrollOrder
 } from './handlers/netflix-flow';
 
 export * from './handlers/catalog-navigation';
@@ -230,11 +232,36 @@ export const stateBot = {
     if (
       triggerId.startsWith('netflix_login_done:') ||
       triggerId.startsWith('netflix_done:') ||
-      ['login done', 'netflix done', 'হয়েছে', 'হয়ে গেছে', 'লগইন সম্পন্ন', 'লগইন শেষ'].includes(normalizedText)
+      ['netflix done'].includes(normalizedText)
     ) {
       const activeNetflix = await findActiveNetflixOrder(phone);
       if (activeNetflix || triggerId.startsWith('netflix_')) {
         await handleNetflixCustomerAction(phone, conversationId, triggerId, rawText, 'LOGIN_DONE', activeNetflix || undefined);
+        return;
+      }
+    }
+
+    if (
+      triggerId.startsWith('crunchyroll_login_done:') ||
+      triggerId.startsWith('crunchyroll_done:') ||
+      ['crunchyroll done', 'cr done'].includes(normalizedText)
+    ) {
+      const activeCrunchyroll = await findActiveCrunchyrollOrder(phone);
+      if (activeCrunchyroll || triggerId.startsWith('crunchyroll_')) {
+        await handleCrunchyrollCustomerAction(phone, conversationId, triggerId, rawText, activeCrunchyroll || undefined);
+        return;
+      }
+    }
+
+    if (['login done', 'হয়েছে', 'হয়ে গেছে', 'লগইন সম্পন্ন', 'লগইন শেষ'].includes(normalizedText)) {
+      const activeNetflix = await findActiveNetflixOrder(phone);
+      if (activeNetflix) {
+        await handleNetflixCustomerAction(phone, conversationId, triggerId, rawText, 'LOGIN_DONE', activeNetflix);
+        return;
+      }
+      const activeCrunchyroll = await findActiveCrunchyrollOrder(phone);
+      if (activeCrunchyroll) {
+        await handleCrunchyrollCustomerAction(phone, conversationId, triggerId, rawText, activeCrunchyroll);
         return;
       }
     }

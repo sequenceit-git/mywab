@@ -167,12 +167,15 @@ export async function handlePackageSelection(
     selectedGameLabel: game.fullName
   };
 
-  // Check if this is a Netflix package (no client info needed — direct WhatsApp delivery)
+  // Check if this is a Netflix or Crunchyroll package (no client info needed — direct WhatsApp account delivery)
   const isNetflix = pkg.id.includes('netflix') || 
                     pkg.name.toLowerCase().includes('netflix') || 
                     (game.id === 'game_movie' && pkg.name.toLowerCase().includes('netflix'));
+  const isCrunchyroll = pkg.id.includes('crunchyroll') || 
+                        pkg.name.toLowerCase().includes('crunchyroll') || 
+                        (game.id === 'game_movie' && pkg.name.toLowerCase().includes('crunchyroll'));
 
-  if (isNetflix) {
+  if (isNetflix || isCrunchyroll) {
     const sessionState = {
       step: 'AWAITING_PAYMENT' as const,
       lastInteractionTimestamp: Date.now(),

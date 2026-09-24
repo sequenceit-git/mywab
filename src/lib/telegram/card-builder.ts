@@ -258,7 +258,102 @@ export function generateOrderCard(
   const isYouTube = combinedGameStr.includes('youtube');
   const youtubeBanner = isYouTube ? `\n▶️ <b>[YOUTUBE PREMIUM SUBSCRIPTION]</b>\n` : '';
 
+  // Crunchyroll Account Order Detection
+  const isCrunchyroll = combinedGameStr.includes('crunchyroll');
+  const crunchyrollBanner = isCrunchyroll ? `\n🍥 <b>[CRUNCHYROLL ACCOUNT ORDER]</b>\n` : '';
+  const crunchyrollNotes = order.customer_notes || '';
+  const hasCrunchyrollCredsSent = crunchyrollNotes.includes('CRUNCHYROLL_CREDS_SENT');
+  const hasCrunchyrollLoginDone = crunchyrollNotes.includes('CRUNCHYROLL_LOGIN_DONE');
+
   if (order.status === 'CLAIMED' || order.status === 'PROCESSING') {
+    if (isCrunchyroll) {
+      if (hasCrunchyrollLoginDone) {
+        return {
+          cardHtml: 
+`🎉 <b>CUSTOMER CONFIRMED CRUNCHYROLL LOGIN! / গ্রাহক লগইন সম্পন্ন করেছেন</b>${crunchyrollBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🍥 <b>Service:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+💎 <b>Packages:</b>
+${itemsText}
+
+✅ <b>কাস্টমার নিশ্চিত করেছেন যে তার Crunchyroll লগইন সফল হয়েছে!</b>
+এখন নিচের <b>"✅ Order Completed"</b> বাটনে চাপ দিয়ে ডেলিভারি সম্পন্ন করুন।`,
+          replyMarkup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Order Completed (ডেলিভারি সম্পন্ন)', callback_data: `status_delivered:${order.order_id}` }
+              ],
+              [
+                { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+              ]
+            ]
+          }
+        };
+      } else if (hasCrunchyrollCredsSent) {
+        return {
+          cardHtml: 
+`📤 <b>CRUNCHYROLL CREDENTIALS DELIVERED / অ্যাকাউন্ট পাঠানো হয়েছে</b>${crunchyrollBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🍥 <b>Service:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+💎 <b>Packages:</b>
+${itemsText}
+
+✅ <b>কাস্টমারের WhatsApp-এ Crunchyroll অ্যাকাউন্ট (Email, Pass) পাঠানো হয়েছে।</b>
+<i>কাস্টমার লগইন সম্পন্ন করার পর কনফার্ম করলে এখানে নোটিফিকেশন আসবে।</i>`,
+          replyMarkup: {
+            inline_keyboard: [
+              [
+                { text: '🔑 Resend Account Info', callback_data: `crunchyroll_creds_hint:${order.order_id}` },
+                { text: '✅ Order Completed', callback_data: `status_delivered:${order.order_id}` }
+              ],
+              [
+                { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+              ]
+            ]
+          }
+        };
+      } else {
+        return {
+          cardHtml: 
+`🍥 <b>CRUNCHYROLL ORDER CLAIMED — SEND ACCOUNT INFO / তথ্য দিন</b>${crunchyrollBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🍥 <b>Service:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+💎 <b>Packages:</b>
+${itemsText}
+
+🔑 <b>ACTION REQUIRED:</b>
+অনুগ্রহ করে এই মেসেজে রিপ্লাই করে কাস্টমারের জন্য <b>Crunchyroll Email ও Password</b> পাঠান।
+<i>উদাহরণ:</i>
+<code>user@crunchyroll.com
+pass123</code>`,
+          replyMarkup: {
+            inline_keyboard: [
+              [
+                { text: '🔑 Send Account Info (তথ্য দিন)', callback_data: `crunchyroll_creds_hint:${order.order_id}` }
+              ],
+              [
+                { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+              ]
+            ]
+          }
+        };
+      }
+    }
     if (isYouTube) {
       return {
         cardHtml: 

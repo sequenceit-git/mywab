@@ -449,6 +449,55 @@ export async function handleWorkerTextMessage(message: {
           return { handled: true, success: true, message: 'Netflix code sent' };
         }
       }
+
+      // 4c. Check if worker provided Crunchyroll Account Credentials (Email + Password)
+      const isCrunchyroll = combinedGameStr.includes('crunchyroll');
+
+      if (isCrunchyroll && (order.status === 'CLAIMED' || order.status === 'PROCESSING')) {
+        const emailMatch = text.match(/(?:email|mail|ইমেইল|user|username)?\s*[:=–-]?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+        const passMatch = text.match(/(?:pass|password|পাসওয়ার্ড|pwd)\s*[:=–-]?\s*([^\n\r]+)/i);
+
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        let credEmail = emailMatch ? emailMatch[1].trim() : '';
+        let credPass = passMatch ? passMatch[1].trim() : '';
+
+        // Multiline fallback (Line 1: Email, Line 2: Pass)
+        if (!credEmail && lines.length >= 2 && lines[0].includes('@')) {
+          credEmail = lines[0];
+          credPass = lines[1];
+        } else if (credEmail && !credPass && lines.length >= 2) {
+          const secondLine = lines.find(l => l !== credEmail && !l.toLowerCase().startsWith('email'));
+          if (secondLine) credPass = secondLine.replace(/^(?:pass|password|পাসওয়ার্ড)[:=–-]?\s*/i, '').trim();
+        }
+
+        if (credEmail && credPass) {
+          await whatsappService.sendCrunchyrollAccountInfo(
+            order.delivery_phone,
+            order.order_id,
+            credEmail,
+            credPass
+          );
+
+          const updatedNotes = `${order.customer_notes || ''} | CRUNCHYROLL_CREDS_SENT | Email: ${credEmail} | Pass: ${credPass}`;
+          await db.updateOrderStatus(order.order_id, order.status, { notes: updatedNotes });
+
+          const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
+          const assignedWorkerName = refreshedOrder.current_worker?.full_name || workerName;
+
+          if (message.reply_to_message?.message_id) {
+            const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
+            await telegramClient.editMessageText(message.chat.id, message.reply_to_message.message_id, cardHtml, replyMarkup);
+          }
+
+          await telegramClient.sendMessage(
+            message.chat.id,
+            `✅ <b>Crunchyroll Account Sent to Customer!</b>\n\n📦 <b>Order ID:</b> <code>${order.order_id}</code>\n📧 <b>Email:</b> <code>${credEmail}</code>\n🔑 <b>Password:</b> <code>${credPass}</code>\n\n<i>কাস্টমারের WhatsApp-এ অ্যাকাউন্ট পাঠানো হয়েছে। কাস্টমার লগইন সম্পন্ন কনফার্ম করলে এখানে নোটিফিকেশন আসবে।</i>`,
+            { reply_to_message_id: message.message_id }
+          );
+
+          return { handled: true, success: true, message: 'Crunchyroll credentials sent' };
+        }
+      }
     }
   }
 
