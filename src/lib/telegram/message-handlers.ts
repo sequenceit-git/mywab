@@ -6,7 +6,8 @@ import { storageService } from '../storage';
 import { telegramClient } from './client';
 import {
   generateOrderCard,
-  cancellationStore
+  cancellationStore,
+  sanitizeReplyMarkup
 } from './card-builder';
 
 /**
@@ -367,7 +368,7 @@ export async function handleWorkerTextMessage(message: {
       if (isNetflix && (order.status === 'CLAIMED' || order.status === 'PROCESSING')) {
         // 4a. Check if worker provided Netflix Account Credentials (Email + Password + PIN)
         const emailMatch = text.match(/(?:email|mail|ইমেইল|user|username)?\s*[:=–-]?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
-        const passMatch = text.match(/(?:pass|password|পাসওয়ার্ড|pwd)\s*[:=–-]?\s*([^\n\r]+)/i);
+        const passMatch = text.match(/(?:password|pass|পাসওয়ার্ড|pwd)\s*[:=–-]?\s*([^\n\r]+)/i);
         const pinMatch = text.match(/(?:pin|পিন|profile pin)\s*[:=–-]?\s*([0-9]{4,6})/i);
 
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
@@ -378,13 +379,13 @@ export async function handleWorkerTextMessage(message: {
         // Multiline fallback without explicit labels (Line 1: Email, Line 2: Pass, Line 3: Pin)
         if (!credEmail && lines.length >= 2 && lines[0].includes('@')) {
           credEmail = lines[0];
-          credPass = lines[1];
+          credPass = lines[1].replace(/^(?:password|pass|পাসওয়ার্ড|pwd)[:=–-]?\s*/i, '').trim();
           if (lines[2] && /^[0-9]{4,6}$/.test(lines[2])) {
             credPin = lines[2];
           }
         } else if (credEmail && !credPass && lines.length >= 2) {
           const secondLine = lines.find(l => l !== credEmail && !l.toLowerCase().startsWith('pin') && !l.toLowerCase().startsWith('email'));
-          if (secondLine) credPass = secondLine.replace(/^(?:pass|password|পাসওয়ার্ড)[:=–-]?\s*/i, '').trim();
+          if (secondLine) credPass = secondLine.replace(/^(?:password|pass|পাসওয়ার্ড|pwd)[:=–-]?\s*/i, '').trim();
         }
 
         if (credEmail && credPass) {
@@ -403,17 +404,33 @@ export async function handleWorkerTextMessage(message: {
           const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
           const assignedWorkerName = refreshedOrder.current_worker?.full_name || workerName;
 
-          if (message.reply_to_message?.message_id) {
-            const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
-            await telegramClient.editMessageText(message.chat.id, message.reply_to_message.message_id, cardHtml, replyMarkup);
+          // Delete previous order card to keep group clean and avoid duplicate disjointed messages
+          const prevMsgId = order.telegram_message_id || message.reply_to_message?.message_id;
+          const targetChatId = message.chat.id || env.telegram.workerGroupId;
+          if (prevMsgId && targetChatId) {
+            try {
+              await telegramClient.deleteMessage(targetChatId, prevMsgId);
+            } catch (delErr) {
+              console.warn('[Telegram Netflix Creds Sync] Could not delete old order card:', delErr);
+              await telegramClient.editMessageReplyMarkup(targetChatId, prevMsgId, { inline_keyboard: [] }).catch(() => {});
+            }
           }
 
-          const pinLine = credPin ? `\n📌 <b>PIN:</b> <code>${credPin}</code>` : '';
-          await telegramClient.sendMessage(
-            message.chat.id,
-            `✅ <b>Netflix Account Sent to Customer!</b>\n\n📦 <b>Order ID:</b> <code>${order.order_id}</code>\n📧 <b>Email:</b> <code>${credEmail}</code>\n🔑 <b>Password:</b> <code>${credPass}</code>${pinLine}\n\n<i>কাস্টমারের WhatsApp-এ অ্যাকাউন্ট ও নির্দেশিকা পাঠানো হয়েছে। কাস্টমার কোড চাইলে এখানে নোটিফিকেশন আসবে।</i>`,
-            { reply_to_message_id: message.message_id }
+          // Post updated active order card directly below worker's reply with all action buttons
+          const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
+          const sendRes = await telegramClient.sendMessage(
+            targetChatId,
+            cardHtml,
+            {
+              reply_to_message_id: message.message_id,
+              reply_markup: sanitizeReplyMarkup(replyMarkup)
+            }
           );
+
+          if (sendRes.ok && sendRes.result?.message_id) {
+            refreshedOrder.telegram_message_id = sendRes.result.message_id;
+            await db.updateOrderTelegramMessageId(refreshedOrder.id, sendRes.result.message_id);
+          }
 
           return { handled: true, success: true, message: 'Netflix credentials sent' };
         }
@@ -435,16 +452,33 @@ export async function handleWorkerTextMessage(message: {
           const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
           const assignedWorkerName = refreshedOrder.current_worker?.full_name || workerName;
 
-          if (message.reply_to_message?.message_id) {
-            const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
-            await telegramClient.editMessageText(message.chat.id, message.reply_to_message.message_id, cardHtml, replyMarkup);
+          // Delete previous order card message
+          const prevMsgId = order.telegram_message_id || message.reply_to_message?.message_id;
+          const targetChatId = message.chat.id || env.telegram.workerGroupId;
+          if (prevMsgId && targetChatId) {
+            try {
+              await telegramClient.deleteMessage(targetChatId, prevMsgId);
+            } catch (delErr) {
+              console.warn('[Telegram Netflix Code Sync] Could not delete old order card:', delErr);
+              await telegramClient.editMessageReplyMarkup(targetChatId, prevMsgId, { inline_keyboard: [] }).catch(() => {});
+            }
           }
 
-          await telegramClient.sendMessage(
-            message.chat.id,
-            `✅ <b>Netflix Code Sent to Customer!</b>\n\n📦 <b>Order ID:</b> <code>${order.order_id}</code>\n🔑 <b>Code:</b> <code>${netflixCode}</code>\n\n<i>কাস্টমারের WhatsApp-এ কোড পাঠানো হয়েছে।</i>`,
-            { reply_to_message_id: message.message_id }
+          // Post updated active order card directly below worker's reply
+          const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
+          const sendRes = await telegramClient.sendMessage(
+            targetChatId,
+            cardHtml,
+            {
+              reply_to_message_id: message.message_id,
+              reply_markup: sanitizeReplyMarkup(replyMarkup)
+            }
           );
+
+          if (sendRes.ok && sendRes.result?.message_id) {
+            refreshedOrder.telegram_message_id = sendRes.result.message_id;
+            await db.updateOrderTelegramMessageId(refreshedOrder.id, sendRes.result.message_id);
+          }
 
           return { handled: true, success: true, message: 'Netflix code sent' };
         }
@@ -455,7 +489,7 @@ export async function handleWorkerTextMessage(message: {
 
       if (isCrunchyroll && (order.status === 'CLAIMED' || order.status === 'PROCESSING')) {
         const emailMatch = text.match(/(?:email|mail|ইমেইল|user|username)?\s*[:=–-]?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
-        const passMatch = text.match(/(?:pass|password|পাসওয়ার্ড|pwd)\s*[:=–-]?\s*([^\n\r]+)/i);
+        const passMatch = text.match(/(?:password|pass|পাসওয়ার্ড|pwd)\s*[:=–-]?\s*([^\n\r]+)/i);
 
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
         let credEmail = emailMatch ? emailMatch[1].trim() : '';
@@ -464,10 +498,10 @@ export async function handleWorkerTextMessage(message: {
         // Multiline fallback (Line 1: Email, Line 2: Pass)
         if (!credEmail && lines.length >= 2 && lines[0].includes('@')) {
           credEmail = lines[0];
-          credPass = lines[1];
+          credPass = lines[1].replace(/^(?:password|pass|পাসওয়ার্ড|pwd)[:=–-]?\s*/i, '').trim();
         } else if (credEmail && !credPass && lines.length >= 2) {
           const secondLine = lines.find(l => l !== credEmail && !l.toLowerCase().startsWith('email'));
-          if (secondLine) credPass = secondLine.replace(/^(?:pass|password|পাসওয়ার্ড)[:=–-]?\s*/i, '').trim();
+          if (secondLine) credPass = secondLine.replace(/^(?:password|pass|পাসওয়ার্ড|pwd)[:=–-]?\s*/i, '').trim();
         }
 
         if (credEmail && credPass) {
@@ -484,16 +518,33 @@ export async function handleWorkerTextMessage(message: {
           const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
           const assignedWorkerName = refreshedOrder.current_worker?.full_name || workerName;
 
-          if (message.reply_to_message?.message_id) {
-            const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
-            await telegramClient.editMessageText(message.chat.id, message.reply_to_message.message_id, cardHtml, replyMarkup);
+          // Delete previous order card message
+          const prevMsgId = order.telegram_message_id || message.reply_to_message?.message_id;
+          const targetChatId = message.chat.id || env.telegram.workerGroupId;
+          if (prevMsgId && targetChatId) {
+            try {
+              await telegramClient.deleteMessage(targetChatId, prevMsgId);
+            } catch (delErr) {
+              console.warn('[Telegram Crunchyroll Creds Sync] Could not delete old order card:', delErr);
+              await telegramClient.editMessageReplyMarkup(targetChatId, prevMsgId, { inline_keyboard: [] }).catch(() => {});
+            }
           }
 
-          await telegramClient.sendMessage(
-            message.chat.id,
-            `✅ <b>Crunchyroll Account Sent to Customer!</b>\n\n📦 <b>Order ID:</b> <code>${order.order_id}</code>\n📧 <b>Email:</b> <code>${credEmail}</code>\n🔑 <b>Password:</b> <code>${credPass}</code>\n\n<i>কাস্টমারের WhatsApp-এ অ্যাকাউন্ট পাঠানো হয়েছে। কাস্টমার লগইন সম্পন্ন কনফার্ম করলে এখানে নোটিফিকেশন আসবে।</i>`,
-            { reply_to_message_id: message.message_id }
+          // Post updated active order card directly below worker's reply
+          const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
+          const sendRes = await telegramClient.sendMessage(
+            targetChatId,
+            cardHtml,
+            {
+              reply_to_message_id: message.message_id,
+              reply_markup: sanitizeReplyMarkup(replyMarkup)
+            }
           );
+
+          if (sendRes.ok && sendRes.result?.message_id) {
+            refreshedOrder.telegram_message_id = sendRes.result.message_id;
+            await db.updateOrderTelegramMessageId(refreshedOrder.id, sendRes.result.message_id);
+          }
 
           return { handled: true, success: true, message: 'Crunchyroll credentials sent' };
         }

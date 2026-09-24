@@ -1,7 +1,7 @@
 import { db } from '../../db';
 import { whatsappService } from '../../whatsapp/service';
 import { telegramClient } from '../../telegram/client';
-import { generateOrderCard } from '../../telegram/card-builder';
+import { generateOrderCard, sanitizeReplyMarkup } from '../../telegram/card-builder';
 import { env } from '../../config/env';
 import { Order } from '@/types';
 
@@ -73,7 +73,6 @@ export async function handleNetflixCustomerAction(
   }
 
   const assignedWorkerName = order.current_worker?.full_name || 'Worker';
-  const assignedWorkerTgId = order.current_worker?.telegram_user_id;
 
   if (actionType === 'NEED_CODE') {
     // 1. Update customer notes with NETFLIX_CODE_REQUESTED timestamp
@@ -85,39 +84,25 @@ export async function handleNetflixCustomerAction(
     // 2. Notify customer on WhatsApp
     await whatsappService.sendNetflixCodeRequestedAck(phone, order.order_id);
 
-    // 3. Update main Telegram order card
-    if (env.telegram.isConfigured && refreshedOrder.telegram_message_id && env.telegram.workerGroupId) {
-      try {
-        const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
-        await telegramClient.editMessageText(env.telegram.workerGroupId, refreshedOrder.telegram_message_id, cardHtml, replyMarkup);
-      } catch (editErr) {
-        console.warn('[Netflix Code Req Card Edit Error]:', editErr);
+    // 3. Delete previous order card & post new active card with code action buttons as latest message
+    if (env.telegram.isConfigured && env.telegram.workerGroupId) {
+      const prevMsgId = refreshedOrder.telegram_message_id;
+      if (prevMsgId) {
+        try {
+          await telegramClient.deleteMessage(env.telegram.workerGroupId, prevMsgId);
+        } catch (delErr) {
+          console.warn('[Netflix Code Req Sync] Failed to delete previous card:', delErr);
+          await telegramClient.editMessageReplyMarkup(env.telegram.workerGroupId, prevMsgId, { inline_keyboard: [] }).catch(() => {});
+        }
       }
 
-      // 4. Send high-priority alert notification in Telegram group
-      const workerTag = assignedWorkerTgId ? `<a href="tg://user?id=${assignedWorkerTgId}">@${assignedWorkerName}</a>` : `<b>${assignedWorkerName}</b>`;
-      const alertText = 
-`🔔 <b>[NETFLIX CODE REQUESTED / কাস্টমার কোড চেয়েছেন!]</b>
-
-📦 <b>Order ID:</b> <code>${refreshedOrder.order_id}</code>
-🍿 <b>Service:</b> <b>Netflix Account</b>
-👷 <b>Assigned Worker:</b> ${workerTag}
-📞 <b>Customer:</b> <code>${refreshedOrder.delivery_phone}</code>
-
-👉 <b>অ্যাকশন:</b> কাস্টমারকে কোড পাঠাতে এই মেসেজে রিপ্লাই করে কোডটি লিখুন (যেমন: <code>482910</code>) অথবা নিচে <b>[📤 Send Code to Customer]</b> চাপুন।`;
-
-      try {
-        await telegramClient.sendMessage(env.telegram.workerGroupId, alertText, {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '📤 Send Code to Customer', callback_data: `netflix_code_hint:${refreshedOrder.order_id}` }
-              ]
-            ]
-          }
-        });
-      } catch (tgErr) {
-        console.error('[Netflix Code Req TG Alert Error]:', tgErr);
+      const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
+      const sendRes = await telegramClient.sendMessage(env.telegram.workerGroupId, cardHtml, {
+        reply_markup: sanitizeReplyMarkup(replyMarkup)
+      });
+      if (sendRes.ok && sendRes.result?.message_id) {
+        refreshedOrder.telegram_message_id = sendRes.result.message_id;
+        await db.updateOrderTelegramMessageId(refreshedOrder.id, sendRes.result.message_id);
       }
     }
   } else if (actionType === 'LOGIN_DONE') {
@@ -133,37 +118,25 @@ export async function handleNetflixCustomerAction(
       `🎉 *দারুণ! আপনার Netflix লগইন সফলভাবে সম্পন্ন হয়েছে!*\n\nDS Dukan থেকে সার্ভিস নেওয়ার জন্য অসংখ্য ধন্যবাদ! ❤️ কোনো সমস্যা হলে যেকোনো সময় আমাদের জানাতে পারেন।`
     );
 
-    // 3. Update main Telegram order card & send alert to complete
-    if (env.telegram.isConfigured && refreshedOrder.telegram_message_id && env.telegram.workerGroupId) {
-      try {
-        const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
-        await telegramClient.editMessageText(env.telegram.workerGroupId, refreshedOrder.telegram_message_id, cardHtml, replyMarkup);
-      } catch (editErr) {
-        console.warn('[Netflix Login Done Card Edit Error]:', editErr);
+    // 3. Delete previous order card & post completion card as latest message with Order Completed button
+    if (env.telegram.isConfigured && env.telegram.workerGroupId) {
+      const prevMsgId = refreshedOrder.telegram_message_id;
+      if (prevMsgId) {
+        try {
+          await telegramClient.deleteMessage(env.telegram.workerGroupId, prevMsgId);
+        } catch (delErr) {
+          console.warn('[Netflix Login Done Sync] Failed to delete previous card:', delErr);
+          await telegramClient.editMessageReplyMarkup(env.telegram.workerGroupId, prevMsgId, { inline_keyboard: [] }).catch(() => {});
+        }
       }
 
-      const alertText = 
-`🎉 <b>[CUSTOMER CONFIRMED NETFLIX LOGIN!]</b>
-
-📦 <b>Order ID:</b> <code>${refreshedOrder.order_id}</code>
-🍿 <b>Service:</b> <b>Netflix Account</b>
-👷 <b>Assigned Worker:</b> <b>${assignedWorkerName}</b>
-
-✅ <b>গ্রাহক সফলভাবে Netflix-এ লগইন সম্পন্ন করেছেন।</b>
-👉 এখন কার্ডের <b>"✅ Order Completed (ডেলিভারি সম্পন্ন)"</b> বাটনে চাপ দিন।`;
-
-      try {
-        await telegramClient.sendMessage(env.telegram.workerGroupId, alertText, {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '✅ Order Completed (ডেলিভারি সম্পন্ন)', callback_data: `status_delivered:${refreshedOrder.order_id}` }
-              ]
-            ]
-          }
-        });
-      } catch (tgErr) {
-        console.error('[Netflix Login Done TG Alert Error]:', tgErr);
+      const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
+      const sendRes = await telegramClient.sendMessage(env.telegram.workerGroupId, cardHtml, {
+        reply_markup: sanitizeReplyMarkup(replyMarkup)
+      });
+      if (sendRes.ok && sendRes.result?.message_id) {
+        refreshedOrder.telegram_message_id = sendRes.result.message_id;
+        await db.updateOrderTelegramMessageId(refreshedOrder.id, sendRes.result.message_id);
       }
     }
   }
@@ -242,37 +215,25 @@ export async function handleCrunchyrollCustomerAction(
     `🎉 *দারুণ! আপনার Crunchyroll লগইন সফলভাবে সম্পন্ন হয়েছে!*\n\nDS Dukan থেকে সার্ভিস নেওয়ার জন্য অসংখ্য ধন্যবাদ! ❤️ কোনো সমস্যা হলে যেকোনো সময় আমাদের জানাতে পারেন।`
   );
 
-  // 3. Update main Telegram order card & send alert to complete
-  if (env.telegram.isConfigured && refreshedOrder.telegram_message_id && env.telegram.workerGroupId) {
-    try {
-      const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
-      await telegramClient.editMessageText(env.telegram.workerGroupId, refreshedOrder.telegram_message_id, cardHtml, replyMarkup);
-    } catch (editErr) {
-      console.warn('[Crunchyroll Login Done Card Edit Error]:', editErr);
+  // 3. Delete previous order card & post completion card as latest message with Order Completed button
+  if (env.telegram.isConfigured && env.telegram.workerGroupId) {
+    const prevMsgId = refreshedOrder.telegram_message_id;
+    if (prevMsgId) {
+      try {
+        await telegramClient.deleteMessage(env.telegram.workerGroupId, prevMsgId);
+      } catch (delErr) {
+        console.warn('[Crunchyroll Login Done Sync] Failed to delete previous card:', delErr);
+        await telegramClient.editMessageReplyMarkup(env.telegram.workerGroupId, prevMsgId, { inline_keyboard: [] }).catch(() => {});
+      }
     }
 
-    const alertText = 
-`🎉 <b>[CUSTOMER CONFIRMED CRUNCHYROLL LOGIN!]</b>
-
-📦 <b>Order ID:</b> <code>${refreshedOrder.order_id}</code>
-🍥 <b>Service:</b> <b>Crunchyroll Account</b>
-👷 <b>Assigned Worker:</b> <b>${assignedWorkerName}</b>
-
-✅ <b>গ্রাহক সফলভাবে Crunchyroll-এ লগইন সম্পন্ন করেছেন।</b>
-👉 এখন কার্ডের <b>"✅ Order Completed (ডেলিভারি সম্পন্ন)"</b> বাটনে চাপ দিন।`;
-
-    try {
-      await telegramClient.sendMessage(env.telegram.workerGroupId, alertText, {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '✅ Order Completed (ডেলিভারি সম্পন্ন)', callback_data: `status_delivered:${refreshedOrder.order_id}` }
-            ]
-          ]
-        }
-      });
-    } catch (tgErr) {
-      console.error('[Crunchyroll Login Done TG Alert Error]:', tgErr);
+    const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
+    const sendRes = await telegramClient.sendMessage(env.telegram.workerGroupId, cardHtml, {
+      reply_markup: sanitizeReplyMarkup(replyMarkup)
+    });
+    if (sendRes.ok && sendRes.result?.message_id) {
+      refreshedOrder.telegram_message_id = sendRes.result.message_id;
+      await db.updateOrderTelegramMessageId(refreshedOrder.id, sendRes.result.message_id);
     }
   }
 }
