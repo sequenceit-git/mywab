@@ -184,7 +184,7 @@ export function getAccountFieldInfo(identifierValue?: string, gameLabelOrCode?: 
       labelEn: 'Konami ID / Email',
       labelBn: 'Konami ID / ইমেইল',
       emoji: '⚽',
-      isEmail: val.includes('@')
+      isEmail: false
     };
   }
 

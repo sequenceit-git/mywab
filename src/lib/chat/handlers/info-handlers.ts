@@ -61,6 +61,19 @@ export async function handleTrackOrder(phone: string, conversationId: string, tr
   const statusText = statusMap[order.status] || order.status;
   const itemsList = order.items?.map((i: OrderItem) => `• ${i.product_name} x ${i.quantity}`).join('\n') || 'টপ-আপ প্যাকেজ';
 
+  const fullOrderContext = `${gameTitle} ${itemsList} ${order.customer_notes || ''}`.toLowerCase();
+  const isEfootball =
+    fullOrderContext.includes('efootball') ||
+    fullOrderContext.includes('efb') ||
+    fullOrderContext.includes('konami');
+
+  let deliveredText = '🎉 আপনার অ্যাকাউন্টে টপ-আপ পৌঁছে দেওয়া হয়েছে!';
+  if (isEfootball) {
+    deliveredText = '🎉 আপনার টপ-আপ সফলভাবে সম্পন্ন হয়েছে!\n🔒 *নিরাপত্তার জন্য আপনি অবশ্যই আপনার পাসওয়ার্ড পরিবর্তন করে নিবেন।*';
+  } else if (accountInfo.isEmail) {
+    deliveredText = '🎉 আপনার সাবস্ক্রিপশন সফলভাবে চালু করা হয়েছে!';
+  }
+
   const message = 
 `📦 *অর্ডার স্ট্যাটাস (Order Status):*
 
@@ -71,7 +84,7 @@ export async function handleTrackOrder(phone: string, conversationId: string, tr
 ${itemsList}
 • *মূল্য:* ৳${order.total_amount} Tk
 
-${order.status === 'DELIVERED' ? (accountInfo.isEmail ? '🎉 আপনার সাবস্ক্রিপশন সফলভাবে চালু করা হয়েছে!' : '🎉 আপনার অ্যাকাউন্টে টপ-আপ পৌঁছে দেওয়া হয়েছে!') : '⚡ আমাদের টিম দ্রুত ডেলিভারি দিতে কাজ করছে (৫-১৫ মিনিট)।'}`;
+${order.status === 'DELIVERED' ? deliveredText : '⚡ আমাদের টিম দ্রুত ডেলিভারি দিতে কাজ করছে (৫-১৫ মিনিট)।'}`;
 
   const buttons = [
     { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' },

@@ -315,15 +315,30 @@ ${deliveryConfig.deliveryMessage}
     const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
     const accountInfo = getAccountFieldInfo(playerUid, gameTitle);
 
+    const fullOrderContext = `${gameTitle} ${firstItem?.product_name || ''} ${order.customer_notes || ''}`.toLowerCase();
+    const isEfootball =
+      fullOrderContext.includes('efootball') ||
+      fullOrderContext.includes('efb') ||
+      fullOrderContext.includes('konami');
+
     let completionNote = `আপনার আইডিতে টপ-আপ যুক্ত করা হয়েছে।`;
     if (accountInfo.isEmail) {
       completionNote = `আপনার সাবস্ক্রিপশন চালু করে অ্যাকাউন্ট/লগইন তথ্য সফলভাবে সরবরাহ করা হয়েছে।`;
     }
 
+    let orderDetailsText = `প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* (${playerUid}) সফলভাবে সম্পন্ন হয়েছে এবং ${completionNote} ✨`;
+
+    if (isEfootball) {
+      orderDetailsText = 
+`প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* (${playerUid}) সফলভাবে সম্পন্ন হয়েছে এবং আপনার টপ-আপ সফলভাবে সম্পন্ন হয়েছে।
+
+🔒 *নিরাপত্তার জন্য আপনি অবশ্যই আপনার পাসওয়ার্ড পরিবর্তন করে নিবেন।* ✨`;
+    }
+
     const messageText = 
 `✅ *অর্ডার সফলভাবে সম্পন্ন হয়েছে / Order Delivered!*
 
-প্রিয় গ্রাহক, আপনার অর্ডার *#${order.order_id}* (${playerUid}) সফলভাবে সম্পন্ন হয়েছে এবং ${completionNote} ✨
+${orderDetailsText}
 
 DS Dukan থেকে কেনাকাটা করার জন্য ধন্যবাদ! ❤️
 ওয়েবসাইটে ২% ডিসকাউন্টে সরাসরি কিনতে ভিজিট করুন: https://www.dsdukan.com/#
