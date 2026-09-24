@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
 import {
@@ -29,6 +29,7 @@ import {
   Check,
   AlertTriangle,
   ArrowRight,
+  ArrowUp,
   Flame,
   X
 } from 'lucide-react';
@@ -116,11 +117,20 @@ export default function ChatAdminPage() {
   const [showRightDrawer, setShowRightDrawer] = useState(true);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
+  // Pagination & Lazy Loading (Messenger style)
+  const PAGE_SIZE = 15;
+  const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
+
   // References
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageContainerRef = useRef<HTMLDivElement>(null);
   const prevMsgCountRef = useRef<number>(0);
   const isFirstLoadRef = useRef<boolean>(true);
+  const prevScrollHeightRef = useRef<number | null>(null);
+  const prevScrollTopRef = useRef<number | null>(null);
+  const isPrependingRef = useRef<boolean>(false);
+  const prevMsgLengthRef = useRef<number>(0);
 
   // Fetch all conversations
   const fetchConversations = async (silent = false) => {
@@ -171,6 +181,91 @@ export default function ChatAdminPage() {
     return conversations.find((c) => c.id === selectedConvId) || conversations[0] || null;
   }, [conversations, selectedConvId]);
 
+  // All messages of active conversation
+  const allMessages = useMemo(() => {
+    return activeConversation?.messages || [];
+  }, [activeConversation?.messages]);
+
+  const totalMessageCount = allMessages.length;
+
+  // Sliced messages for pagination (Messenger style: latest N messages loaded first)
+  const visibleMessages = useMemo(() => {
+    if (totalMessageCount <= visibleLimit) return allMessages;
+    return allMessages.slice(totalMessageCount - visibleLimit);
+  }, [allMessages, totalMessageCount, visibleLimit]);
+
+  const hasMoreMessages = totalMessageCount > visibleMessages.length;
+  const remainingCount = Math.max(0, totalMessageCount - visibleMessages.length);
+
+  // Trigger loading older messages
+  const loadEarlierMessages = useCallback(() => {
+    if (!hasMoreMessages || isLoadingEarlier) return;
+    if (!messageContainerRef.current) return;
+
+    const container = messageContainerRef.current;
+    prevScrollHeightRef.current = container.scrollHeight;
+    prevScrollTopRef.current = container.scrollTop;
+    isPrependingRef.current = true;
+    setIsLoadingEarlier(true);
+
+    // Increment visible limit smoothly
+    setTimeout(() => {
+      setVisibleLimit((prev) => prev + PAGE_SIZE);
+      setIsLoadingEarlier(false);
+    }, 120);
+  }, [hasMoreMessages, isLoadingEarlier, PAGE_SIZE]);
+
+  // Maintain seamless scroll position when older messages are prepended to top
+  useLayoutEffect(() => {
+    if (isPrependingRef.current && prevScrollHeightRef.current !== null && messageContainerRef.current) {
+      const container = messageContainerRef.current;
+      const heightDifference = container.scrollHeight - prevScrollHeightRef.current;
+      container.scrollTop = (prevScrollTopRef.current ?? 0) + heightDifference;
+      isPrependingRef.current = false;
+      prevScrollHeightRef.current = null;
+      prevScrollTopRef.current = null;
+    }
+  }, [visibleMessages.length]);
+
+  // Reset pagination limit and smoothly scroll to bottom when changing inbox / conversation
+  useEffect(() => {
+    setVisibleLimit(PAGE_SIZE);
+    isPrependingRef.current = false;
+    prevScrollHeightRef.current = null;
+    prevScrollTopRef.current = null;
+
+    const timeout = setTimeout(() => {
+      if (messageContainerRef.current) {
+        messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
+      }
+    }, 50);
+    return () => clearTimeout(timeout);
+  }, [selectedConvId]);
+
+  // Auto-scroll to bottom when new messages arrive (if near bottom)
+  useEffect(() => {
+    if (!messageContainerRef.current) return;
+    if (isPrependingRef.current) return;
+
+    const container = messageContainerRef.current;
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 250;
+
+    if (totalMessageCount > prevMsgLengthRef.current) {
+      if (isNearBottom || prevMsgLengthRef.current === 0) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      }
+    }
+    prevMsgLengthRef.current = totalMessageCount;
+  }, [totalMessageCount]);
+
+  // Handle scroll event on container to trigger lazy load when scrolling near top
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    if (target.scrollTop < 60 && hasMoreMessages && !isLoadingEarlier && !isPrependingRef.current) {
+      loadEarlierMessages();
+    }
+  }, [hasMoreMessages, isLoadingEarlier, loadEarlierMessages]);
+
   // Fetch orders for active conversation
   useEffect(() => {
     if (!activeConversation) return;
@@ -202,13 +297,6 @@ export default function ChatAdminPage() {
       isMounted = false;
     };
   }, [activeConversation?.id, activeConversation?.user_id]);
-
-  // Scroll to bottom when messages update
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [activeConversation?.messages?.length, selectedConvId]);
 
   // Filter conversations
   const filteredConversations = useMemo(() => {
@@ -872,9 +960,39 @@ export default function ChatAdminPage() {
               {/* Messages History Stream */}
               <div
                 ref={messageContainerRef}
+                onScroll={handleScroll}
                 className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-4 bg-gradient-to-b from-dark-950 via-dark-950 to-black"
               >
-                {activeConversation.messages?.length === 0 ? (
+                {/* Lazy Load Older Messages Pill / Button */}
+                {hasMoreMessages && (
+                  <div className="flex justify-center py-1 sticky top-0 z-10">
+                    <button
+                      onClick={loadEarlierMessages}
+                      disabled={isLoadingEarlier}
+                      className="px-3.5 py-1.5 rounded-full bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-[11px] text-slate-300 hover:text-white shadow-lg backdrop-blur-md flex items-center gap-1.5 transition active:scale-95 disabled:opacity-60"
+                    >
+                      {isLoadingEarlier ? (
+                        <>
+                          <RefreshCw className="w-3 h-3 animate-spin text-brand-400" />
+                          <span>Loading earlier messages...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowUp className="w-3 h-3 text-brand-400" />
+                          <span>Load earlier messages ({remainingCount} remaining)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {!hasMoreMessages && totalMessageCount > PAGE_SIZE && (
+                  <div className="flex items-center justify-center py-2 text-[10px] text-slate-500 uppercase tracking-wider font-semibold select-none">
+                    <span>— Beginning of message history —</span>
+                  </div>
+                )}
+
+                {totalMessageCount === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 p-8 space-y-3">
                     <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-brand-400">
                       <MessageSquare className="w-6 h-6" />
@@ -887,7 +1005,7 @@ export default function ChatAdminPage() {
                     </div>
                   </div>
                 ) : (
-                  activeConversation.messages?.map((msg, index) => {
+                  visibleMessages.map((msg, index) => {
                     const isCustomer = msg.sender === 'CUSTOMER';
                     const isBot = msg.sender === 'BOT';
                     const isAdmin = msg.sender === 'ADMIN';
@@ -902,7 +1020,7 @@ export default function ChatAdminPage() {
                           {isCustomer ? (
                             <span className="font-bold text-slate-300 flex items-center gap-1">
                               <User className="w-3 h-3 text-slate-400" />
-                              {activeConversation.user?.name || 'Customer'}
+                              {activeConversation?.user?.name || 'Customer'}
                             </span>
                           ) : isBot ? (
                             <span className="font-bold text-emerald-400 flex items-center gap-1">
