@@ -418,6 +418,8 @@ export default function ChatAdminPage() {
         return { label: 'Picking Package', bg: 'bg-purple-500/10 text-purple-400 border-purple-500/30' };
       case 'COLLECTING_UID':
         return { label: 'Entering UID', bg: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
+      case 'COLLECTING_PASSWORD':
+        return { label: 'Entering Password', bg: 'bg-amber-500/15 text-amber-300 border-amber-500/30' };
       case 'AWAITING_PAYMENT':
         return { label: 'Awaiting Payment', bg: 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse' };
       case 'AWAITING_VERIFICATION_CODE':

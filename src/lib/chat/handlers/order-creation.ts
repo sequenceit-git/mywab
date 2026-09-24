@@ -29,7 +29,7 @@ export async function handleUidInput(
 
   const cleanUid = extractCleanUid(rawText, session.draftOrder.selectedGame || session.draftOrder.selectedGameLabel);
 
-  if (!cleanUid || cleanUid.length < 3) {
+  if (!cleanUid || cleanUid.length < 2) {
     const gameLabel = session.draftOrder.selectedGameLabel || 'গেম';
     const accountInfo = getAccountFieldInfo('', gameLabel);
     const buttons = [
@@ -44,12 +44,106 @@ export async function handleUidInput(
     return;
   }
 
+  // Check if this game requires account password after UID/Email (e.g. eFootball Android / iOS)
+  const isEfootball = (session.draftOrder.selectedGame || '').includes('efb') ||
+                      (session.draftOrder.selectedGameLabel || '').toLowerCase().includes('efootball') ||
+                      (session.draftOrder.selectedGame || '').includes('efootball');
+
+  if (isEfootball) {
+    db.setSessionState(conversationId, {
+      step: 'COLLECTING_PASSWORD',
+      draftOrder: {
+        ...session.draftOrder,
+        playerUid: cleanUid
+      }
+    });
+
+    const buttons = [
+      { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
+    ];
+
+    await whatsappService.sendInteractiveButtons(
+      phone,
+      `🔐 আপনার *Konami ID* (\`${cleanUid}\`) এর জন্য *অ্যাকাউন্টের পাসওয়ার্ড (Password)* টি লিখে পাঠান:\n\n_(কয়েন টপ-আপের জন্য পাসওয়ার্ড প্রয়োজন, টপ-আপ শেষে প্রয়োজনে পরিবর্তন করে নিতে পারেন)_`,
+      buttons,
+      'পাসওয়ার্ড দিন'
+    );
+
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: `🔐 আপনার Konami ID (${cleanUid}) এর জন্য পাসওয়ার্ড (Password) লিখে পাঠান:`,
+      metadata: { step: 'COLLECTING_PASSWORD', playerUid: cleanUid }
+    });
+
+    return;
+  }
+
+  await proceedToCreateOrderAndPayment(phone, conversationId, cleanUid, '', session, userId);
+}
+
+/**
+ * Step 3b -> Step 4: Validate account Password input (for eFootball) and proceed to payment
+ */
+export async function handlePasswordInput(
+  phone: string,
+  conversationId: string,
+  rawText: string,
+  session: ConversationSessionState,
+  userId?: string
+): Promise<void> {
+  if (isRefusalOrCancellation(rawText)) {
+    await handleCancellation(phone, conversationId);
+    return;
+  }
+
+  if (isGreetingOrMenu(rawText)) {
+    await sendWelcomeAndGameList(phone, conversationId);
+    return;
+  }
+
+  let password = rawText.trim();
+  // Strip conversational prefixes if provided
+  password = password
+    .replace(/^(?:password|pass|পাসওয়ার্ড|পাসওয়ার্ড\s*হলো|পাসওয়ার্ড\s*হচ্ছে|আমার\s*পাসওয়ার্ড|amar\s*pass(?:word)?)\s*[:=\-#—–]?\s*/i, '')
+    .trim();
+
+  if (!password || password.length < 2) {
+    const buttons = [
+      { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
+    ];
+    await whatsappService.sendInteractiveButtons(
+      phone,
+      `⚠️ অনুগ্রহ করে আপনার Konami অ্যাকাউন্টের সঠিক *পাসওয়ার্ড (Password)* লিখে পাঠান:`,
+      buttons,
+      'সঠিক পাসওয়ার্ড দিন'
+    );
+    return;
+  }
+
+  const cleanUid = session.draftOrder.playerUid || 'N/A';
+  await proceedToCreateOrderAndPayment(phone, conversationId, cleanUid, password, session, userId);
+}
+
+/**
+ * Helper to create order in database and generate ZiniPay hosted invoice
+ */
+async function proceedToCreateOrderAndPayment(
+  phone: string,
+  conversationId: string,
+  cleanUid: string,
+  password: string,
+  session: ConversationSessionState,
+  userId?: string
+): Promise<void> {
   const item = session.draftOrder.items?.[0];
   const amount = session.draftOrder.totalAmount || item?.unitPrice || 0;
   const gameLabel = session.draftOrder.selectedGameLabel || 'গেম টপ-আপ';
   const pkgName = item?.skuOrName || 'প্যাকেজ';
   const accountInfo = getAccountFieldInfo(cleanUid, gameLabel);
   const effectiveUserId = userId || (await db.getOrCreateUser(phone)).id;
+
+  const passwordNote = password ? ` | Password: ${password}` : '';
 
   try {
     // 1. Create order in Database with PENDING_PAYMENT
@@ -66,18 +160,19 @@ export async function handleUidInput(
           quantity: 1
         }
       ],
-      customerNotes: `State Bot Order | Game: ${gameLabel} | ${accountInfo.labelEn}: ${cleanUid} | Mode: Auto ZiniPay`
+      customerNotes: `State Bot Order | Game: ${gameLabel} | ${accountInfo.labelEn}: ${cleanUid}${passwordNote} | Mode: Auto ZiniPay`
     });
 
     // 2. Create Hosted Invoice via ZiniPay API
     const invoiceRes = await zinipayClient.createInvoice({
       amount,
       cus_name: `Player ${cleanUid}`,
-      cus_email: `customer_${phone.replace(/\D/g, '') || cleanUid}@sequenceit.software`,
+      cus_email: `customer_${phone.replace(/\D/g, '') || 'guest'}@sequenceit.software`,
       metadata: {
         order_id: pendingOrder.order_id,
         customer_phone: phone,
         player_uid: cleanUid,
+        password: password || undefined,
         service: gameLabel,
         package: pkgName
       },
@@ -97,6 +192,7 @@ export async function handleUidInput(
         draftOrder: {
           ...session.draftOrder,
           playerUid: cleanUid,
+          accountPassword: password || undefined,
           pendingOrderId: pendingOrder.order_id,
           invoiceId: invoiceRes.invoice_id,
           paymentUrl: invoiceRes.payment_url
@@ -140,7 +236,8 @@ export async function handleUidInput(
     step: 'AWAITING_PAYMENT',
     draftOrder: {
       ...session.draftOrder,
-      playerUid: cleanUid
+      playerUid: cleanUid,
+      accountPassword: password || undefined
     }
   });
 

@@ -108,11 +108,24 @@ export function isQrLoginOrder(order: { customer_notes?: string; items?: Array<{
     order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || 
     firstItem?.product_name || 
     '';
+  const combined = `${gameTitle} ${firstItem?.product_name || ''} ${order.customer_notes || ''}`.toLowerCase();
+  
+  // Code Method games (PUBG KR, eFootball) must not be treated as QR login
+  if (
+    combined.includes('pubg_kr') ||
+    combined.includes('korean') ||
+    combined.includes('kr uc') ||
+    combined.includes('efootball') ||
+    combined.includes('efb') ||
+    combined.includes('konami')
+  ) {
+    return false;
+  }
+
   return (
-    gameTitle.toLowerCase().includes('qr') || 
-    (firstItem?.product_name || '').toLowerCase().includes('qr') ||
-    (order.customer_notes || '').toLowerCase().includes('pubg_login') ||
-    (order.customer_notes || '').toLowerCase().includes('login uc')
+    combined.includes('qr') || 
+    combined.includes('pubg_login') ||
+    combined.includes('login uc')
   );
 }
 
@@ -164,6 +177,12 @@ export function generateOrderCard(
     order.customer_notes?.match(/(?:PUBG UID|UID|Player UID|Email|Account):\s*([0-9a-zA-Z@._+-]+)/i)?.[1] ||
     'N/A';
 
+  const password = 
+    order.customer_notes?.match(/Password:\s*([^|\n]+)/i)?.[1]?.trim() || 
+    (order.delivery_address as any)?.password || 
+    '';
+  const passwordLine = password ? `\n🔐 <b>Password:</b> <code>${password}</code>` : '';
+
   const trxId = 
     order.trx_id || 
     (order.delivery_address as any)?.trx_id ||
@@ -196,11 +215,14 @@ export function generateOrderCard(
   const hasQrScanned = (order.customer_notes || '').includes('Customer Scanned') || (order.customer_notes || '').includes('QR_SCANNED');
 
   // Email Verification "Code Method" orders (PUBG KR + eFootball Android/iOS only)
+  const combinedGameStr = `${gameTitle} ${firstItem?.product_name || ''} ${order.customer_notes || ''}`.toLowerCase();
   const isCodeOrder =
-    gameTitle.toLowerCase().includes('korean') ||
-    gameTitle.toLowerCase().includes('efootball') ||
-    (firstItem?.product_name || '').toLowerCase().includes('korean') ||
-    (firstItem?.product_name || '').toLowerCase().includes('efootball');
+    combinedGameStr.includes('korean') ||
+    combinedGameStr.includes('pubg_kr') ||
+    combinedGameStr.includes('kr uc') ||
+    combinedGameStr.includes('efootball') ||
+    combinedGameStr.includes('efb') ||
+    combinedGameStr.includes('konami');
 
   const codeBanner = isCodeOrder ? `\n📧 <b>[EMAIL CODE VERIFICATION ORDER]</b>\n` : '';
   const codeNotes = order.customer_notes || '';
@@ -212,6 +234,16 @@ export function generateOrderCard(
     ? (codeNotes.slice(lastCodeReceivedIdx).match(/CODE_RECEIVED:\s*([^|]+)/i)?.[1] || '').trim()
     : '';
 
+  const rawNotes = (order.customer_notes || '').trim();
+  const isInternalBotNote = 
+    rawNotes.startsWith('State Bot Order') || 
+    rawNotes.startsWith('Payment Verified') || 
+    rawNotes.startsWith('Kokos Auto') ||
+    rawNotes.startsWith('Pinex Auto') ||
+    rawNotes.startsWith('QR Code forwarded') ||
+    rawNotes === 'None';
+  const customNotesLine = (!isInternalBotNote && rawNotes) ? `\n📝 <b>Notes:</b> ${rawNotes}` : '';
+
   if (order.status === 'CLAIMED' || order.status === 'PROCESSING') {
     if (isQrOrder) {
       if (hasQrScanned) {
@@ -221,12 +253,11 @@ export function generateOrderCard(
 `🎯 <b>CUSTOMER SCANNED QR! / গ্রাহক স্ক্যান সম্পন্ন করেছেন</b>${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>
-${proofLines}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -251,12 +282,11 @@ ${itemsText}
 `📤 <b>QR CODE SENT TO WHATSAPP / কিউআর পাঠানো হয়েছে</b>${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>
-${proofLines}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -285,13 +315,11 @@ ${itemsText}
 `✅ <b>ORDER CLAIMED — SEND QR CODE / কিউআর পাঠান</b>${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>
-${proofLines}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
-📝 <b>Notes:</b> ${order.customer_notes || 'None'}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -318,13 +346,12 @@ ${itemsText}
 `🔑 <b>CODE RECEIVED FROM CUSTOMER! / কাস্টমার কোড পাঠিয়েছেন</b>${codeBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 🔑 <b>Verification Code:</b> <code>${receivedCode || 'N/A'}</code>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>
-${proofLines}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -351,12 +378,11 @@ ${itemsText}
 `📧 <b>CODE REQUESTED — WAITING FOR CUSTOMER / কোডের অপেক্ষায়</b>${codeBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>
-${proofLines}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -383,13 +409,11 @@ ${itemsText}
 `✅ <b>ORDER CLAIMED — REQUEST CODE / কোড রিকোয়েস্ট করুন</b>${codeBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>
-${proofLines}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
-📝 <b>Notes:</b> ${order.customer_notes || 'None'}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -419,13 +443,11 @@ ${itemsText}
 `${claimedTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>
-${proofLines}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
-📝 <b>Notes:</b> ${order.customer_notes || 'None'}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -454,12 +476,11 @@ ${itemsText}
 `${processingTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>
-${proofLines}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 <i>Click below once order is completed or cancel if invalid:</i>`,
       replyMarkup: {
@@ -485,12 +506,11 @@ ${proofLines}
 `${deliveredTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Processed by:</b> <b>${workerName}</b>
 💰 <b>Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>
-${proofLines}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 💎 <b>Packages:</b>
 ${itemsText}
 🕒 <b>Completed at:</b> ${new Date().toLocaleTimeString()}`,
@@ -513,12 +533,11 @@ ${itemsText}
 `❌ <b>ORDER CANCELLED / অর্ডার বাতিল করা হয়েছে</b>${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Handled by:</b> <b>${workerName}</b>
 ⚠️ <b>Reason / কারণ:</b> ${cancelReason}${refundNotice}
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>
-${proofLines}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
 🕒 <b>Cancelled at:</b> ${new Date().toLocaleTimeString()}
 
@@ -547,12 +566,10 @@ ${proofLines}
 `${newOrderTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>
-${proofLines}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
-📝 <b>Notes:</b> ${order.customer_notes || 'None'}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 💎 <b>Packages:</b>
 ${itemsText}

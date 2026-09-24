@@ -17,7 +17,7 @@ import {
   sendPackageList,
   handlePackageSelection
 } from './handlers/catalog-navigation';
-import { handleUidInput } from './handlers/order-creation';
+import { handleUidInput, handlePasswordInput } from './handlers/order-creation';
 import {
   handleCheckPayment,
   handlePaymentMethodSelection,
@@ -257,7 +257,13 @@ export const stateBot = {
       }
     }
 
-    // 8b. Email verification code capture (PUBG KR / eFootball "code method" only — worker requested this via Telegram)
+    // 8b. If collecting account password (e.g. eFootball)
+    if (session.step === 'COLLECTING_PASSWORD' && !triggerId.startsWith('game_') && !triggerId.startsWith('pkg_')) {
+      await handlePasswordInput(phone, conversationId, rawText, session, userId);
+      return;
+    }
+
+    // 8c. Email verification code capture (PUBG KR / eFootball "code method" only — worker requested this via Telegram)
     if (session.step === 'AWAITING_VERIFICATION_CODE' && !triggerId.startsWith('game_') && !triggerId.startsWith('pkg_')) {
       await handleVerificationCodeInput(phone, conversationId, rawText, session);
       return;
@@ -295,6 +301,10 @@ export const stateBot = {
     switch (session.step) {
       case 'COLLECTING_UID':
         await handleUidInput(phone, conversationId, rawText, session, userId);
+        break;
+
+      case 'COLLECTING_PASSWORD':
+        await handlePasswordInput(phone, conversationId, rawText, session, userId);
         break;
 
       case 'AWAITING_PAYMENT':

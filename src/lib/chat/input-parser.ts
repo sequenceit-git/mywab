@@ -35,7 +35,28 @@ export function extractCleanUid(rawText: string, gameLabelOrCode?: string): stri
     return '';
   }
 
-  // 1. Email validation (For Movie/Anime/Netflix/Spotify/Prime/YouTube/Konami)
+  // 1. Check if this is a QR / Login / In-Game Name based service (e.g. PUBG Login UC QR, PUBG Special QR)
+  const isQrOrLoginGame = game.includes('login') || game.includes('qr') || game.includes('special');
+  if (isQrOrLoginGame) {
+    // For PUBG QR method: Accept In-Game Name or UID in ANY format (e.g. "dr dukan", "ts dead sourl", "@temu", "adsf34f2345", "5123456789")
+    let ignCleaned = rawText.trim();
+    ignCleaned = ignCleaned
+      .replace(/^(?:(?:in[- ]?game\s*(?:name|id)|ign|game\s*name|player\s*(?:name|uid|id)|uid\s*[\/&]\s*name|uid|id|name|acc(?:ount)?|আমার\s*(?:নাম|আইডি|ইনগেম\s*নাম)|নাম|ইনগেম\s*নাম)\s*[:=\-#—–]+\s*)/i, '')
+      .replace(/^(?:amar\s*(?:name|id|ingame\s*name|uid)\s*(?:is)?|আমার\s*(?:নাম|আইডি|ইনগেম\s*নাম)\s*(?:হলো|হচ্ছে)?|my\s*(?:name|id|ingame\s*name|uid)\s*(?:is)?)\s*[:=\-#—–]?\s*/i, '')
+      .trim();
+
+    if (
+      ignCleaned.length >= 2 &&
+      !isRefusalOrCancellation(ignCleaned) &&
+      !isGreetingOrMenu(ignCleaned) &&
+      !isGratitudeOrPleasantry(ignCleaned) &&
+      !isPriceInquiry(ignCleaned)
+    ) {
+      return ignCleaned;
+    }
+  }
+
+  // 2. Email validation (For Movie/Anime/Netflix/Spotify/Prime/YouTube/Konami)
   const isEmailService = game.includes('movie') || game.includes('netflix') || game.includes('spotify') || 
                          game.includes('prime') || game.includes('crunchyroll') || game.includes('youtube') ||
                          game.includes('efb') || game.includes('efootball') || game.includes('konami');
@@ -55,7 +76,7 @@ export function extractCleanUid(rawText: string, gameLabelOrCode?: string): stri
     return ''; // Strictly require valid email for movie/OTT subscriptions
   }
 
-  // 2. Check if matches key-value prefix like "UID: 123456", "Player ID 123456", "ID: 123456", "আমার আইডি: 123456"
+  // 3. Check if matches key-value prefix like "UID: 123456", "Player ID 123456", "ID: 123456", "আমার আইডি: 123456"
   const prefixMatch = converted.match(
     /(?:player\s*uid|player\s*id|playerid|uid|id|account|acc|user\s*id|email|gmail|আইডি|ইউআইডি|প্লেয়ার\s*আইডি|প্লেয়ার\s*আইডি|ইমেইল|জিমেইল)[\s:=#\-_]+([^\s,;()\[\]{}]+)/i
   );
@@ -67,7 +88,7 @@ export function extractCleanUid(rawText: string, gameLabelOrCode?: string): stri
     return matchedVal;
   }
 
-  // 3. Strip standard conversational prefixes
+  // 4. Strip standard conversational prefixes
   let cleaned = converted
     .replace(/^(?:my\s*(?:player\s*)?(?:uid|id|email|account|number)\s*(?:is)?|amar\s*(?:uid|id|player\s*id|email|number)|আমার\s*(?:আইডি|প্লেয়ার\s*আইডি|প্লেয়ার\s*আইডি|ইউআইডি|ইমেইল|নম্বর))\s*[:=\-_]?\s*/i, '')
     .replace(/^(?:player\s*uid|player\s*id|playerid|uid|id|account|acc|email|phone|আইডি|ইউআইডি|ইমেইল|নম্বর)[\s:=#\-_]*/i, '')
@@ -78,19 +99,19 @@ export function extractCleanUid(rawText: string, gameLabelOrCode?: string): stri
     return '';
   }
 
-  // 4. Numeric sequence check (For PUBG UID, Free Fire UID, Phone Numbers: 5-15 digits)
+  // 5. Numeric sequence check (For PUBG UID, Free Fire UID, Phone Numbers: 5-15 digits)
   const digitsMatch = cleaned.match(/\b(\d{5,15})\b/);
   if (digitsMatch) {
     return digitsMatch[1];
   }
 
-  // 5. BD 11-digit phone number check
+  // 6. BD 11-digit phone number check
   const phoneMatch = cleaned.match(/\b(01[3-9]\d{8})\b/);
   if (phoneMatch) {
     return phoneMatch[1];
   }
 
-  // 6. If game strictly requires numeric UID (PUBG UID, Free Fire, PUBG KR)
+  // 7. If game strictly requires numeric UID (PUBG UID, Free Fire, PUBG KR)
   const isNumericUidGame = game.includes('uid') || game.includes('ff') || game.includes('free fire') || game.includes('kr');
   if (isNumericUidGame) {
     // Cannot accept plain English/Bengali words without numbers as UID
@@ -101,14 +122,16 @@ export function extractCleanUid(rawText: string, gameLabelOrCode?: string): stri
     return ''; // Reject conversational text
   }
 
-  // 7. For other login / special services, accept single alphanumeric handle if >= 3 chars
+  // 8. For other login / handle services, accept single alphanumeric handle if >= 2 chars
   const tokens = cleaned.split(/\s+/).filter(Boolean);
   if (tokens.length === 1) {
     const candidate = tokens[0];
-    if (candidate.length >= 3 && !isRefusalOrCancellation(candidate) && !isGreetingOrMenu(candidate)) {
+    if (candidate.length >= 2 && !isRefusalOrCancellation(candidate) && !isGreetingOrMenu(candidate)) {
       return candidate.trim();
     }
   }
+
+  return '';
 
   return '';
 }
@@ -438,11 +461,20 @@ export function formatPaymentDisplayForTelegram(
   );
 
   if (isAuto) {
-    const invLine = invoiceId ? `\n🧾 <b>Invoice:</b> <code>${invoiceId}</code>` : '';
-    const cleanMethod = methodName?.toUpperCase().includes('ZINIPAY') ? 'ZiniPay Gateway' : `${methodLabel} (Auto-Paid)`;
+    const cleanMethod = methodName?.toUpperCase().includes('ZINIPAY') ? 'ZiniPay' : `${methodLabel}`;
+    // Only display TrxID if a real gateway transaction ID was captured
+    const isRealTrx = proof && 
+      proof !== 'N/A' && 
+      proof !== 'VERIFIED' && 
+      proof !== 'ZINIPAY_VERIFIED' && 
+      !proof.startsWith('ZINI') &&
+      proof.length > 2;
+
+    const trxLine = isRealTrx ? `🔢 <b>TrxID:</b> <code>${proof}</code>` : '';
+
     return {
       methodLabel: `🟢 Auto-Verified (${cleanMethod})`,
-      proofLines: `🔢 <b>TrxID:</b> <code>${proof || 'VERIFIED'}</code>${invLine}\n⚡ <b>Status:</b> <b>✅ Paid via Gateway (SMS চেক দরকার নেই)</b>`,
+      proofLines: trxLine,
       isAutoVerified: true
     };
   }
@@ -450,7 +482,7 @@ export function formatPaymentDisplayForTelegram(
   if (!proof || proof === 'N/A') {
     return {
       methodLabel,
-      proofLines: `🔢 <b>Payment Proof:</b> <code>N/A</code>`,
+      proofLines: `🔢 <b>Payment Proof:</b> <code>Pending / N/A</code>`,
       isAutoVerified: false
     };
   }
@@ -518,9 +550,39 @@ export function getGameDeliveryConfig(gameTitleOrCode?: string, firstItemName?: 
     };
   }
 
+  // 1. Code Method: PUBG KR & eFootball (worker requests/sends verification code)
+  const isCodeMethod =
+    text.includes('pubg_kr') ||
+    text.includes('korean') ||
+    text.includes('kr uc') ||
+    text.includes('pubg kr') ||
+    text.includes('kr') ||
+    text.includes('efootball') ||
+    text.includes('efb') ||
+    text.includes('konami');
+
+  if (isCodeMethod) {
+    return {
+      deliveryMessage: 'অনুগ্রহ করে ১-১০ মিনিট অপেক্ষা করুন, এর মধ্যে আমাদের টিম আপনার কাছে ভেরিফিকেশন কোড (Code) চাইবে বা ইমেইলে কোড পাঠিয়ে দেবে। কোড আসলে এখানে সরাসরি লিখে পাঠান। 📧⚡',
+      catalogButtonTitle: (text.includes('pubg') || text.includes('kr')) ? '🇰🇷 KR UC প্রাইস' : '⚽ কয়েন প্রাইস',
+      catalogButtonId: (text.includes('pubg') || text.includes('kr')) ? 'game_pubg_kr' : 'game_efb_android'
+    };
+  }
+
+  // 2. QR Login: PUBG Login UC (QR Code)
+  const isQrLogin = text.includes('login') || text.includes('qr') || text.includes('special');
+  if (isQrLogin && (text.includes('pubg') || text.includes('uc'))) {
+    return {
+      deliveryMessage: 'অনুগ্রহ করে ১-১০ মিনিট অপেক্ষা করুন, এর মধ্যে আমাদের টিম আপনাকে QR কোড পাঠিয়ে দেবে।\n\nQR কোড স্ক্যান করার নিয়ম জানতে এই লিংকে ক্লিক করুন 👇\n\nhttps://youtu.be/t1WdICXE9sU?si=ZxxNFloTjpMQZWOK',
+      catalogButtonTitle: '📲 Login UC প্রাইস',
+      catalogButtonId: 'game_pubg_login'
+    };
+  }
+
+  // 3. PUBG UID / Standard PUBG UC
   if (text.includes('pubg') || text.includes('uc')) {
     return {
-      deliveryMessage: 'অনুগ্রহ করে ১-১০ মিনিট অপেক্ষা করুন, এর মধ্যে আমাদের টিম আপনাকে QR কোড পাঠিয়ে দেবে।\n\nQR কোড স্ক্যান করার নিয়ম জানতে এই লিংকে ক্লিক করুন 👇\n\nhttps://youtu.be/69dMmHMfDfg?si=3GvVwdfg-yGvaRr5',
+      deliveryMessage: 'আমাদের টপ-আপ টিম খুব দ্রুত আপনার PUBG আইডিতে সরাসরি UC পাঠিয়ে দেবে! 🎮🚀',
       catalogButtonTitle: '💎 UC প্রাইস',
       catalogButtonId: 'game_pubg_uid'
     };
@@ -528,7 +590,7 @@ export function getGameDeliveryConfig(gameTitleOrCode?: string, firstItemName?: 
 
   if (text.includes('efootball') || text.includes('fifa') || text.includes('fc mobile') || text.includes('coin')) {
     return {
-      deliveryMessage: 'আমাদের টিম খুব দ্রুত আপনার আইডিতে কয়েন/পয়েন্ট টপ-আপ করে দেবে! ⚽🚀',
+      deliveryMessage: 'অনুগ্রহ করে ১-১০ মিনিট অপেক্ষা করুন, এর মধ্যে আমাদের টিম আপনার কাছে ভেরিফিকেশন কোড (Code) চাইবে বা কয়েন টপ-আপ করে দেবে। ⚽🚀',
       catalogButtonTitle: '⚽ কয়েন প্রাইস',
       catalogButtonId: 'game_efb_android'
     };

@@ -153,6 +153,7 @@ export type ConversationStep =
   | 'SELECTING_GAME'    // Game list shown, waiting for game choice
   | 'SELECTING_PACKAGE' // Game chosen, price list shown, waiting for package tap
   | 'COLLECTING_UID'    // Package chosen, waiting for UID / account info text
+  | 'COLLECTING_PASSWORD' // Konami ID / Email received, waiting for account password (eFootball)
   | 'AWAITING_PAYMENT'  // UID saved, payment info shown, waiting for TrxID text
   | 'AWAITING_VERIFICATION_CODE' // Worker requested email verification code, waiting for customer to send it (PUBG KR / eFootball)
   | 'ORDER_PLACED';     // Order created, confirmation sent
@@ -169,6 +170,7 @@ export interface ConversationDraftOrder {
   customerName?: string;
   customerPhone?: string;
   playerUid?: string;
+  accountPassword?: string;
   paymentMethod?: string;
   trxId?: string;
   customerNotes?: string;
