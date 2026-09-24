@@ -534,7 +534,15 @@ export function getGameDeliveryConfig(gameTitleOrCode?: string, firstItemName?: 
 } {
   const text = `${gameTitleOrCode || ''} ${firstItemName || ''}`.toLowerCase();
 
-  if (text.includes('netflix') || text.includes('movie') || text.includes('anime') || text.includes('spotify') || text.includes('prime') || text.includes('crunchyroll') || text.includes('youtube') || (text.includes('sub') && !text.includes('pubg'))) {
+  if (text.includes('netflix')) {
+    return {
+      deliveryMessage: 'পেমেন্ট নিশ্চিত হয়েছে! আমাদের কর্মী খুব দ্রুত এই WhatsApp চ্যাটে আপনার Netflix অ্যাকাউন্ট (Email, Password, PIN) পাঠিয়ে দেবে এবং লগইন কোড দিয়ে সহায়তা করবে! 🍿🚀',
+      catalogButtonTitle: '🍿 Netflix প্যাকেজ',
+      catalogButtonId: 'game_movie'
+    };
+  }
+
+  if (text.includes('movie') || text.includes('anime') || text.includes('spotify') || text.includes('prime') || text.includes('crunchyroll') || text.includes('youtube') || (text.includes('sub') && !text.includes('pubg'))) {
     return {
       deliveryMessage: 'আমাদের টিম খুব দ্রুত আপনার সাবস্ক্রিপশন চালু করে অ্যাকাউন্ট/লগইন তথ্য পাঠিয়ে দেবে! 🍿🚀',
       catalogButtonTitle: '🍿 সাবস্ক্রিপশন',

@@ -614,6 +614,112 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
   },
 
   /**
+   * Send Netflix Account Credentials (Email, Password, PIN) to customer via WhatsApp
+   */
+  async sendNetflixAccountInfo(
+    toPhone: string,
+    orderIdCode: string,
+    email: string,
+    pass: string,
+    pin?: string
+  ): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+    const pinText = pin ? `\n📌 *প্রোফাইল পিন (PIN):* \`${pin}\`` : '';
+
+    const bodyText = 
+`🍿 *আপনার Netflix অ্যাকাউন্ট ও লগইন তথ্য:*
+
+📧 *ইমেইল / Email:* \`${email}\`
+🔑 *পাসওয়ার্ড / Password:* \`${pass}\`${pinText}
+📦 *অর্ডার আইডি:* \`#${orderIdCode}\`
+
+📲 *লগইন নির্দেশিকা:*
+অনুগ্রহ করে আপনার ডিভাইসে/টিভিতে নেটফ্লিক্সে লগইন করুন। টিভিতে বা ব্রাউজারে ভেরিফিকেশন কোড বা হাউসহোল্ড কোড চাইলে নিচের *'📩 কোড প্রয়োজন'* বাটনে চাপ দিন।`;
+
+    const buttons: WhatsAppButton[] = [
+      { id: `netflix_need_code:${orderIdCode}`, title: '📩 কোড প্রয়োজন' },
+      { id: `netflix_login_done:${orderIdCode}`, title: '✅ লগইন সম্পন্ন' }
+    ];
+
+    logBotMessageToConversation(cleanPhone, bodyText, {
+      type: 'NETFLIX_CREDS_SENT',
+      orderId: orderIdCode
+    });
+
+    return await this.sendInteractiveButtons(
+      cleanPhone,
+      bodyText,
+      buttons,
+      'Netflix অ্যাকাউন্ট'
+    );
+  },
+
+  /**
+   * Send Netflix Verification / Household Code to customer via WhatsApp
+   */
+  async sendNetflixVerificationCode(
+    toPhone: string,
+    orderIdCode: string,
+    code: string
+  ): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+
+    const bodyText = 
+`🔑 *আপনার Netflix ভেরিফিকেশন কোড:*
+
+👉 \`${code}\` 👈
+
+📦 *অর্ডার আইডি:* \`#${orderIdCode}\`
+
+অনুগ্রহ করে কোডটি দিয়ে লগইন সম্পন্ন করুন। সফলভাবে লগইন হলে নিচে *'✅ লগইন সম্পন্ন'* বাটনে চাপ দিন।`;
+
+    const buttons: WhatsAppButton[] = [
+      { id: `netflix_login_done:${orderIdCode}`, title: '✅ লগইন সম্পন্ন' },
+      { id: `netflix_need_code:${orderIdCode}`, title: '🔄 নতুন কোড প্রয়োজন' }
+    ];
+
+    logBotMessageToConversation(cleanPhone, bodyText, {
+      type: 'NETFLIX_CODE_SENT',
+      orderId: orderIdCode,
+      code
+    });
+
+    return await this.sendInteractiveButtons(
+      cleanPhone,
+      bodyText,
+      buttons,
+      'Netflix কোড'
+    );
+  },
+
+  /**
+   * Acknowledge customer request for Netflix code
+   */
+  async sendNetflixCodeRequestedAck(
+    toPhone: string,
+    orderIdCode: string
+  ): Promise<SendMessageResult> {
+    const cleanPhone = toPhone.replace(/\D/g, '');
+
+    const bodyText = 
+`⏳ *আমাদের টিমকে কোডের জন্য নোটিফাই করা হয়েছে!*
+
+অর্ডার: \`#${orderIdCode}\`
+আমাদের কর্মী আপনার Netflix ভেরিফিকেশন কোডটি চেক করে ১–৩ মিনিটের মধ্যে এই চ্যাটে পাঠিয়ে দিচ্ছেন। অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করুন। 🍿⚡`;
+
+    const buttons: WhatsAppButton[] = [
+      { id: 'btn_main_menu', title: '🎮 মেইন মেনু' }
+    ];
+
+    return await this.sendInteractiveButtons(
+      cleanPhone,
+      bodyText,
+      buttons,
+      'কোডের অপেক্ষায়'
+    );
+  },
+
+  /**
    * Send typing indicator and mark as read (shows "typing..." to customer in WhatsApp chat)
    */
   async markAsReadAndType(messageId: string): Promise<boolean> {

@@ -244,7 +244,140 @@ export function generateOrderCard(
     rawNotes === 'None';
   const customNotesLine = (!isInternalBotNote && rawNotes) ? `\n📝 <b>Notes:</b> ${rawNotes}` : '';
 
+  // Netflix Account Order Detection
+  const isNetflix = combinedGameStr.includes('netflix');
+  const netflixBanner = isNetflix ? `\n🍿 <b>[NETFLIX ACCOUNT ORDER]</b>\n` : '';
+  const netflixNotes = order.customer_notes || '';
+  const hasNetflixCredsSent = netflixNotes.includes('NETFLIX_CREDS_SENT');
+  const lastNetflixCodeReqIdx = netflixNotes.lastIndexOf('NETFLIX_CODE_REQUESTED');
+  const lastNetflixCodeSentIdx = netflixNotes.lastIndexOf('NETFLIX_CODE_SENT');
+  const hasNetflixCodeRequested = lastNetflixCodeReqIdx !== -1 && (lastNetflixCodeSentIdx === -1 || lastNetflixCodeReqIdx > lastNetflixCodeSentIdx);
+  const hasNetflixLoginDone = netflixNotes.includes('NETFLIX_LOGIN_DONE');
+
   if (order.status === 'CLAIMED' || order.status === 'PROCESSING') {
+    if (isNetflix) {
+      if (hasNetflixLoginDone) {
+        return {
+          cardHtml: 
+`🎉 <b>CUSTOMER CONFIRMED NETFLIX LOGIN! / গ্রাহক লগইন সম্পন্ন করেছেন</b>${netflixBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🍿 <b>Service:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+💎 <b>Packages:</b>
+${itemsText}
+
+✅ <b>কাস্টমার নিশ্চিত করেছেন যে তার Netflix লগইন সফল হয়েছে!</b>
+এখন নিচের <b>"✅ Order Completed"</b> বাটনে চাপ দিয়ে ডেলিভারি সম্পন্ন করুন।`,
+          replyMarkup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Order Completed (ডেলিভারি সম্পন্ন)', callback_data: `status_delivered:${order.order_id}` }
+              ],
+              [
+                { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+              ]
+            ]
+          }
+        };
+      } else if (hasNetflixCodeRequested) {
+        return {
+          cardHtml: 
+`🔔 <b>CUSTOMER REQUESTED NETFLIX CODE! / কোড চেয়েছেন</b>${netflixBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🍿 <b>Service:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+💎 <b>Packages:</b>
+${itemsText}
+
+⏳ <b>কাস্টমার Netflix ভেরিফিকেশন কোড চেয়েছেন!</b>
+👉 আপনার Netflix ইমেইল/ওটিপি দেখে এই মেসেজে রিপ্লাই করে কোডটি পাঠান (যেমন: <code>482910</code>)।`,
+          replyMarkup: {
+            inline_keyboard: [
+              [
+                { text: '📤 Send Code to Customer', callback_data: `netflix_code_hint:${order.order_id}` }
+              ],
+              [
+                { text: '✅ Order Completed', callback_data: `status_delivered:${order.order_id}` }
+              ],
+              [
+                { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+              ]
+            ]
+          }
+        };
+      } else if (hasNetflixCredsSent) {
+        return {
+          cardHtml: 
+`📤 <b>NETFLIX CREDENTIALS DELIVERED / অ্যাকাউন্ট পাঠানো হয়েছে</b>${netflixBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🍿 <b>Service:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+💎 <b>Packages:</b>
+${itemsText}
+
+✅ <b>কাস্টমারের WhatsApp-এ Netflix অ্যাকাউন্ট (Email, Pass, Pin) পাঠানো হয়েছে।</b>
+<i>কাস্টমার ডিভাইসে লগইন করার পর কোড চাইলে এখানে নোটিফিকেশন আসবে।</i>`,
+          replyMarkup: {
+            inline_keyboard: [
+              [
+                { text: '🔑 Resend Account Info', callback_data: `netflix_creds_hint:${order.order_id}` },
+                { text: '📤 Send Code Directly', callback_data: `netflix_code_hint:${order.order_id}` }
+              ],
+              [
+                { text: '✅ Order Completed', callback_data: `status_delivered:${order.order_id}` }
+              ],
+              [
+                { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+              ]
+            ]
+          }
+        };
+      } else {
+        return {
+          cardHtml: 
+`🍿 <b>NETFLIX ORDER CLAIMED — SEND ACCOUNT INFO / তথ্য দিন</b>${netflixBanner}
+📦 <b>Order ID:</b> <code>${order.order_id}</code>
+🍿 <b>Service:</b> <b>${gameTitle}</b>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+💰 <b>Total Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+💎 <b>Packages:</b>
+${itemsText}
+
+🔑 <b>ACTION REQUIRED:</b>
+অনুগ্রহ করে এই মেসেজে রিপ্লাই করে কাস্টমারের জন্য <b>Netflix Email, Password ও PIN</b> পাঠান।
+<i>উদাহরণ:</i>
+<code>user@netflix.com
+pass123
+1234</code>`,
+          replyMarkup: {
+            inline_keyboard: [
+              [
+                { text: '🔑 Send Account Info (তথ্য দিন)', callback_data: `netflix_creds_hint:${order.order_id}` }
+              ],
+              [
+                { text: '❌ Cancel Order (বাতিল করুন)', callback_data: `cancel_prompt:${order.order_id}` }
+              ]
+            ]
+          }
+        };
+      }
+    }
+
     if (isQrOrder) {
       if (hasQrScanned) {
         // Stage 3: Customer Scanned QR -> Worker should finish and click Completed

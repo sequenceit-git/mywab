@@ -1,6 +1,7 @@
 import { db } from '../../db';
 import { whatsappService } from '../../whatsapp/service';
 import { GameCategory, GamePackage, formatWhatsAppRow, formatWhatsAppButton } from '../game-catalog';
+import { proceedToCreateOrderAndPayment } from './order-creation';
 
 export async function sendWelcomeAndGameList(phone: string, conversationId: string, customerName?: string): Promise<void> {
   db.setSessionState(conversationId, {
@@ -154,19 +155,47 @@ export async function handlePackageSelection(
   game: GameCategory,
   pkg: GamePackage
 ): Promise<void> {
+  const draftOrder = {
+    items: [{
+      skuOrName: pkg.name,
+      quantity: 1,
+      unitPrice: pkg.price,
+      productName: `${game.fullName} (${pkg.name})`
+    }],
+    totalAmount: pkg.price,
+    selectedGame: game.code,
+    selectedGameLabel: game.fullName
+  };
+
+  // Check if this is a Netflix package (no client info needed — direct WhatsApp delivery)
+  const isNetflix = pkg.id.includes('netflix') || 
+                    pkg.name.toLowerCase().includes('netflix') || 
+                    (game.id === 'game_movie' && pkg.name.toLowerCase().includes('netflix'));
+
+  if (isNetflix) {
+    const sessionState = {
+      step: 'AWAITING_PAYMENT' as const,
+      lastInteractionTimestamp: Date.now(),
+      draftOrder: {
+        ...draftOrder,
+        playerUid: 'WhatsApp Delivery'
+      }
+    };
+    db.setSessionState(conversationId, sessionState);
+
+    await proceedToCreateOrderAndPayment(
+      phone,
+      conversationId,
+      'WhatsApp Delivery',
+      '',
+      sessionState
+    );
+    return;
+  }
+
   db.setSessionState(conversationId, {
     step: 'COLLECTING_UID',
-    draftOrder: {
-      items: [{
-        skuOrName: pkg.name,
-        quantity: 1,
-        unitPrice: pkg.price,
-        productName: `${game.fullName} (${pkg.name})`
-      }],
-      totalAmount: pkg.price,
-      selectedGame: game.code,
-      selectedGameLabel: game.fullName
-    }
+    draftOrder
   });
 
   const promptMessage = 

@@ -35,6 +35,10 @@ import {
   handleCancellation,
   handleHumanSupportRequest
 } from './handlers/info-handlers';
+import {
+  handleNetflixCustomerAction,
+  findActiveNetflixOrder
+} from './handlers/netflix-flow';
 
 export * from './handlers/catalog-navigation';
 export * from './handlers/order-creation';
@@ -212,6 +216,27 @@ export const stateBot = {
     if (triggerId.startsWith('qr_refresh:') || ['new qr', 'notun qr', 'qr expired', 'need qr', 'নতুন qr', 'নতুন qr কোড দিন', 'qr expire', 'expire'].includes(normalizedText)) {
       await handleQrAction(phone, conversationId, triggerId, rawText, 'REFRESH');
       return;
+    }
+
+    // 3.1 Netflix actions (Customer requesting verification code or confirming login done)
+    if (
+      triggerId.startsWith('netflix_need_code:') ||
+      (normalizedText.includes('code') && (normalizedText.includes('netflix') || normalizedText.includes('কোড') || normalizedText.includes('lagbe') || normalizedText.includes('dao') || normalizedText.includes('chai') || normalizedText.includes('den') || normalizedText.includes('need') || normalizedText.includes('pathan')))
+    ) {
+      await handleNetflixCustomerAction(phone, conversationId, triggerId, rawText, 'NEED_CODE');
+      return;
+    }
+
+    if (
+      triggerId.startsWith('netflix_login_done:') ||
+      triggerId.startsWith('netflix_done:') ||
+      ['login done', 'netflix done', 'হয়েছে', 'হয়ে গেছে', 'লগইন সম্পন্ন', 'লগইন শেষ'].includes(normalizedText)
+    ) {
+      const activeNetflix = await findActiveNetflixOrder(phone);
+      if (activeNetflix || triggerId.startsWith('netflix_')) {
+        await handleNetflixCustomerAction(phone, conversationId, triggerId, rawText, 'LOGIN_DONE', activeNetflix || undefined);
+        return;
+      }
     }
 
     // 4. Track Order button or text

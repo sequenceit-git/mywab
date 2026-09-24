@@ -355,6 +355,103 @@ export async function handleWorkerTextMessage(message: {
     return { handled: true, ...result };
   }
 
+  // 4. Check if message is a reply to a Netflix order card (sending credentials or verification code)
+  if (replyOrderMatch) {
+    const orderIdCode = replyOrderMatch[1];
+    const order = await db.getOrderByCode(orderIdCode);
+
+    if (order) {
+      const combinedGameStr = `${order.customer_notes || ''} ${order.items?.map(i => i.product_name).join(' ') || ''}`.toLowerCase();
+      const isNetflix = combinedGameStr.includes('netflix');
+
+      if (isNetflix && (order.status === 'CLAIMED' || order.status === 'PROCESSING')) {
+        // 4a. Check if worker provided Netflix Account Credentials (Email + Password + PIN)
+        const emailMatch = text.match(/(?:email|mail|ইমেইল|user|username)?\s*[:=–-]?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+        const passMatch = text.match(/(?:pass|password|পাসওয়ার্ড|pwd)\s*[:=–-]?\s*([^\n\r]+)/i);
+        const pinMatch = text.match(/(?:pin|পিন|profile pin)\s*[:=–-]?\s*([0-9]{4,6})/i);
+
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        let credEmail = emailMatch ? emailMatch[1].trim() : '';
+        let credPass = passMatch ? passMatch[1].trim() : '';
+        let credPin = pinMatch ? pinMatch[1].trim() : '';
+
+        // Multiline fallback without explicit labels (Line 1: Email, Line 2: Pass, Line 3: Pin)
+        if (!credEmail && lines.length >= 2 && lines[0].includes('@')) {
+          credEmail = lines[0];
+          credPass = lines[1];
+          if (lines[2] && /^[0-9]{4,6}$/.test(lines[2])) {
+            credPin = lines[2];
+          }
+        } else if (credEmail && !credPass && lines.length >= 2) {
+          const secondLine = lines.find(l => l !== credEmail && !l.toLowerCase().startsWith('pin') && !l.toLowerCase().startsWith('email'));
+          if (secondLine) credPass = secondLine.replace(/^(?:pass|password|পাসওয়ার্ড)[:=–-]?\s*/i, '').trim();
+        }
+
+        if (credEmail && credPass) {
+          // Send credentials to customer WhatsApp
+          await whatsappService.sendNetflixAccountInfo(
+            order.delivery_phone,
+            order.order_id,
+            credEmail,
+            credPass,
+            credPin || undefined
+          );
+
+          const updatedNotes = `${order.customer_notes || ''} | NETFLIX_CREDS_SENT | Email: ${credEmail} | Pass: ${credPass}${credPin ? ` | PIN: ${credPin}` : ''}`;
+          await db.updateOrderStatus(order.order_id, order.status, { notes: updatedNotes });
+
+          const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
+          const assignedWorkerName = refreshedOrder.current_worker?.full_name || workerName;
+
+          if (message.reply_to_message?.message_id) {
+            const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
+            await telegramClient.editMessageText(message.chat.id, message.reply_to_message.message_id, cardHtml, replyMarkup);
+          }
+
+          const pinLine = credPin ? `\n📌 <b>PIN:</b> <code>${credPin}</code>` : '';
+          await telegramClient.sendMessage(
+            message.chat.id,
+            `✅ <b>Netflix Account Sent to Customer!</b>\n\n📦 <b>Order ID:</b> <code>${order.order_id}</code>\n📧 <b>Email:</b> <code>${credEmail}</code>\n🔑 <b>Password:</b> <code>${credPass}</code>${pinLine}\n\n<i>কাস্টমারের WhatsApp-এ অ্যাকাউন্ট ও নির্দেশিকা পাঠানো হয়েছে। কাস্টমার কোড চাইলে এখানে নোটিফিকেশন আসবে।</i>`,
+            { reply_to_message_id: message.message_id }
+          );
+
+          return { handled: true, success: true, message: 'Netflix credentials sent' };
+        }
+
+        // 4b. Check if worker provided Netflix Verification / Household Code (e.g. 4-8 digits)
+        const codeOnlyMatch = text.match(/(?:code|কোড|otp|netflix code)?\s*[:=–-]?\s*([0-9]{4,8})/i) || text.match(/^([0-9]{4,8})$/);
+        if (codeOnlyMatch) {
+          const netflixCode = codeOnlyMatch[1].trim();
+
+          await whatsappService.sendNetflixVerificationCode(
+            order.delivery_phone,
+            order.order_id,
+            netflixCode
+          );
+
+          const updatedNotes = `${order.customer_notes || ''} | NETFLIX_CODE_SENT:${netflixCode}`;
+          await db.updateOrderStatus(order.order_id, order.status, { notes: updatedNotes });
+
+          const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
+          const assignedWorkerName = refreshedOrder.current_worker?.full_name || workerName;
+
+          if (message.reply_to_message?.message_id) {
+            const { cardHtml, replyMarkup } = generateOrderCard(refreshedOrder, assignedWorkerName);
+            await telegramClient.editMessageText(message.chat.id, message.reply_to_message.message_id, cardHtml, replyMarkup);
+          }
+
+          await telegramClient.sendMessage(
+            message.chat.id,
+            `✅ <b>Netflix Code Sent to Customer!</b>\n\n📦 <b>Order ID:</b> <code>${order.order_id}</code>\n🔑 <b>Code:</b> <code>${netflixCode}</code>\n\n<i>কাস্টমারের WhatsApp-এ কোড পাঠানো হয়েছে।</i>`,
+            { reply_to_message_id: message.message_id }
+          );
+
+          return { handled: true, success: true, message: 'Netflix code sent' };
+        }
+      }
+    }
+  }
+
   return { handled: false };
 }
 

@@ -92,6 +92,26 @@ export async function handleCallbackQuery(callbackQuery: {
     return { success: true, message: 'QR resend hint shown' };
   }
 
+  // Netflix Action: Show Credential Input Hint
+  if (action === 'netflix_creds_hint') {
+    await telegramClient.answerCallbackQuery(
+      id,
+      '🔑 এই মেসেজে রিপ্লাই করে Netflix Email, Password এবং PIN (যদি থাকে) পাঠান। যেমন:\nuser@netflix.com\npass123\n1234',
+      true
+    );
+    return { success: true, message: 'Netflix credentials hint shown' };
+  }
+
+  // Netflix Action: Show Code Input Hint
+  if (action === 'netflix_code_hint') {
+    await telegramClient.answerCallbackQuery(
+      id,
+      '📤 এই মেসেজে রিপ্লাই করে Netflix Verification Code টি লিখে পাঠান (যেমন: 482910)।',
+      true
+    );
+    return { success: true, message: 'Netflix code hint shown' };
+  }
+
   // Email Verification "Code Method" action (PUBG KR / eFootball) — worker requests/re-requests code
   if (action === 'code_request') {
     // Must be claimed first

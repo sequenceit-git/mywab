@@ -128,7 +128,7 @@ export async function handlePasswordInput(
 /**
  * Helper to create order in database and generate ZiniPay hosted invoice
  */
-async function proceedToCreateOrderAndPayment(
+export async function proceedToCreateOrderAndPayment(
   phone: string,
   conversationId: string,
   cleanUid: string,
