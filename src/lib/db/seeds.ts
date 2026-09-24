@@ -92,3 +92,339 @@ export const DEFAULT_DS_DUKAN_FAQS: FAQ[] = [
     created_at: new Date().toISOString()
   }
 ];
+
+export const DEFAULT_DEMO_USERS = [
+  {
+    id: 'user-1',
+    phone_number: '+8801812345678',
+    name: 'Tanvir Ahmed',
+    status_tag: 'VIP' as const,
+    language_pref: 'bn' as const,
+    created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+    customer_profile: {
+      saved_uids: ['5128947261'],
+      last_used_uid: '5128947261',
+      preferred_payment: 'BKASH',
+      total_completed_orders: 8,
+      vip_status: true
+    }
+  },
+  {
+    id: 'user-2',
+    phone_number: '+8801798765432',
+    name: 'Sakib Al Hasan',
+    status_tag: 'REGULAR' as const,
+    language_pref: 'bn' as const,
+    created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+    customer_profile: {
+      saved_uids: ['1928374650'],
+      last_used_uid: '1928374650',
+      preferred_payment: 'NAGAD',
+      total_completed_orders: 2
+    }
+  },
+  {
+    id: 'user-3',
+    phone_number: '+8801911223344',
+    name: 'Rafiqul Islam',
+    status_tag: 'REGULAR' as const,
+    language_pref: 'bn' as const,
+    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    customer_profile: {
+      saved_uids: [],
+      total_completed_orders: 1
+    }
+  },
+  {
+    id: 'user-4',
+    phone_number: '+8801655443322',
+    name: 'Nayeem Sheikh',
+    status_tag: 'FLAGGED' as const,
+    language_pref: 'bn' as const,
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+    customer_profile: {
+      saved_uids: [],
+      total_completed_orders: 0,
+      notes: 'Sent invalid screenshot/trx multiple times'
+    }
+  }
+];
+
+export const DEFAULT_DEMO_CONVERSATIONS = [
+  {
+    id: 'conv-demo-1',
+    user_id: 'user-1',
+    phone: '+8801812345678',
+    channel: 'WHATSAPP' as const,
+    is_ai_active: true,
+    last_message_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+    created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    current_mode: 'BOT',
+    draft_state: {
+      step: 'AWAITING_PAYMENT' as const,
+      draftOrder: {
+        items: [{ skuOrName: '325 UC', quantity: 1, unitPrice: 600, productName: '325 UC' }],
+        customerName: 'Tanvir Ahmed',
+        customerPhone: '+8801812345678',
+        playerUid: '5128947261',
+        selectedGame: 'pubg_uid',
+        selectedGameLabel: 'PUBG Mobile UID Top-Up',
+        totalAmount: 600,
+        paymentUrl: 'https://checkout.zinipay.com/pay/inv_live_948271',
+        invoiceId: 'inv_live_948271'
+      },
+      lastInteractionTimestamp: Date.now() - 2 * 60 * 1000
+    }
+  },
+  {
+    id: 'conv-demo-2',
+    user_id: 'user-2',
+    phone: '+8801798765432',
+    channel: 'WHATSAPP' as const,
+    is_ai_active: true,
+    last_message_at: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
+    created_at: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+    current_mode: 'BOT',
+    draft_state: {
+      step: 'ORDER_PLACED' as const,
+      draftOrder: {
+        items: [{ skuOrName: '115 Diamonds', quantity: 1, unitPrice: 85, productName: '115 Diamonds' }],
+        customerName: 'Sakib Al Hasan',
+        customerPhone: '+8801798765432',
+        playerUid: '1928374650',
+        selectedGame: 'ff',
+        selectedGameLabel: 'Free Fire Top-Up',
+        totalAmount: 85,
+        trxId: '9X8Y7Z6W5V'
+      },
+      lastOrderId: 'WAP-20260924-1002',
+      lastInteractionTimestamp: Date.now() - 18 * 60 * 1000
+    }
+  },
+  {
+    id: 'conv-demo-3',
+    user_id: 'user-3',
+    phone: '+8801911223344',
+    channel: 'WHATSAPP' as const,
+    is_ai_active: false, // Human Takeover
+    last_message_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    created_at: new Date(Date.now() - 75 * 60 * 1000).toISOString(),
+    current_mode: 'HUMAN',
+    draft_state: {
+      step: 'IDLE' as const,
+      draftOrder: { items: [] },
+      lastInteractionTimestamp: Date.now() - 15 * 60 * 1000
+    }
+  },
+  {
+    id: 'conv-demo-4',
+    user_id: 'user-4',
+    phone: '+8801655443322',
+    channel: 'WHATSAPP' as const,
+    is_ai_active: false,
+    last_message_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    created_at: new Date(Date.now() - 120 * 60 * 1000).toISOString(),
+    current_mode: 'HUMAN',
+    draft_state: {
+      step: 'IDLE' as const,
+      draftOrder: { items: [] },
+      lastInteractionTimestamp: Date.now() - 60 * 60 * 1000
+    }
+  }
+];
+
+export const DEFAULT_DEMO_MESSAGES = [
+  // Conv 1 (Tanvir Ahmed)
+  {
+    id: 'msg-1-1',
+    conversation_id: 'conv-demo-1',
+    sender: 'CUSTOMER' as const,
+    content: 'PUBG UC nibo vai',
+    created_at: new Date(Date.now() - 12 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-1-2',
+    conversation_id: 'conv-demo-1',
+    sender: 'BOT' as const,
+    content: '👋 আসসালামু আলাইকুম Tanvir Ahmed!\nDS Dukan 24/7 গেমিং শপে আপনাকে স্বাগতম। নিচে তালিকা থেকে আপনার পছন্দের গেমটি বেছে নিন:',
+    created_at: new Date(Date.now() - 12 * 60 * 1000 + 1000).toISOString(),
+    raw_payload: { type: 'interactive_game_list' }
+  },
+  {
+    id: 'msg-1-3',
+    conversation_id: 'conv-demo-1',
+    sender: 'CUSTOMER' as const,
+    content: 'PUBG Mobile',
+    created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    raw_payload: { button_id: 'game_pubg_uid' }
+  },
+  {
+    id: 'msg-1-4',
+    conversation_id: 'conv-demo-1',
+    sender: 'BOT' as const,
+    content: '🎮 PUBG Mobile UID Top-Up প্যাকেজসমূহ:\n• 60 UC : ৳115\n• 120 UC : ৳230\n• 325 UC : ৳600\n• 385 UC [50 RP] : ৳710\n• 660 UC : ৳1150\n• 720 UC [100 RP] : ৳1250',
+    created_at: new Date(Date.now() - 10 * 60 * 1000 + 1000).toISOString()
+  },
+  {
+    id: 'msg-1-5',
+    conversation_id: 'conv-demo-1',
+    sender: 'CUSTOMER' as const,
+    content: '325 UC',
+    created_at: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
+    raw_payload: { button_id: 'pkg_pubg_325' }
+  },
+  {
+    id: 'msg-1-6',
+    conversation_id: 'conv-demo-1',
+    sender: 'BOT' as const,
+    content: 'প্যাকেজ: 325 UC (মূল্য: ৳600)\n\nঅনুগ্রহ করে আপনার PUBG Mobile Player UID (6-12 সংখ্যার নম্বর) লিখে পাঠান:',
+    created_at: new Date(Date.now() - 8 * 60 * 1000 + 1000).toISOString()
+  },
+  {
+    id: 'msg-1-7',
+    conversation_id: 'conv-demo-1',
+    sender: 'CUSTOMER' as const,
+    content: '5128947261',
+    created_at: new Date(Date.now() - 6 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-1-8',
+    conversation_id: 'conv-demo-1',
+    sender: 'BOT' as const,
+    content: '📝 অর্ডার সামারি:\n• গেম: PUBG Mobile UID Top-Up\n• প্যাকেজ: 325 UC\n• 🆔 Player UID: 5128947261\n• প্রদেয় মূল্য: ৳600 Tk\n\n⚡ পেমেন্ট সম্পন্ন করতে নিচের লিংকে ক্লিক করুন:\nhttps://checkout.zinipay.com/pay/inv_live_948271\n(bKash, Nagad, Rocket দিয়ে ১ ক্লিকে ইনস্ট্যান্ট পেমেন্ট)',
+    created_at: new Date(Date.now() - 6 * 60 * 1000 + 1000).toISOString(),
+    raw_payload: {
+      type: 'payment_invoice',
+      paymentUrl: 'https://checkout.zinipay.com/pay/inv_live_948271',
+      amount: 600,
+      orderId: 'WAP-20260924-1005'
+    }
+  },
+  {
+    id: 'msg-1-9',
+    conversation_id: 'conv-demo-1',
+    sender: 'CUSTOMER' as const,
+    content: 'Bhai payment completed bKash দিয়ে, একটু তাড়াতাড়ি ডেলিভারি দিয়েন',
+    created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString()
+  },
+
+  // Conv 2 (Sakib Al Hasan)
+  {
+    id: 'msg-2-1',
+    conversation_id: 'conv-demo-2',
+    sender: 'CUSTOMER' as const,
+    content: 'Free Fire 115 Diamond koto?',
+    created_at: new Date(Date.now() - 40 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-2-2',
+    conversation_id: 'conv-demo-2',
+    sender: 'BOT' as const,
+    content: '💎 Free Fire 115 Diamonds এর দাম মাত্র ৳85 টাকা। ডেলিভারি সময় ৫-১৫ মিনিট।',
+    created_at: new Date(Date.now() - 40 * 60 * 1000 + 1000).toISOString()
+  },
+  {
+    id: 'msg-2-3',
+    conversation_id: 'conv-demo-2',
+    sender: 'CUSTOMER' as const,
+    content: '115 Diamond nibo, UID: 1928374650',
+    created_at: new Date(Date.now() - 35 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-2-4',
+    conversation_id: 'conv-demo-2',
+    sender: 'BOT' as const,
+    content: '⚡ পেমেন্ট লিংক তৈরি হয়েছে: https://checkout.zinipay.com/pay/inv_ff_115\nপ্রদেয় মূল্য: ৳85 Tk',
+    created_at: new Date(Date.now() - 35 * 60 * 1000 + 1000).toISOString(),
+    raw_payload: { type: 'payment_invoice', amount: 85 }
+  },
+  {
+    id: 'msg-2-5',
+    conversation_id: 'conv-demo-2',
+    sender: 'CUSTOMER' as const,
+    content: 'TrxID: 9X8Y7Z6W5V',
+    created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-2-6',
+    conversation_id: 'conv-demo-2',
+    sender: 'BOT' as const,
+    content: '🎉 অর্ডার নিশ্চিতকরণ / Order Confirmed!\n📦 Order ID: WAP-20260924-1002\n💎 প্যাকেজ: 115 Diamonds\n🆔 UID: 1928374650\n💰 মূল্য: ৳85\nডেলিভারি সময়: ৫-১৫ মিনিট',
+    created_at: new Date(Date.now() - 29 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-2-7',
+    conversation_id: 'conv-demo-2',
+    sender: 'BOT' as const,
+    content: '✅ অর্ডার সফলভাবে সম্পন্ন হয়েছে / Order Delivered!\nআপনার আইডিতে 115 Diamonds যুক্ত করা হয়েছে। DS Dukan এর সাথে থাকার জন্য ধন্যবাদ! ❤️',
+    created_at: new Date(Date.now() - 20 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-2-8',
+    conversation_id: 'conv-demo-2',
+    sender: 'CUSTOMER' as const,
+    content: 'Thanks vai onek fast delivery peyechi ❤️',
+    created_at: new Date(Date.now() - 18 * 60 * 1000).toISOString()
+  },
+
+  // Conv 3 (Rafiqul Islam - Human Takeover)
+  {
+    id: 'msg-3-1',
+    conversation_id: 'conv-demo-3',
+    sender: 'CUSTOMER' as const,
+    content: 'PUBG KR e login UC pawa jabe ki?',
+    created_at: new Date(Date.now() - 70 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-3-2',
+    conversation_id: 'conv-demo-3',
+    sender: 'BOT' as const,
+    content: '👋 আসসালামু আলাইকুম! আমাদের কাছে PUBG KR, eFootball ইত্যাদি স্পেশাল লগইন সার্ভিস এভেইলেবল আছে। একজন এডমিন কিছুক্ষণেই আপনার সাথে কথা বলবেন।',
+    created_at: new Date(Date.now() - 70 * 60 * 1000 + 1000).toISOString()
+  },
+  {
+    id: 'msg-3-3',
+    conversation_id: 'conv-demo-3',
+    sender: 'ADMIN' as const,
+    content: 'হ্যালো রফিকুল ভাই! জি, আমাদের কাছে PUBG KR লগইন মেথড এবং ইমেইল কোড মেথডে সরাসরি টপ-আপ এভেইলেবল আছে। আপনি কত ইউসি নিতে চাচ্ছেন?',
+    created_at: new Date(Date.now() - 45 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-3-4',
+    conversation_id: 'conv-demo-3',
+    sender: 'CUSTOMER' as const,
+    content: '660 UC nibo vai, login info kivabe dibo?',
+    created_at: new Date(Date.now() - 40 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-3-5',
+    conversation_id: 'conv-demo-3',
+    sender: 'ADMIN' as const,
+    content: 'আপনি অর্ডার প্লেস করার পর আমাদের কর্মী টেলিগ্রাম ওয়ার্কার চ্যানেল থেকে আপনাকে ভেরিফিকেশন কোড রিকোয়েস্ট পাঠাবে। এখানে মেসেজেই আপনি ওটিপি কোড দিলেই সম্পন্ন হবে। ১০০% নিরাপদ।',
+    created_at: new Date(Date.now() - 38 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-3-6',
+    conversation_id: 'conv-demo-3',
+    sender: 'CUSTOMER' as const,
+    content: 'Okay vai bujhlam, ami ekhon order korchi',
+    created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString()
+  },
+
+  // Conv 4 (Nayeem Sheikh - Flagged)
+  {
+    id: 'msg-4-1',
+    conversation_id: 'conv-demo-4',
+    sender: 'CUSTOMER' as const,
+    content: 'Taka pathaisi UC de',
+    created_at: new Date(Date.now() - 110 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'msg-4-2',
+    conversation_id: 'conv-demo-4',
+    sender: 'ADMIN' as const,
+    content: 'আপনার দেওয়া TrxID-টি ভেরিফাই হয়নি। দয়া করে সঠিক এবং রিয়েল ট্রানজেকশন আইডি দিন।',
+    created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString()
+  }
+];
+

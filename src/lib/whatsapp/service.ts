@@ -24,6 +24,26 @@ export interface WhatsAppListSection {
   rows: WhatsAppListRow[];
 }
 
+/**
+ * Helper to record automated bot notifications into conversation history
+ */
+async function logBotMessageToConversation(phone: string, text: string, metadata?: Record<string, any>) {
+  try {
+    const { chatRepository } = await import('../db/repositories/chat');
+    const conv = await chatRepository.getOrCreateConversation(phone);
+    if (conv?.id) {
+      await chatRepository.addMessage({
+        conversationId: conv.id,
+        sender: 'BOT',
+        content: text,
+        metadata: metadata || {}
+      });
+    }
+  } catch (err) {
+    console.warn('[WhatsApp logBotMessageToConversation error]:', err);
+  }
+}
+
 export const whatsappService = {
   /**
    * Send a free-form text message to customer's WhatsApp via Meta Cloud API
@@ -242,6 +262,12 @@ ${deliveryConfig.deliveryMessage}
       { id: 'btn_website', title: '🌐 ওয়েবসাইট (২% ছাড়)' }
     ];
 
+    logBotMessageToConversation(order.delivery_phone, messageText, {
+      type: 'ORDER_CONFIRMATION',
+      orderId: order.order_id,
+      amount: order.total_amount
+    });
+
     return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Top-Up');
   },
 
@@ -267,6 +293,12 @@ ${deliveryConfig.deliveryMessage}
       { id: `track:${order.order_id}`, title: '📦 লাইভ স্ট্যাটাস' },
       { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' }
     ];
+
+    logBotMessageToConversation(order.delivery_phone, messageText, {
+      type: 'ORDER_CLAIMED',
+      orderId: order.order_id,
+      worker: workerName
+    });
 
     return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Update');
   },
@@ -304,6 +336,11 @@ DS Dukan থেকে কেনাকাটা করার জন্য ধন�
       { id: 'btn_website', title: '🌐 ওয়েবসাইট' }
     ];
 
+    logBotMessageToConversation(order.delivery_phone, messageText, {
+      type: 'ORDER_DELIVERED',
+      orderId: order.order_id
+    });
+
     return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Success');
   },
 
@@ -331,6 +368,12 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
       { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' },
       { id: 'btn_website', title: '🌐 ওয়েবসাইট ২% ছাড়' }
     ];
+
+    logBotMessageToConversation(order.delivery_phone, messageText, {
+      type: 'ORDER_CANCELLED',
+      orderId: order.order_id,
+      reason
+    });
 
     return this.sendInteractiveButtons(order.delivery_phone, messageText, buttons, 'DS Dukan Support');
   },

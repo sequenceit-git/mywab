@@ -9,6 +9,7 @@ import { BrandLogo, WhatsAppIcon, TelegramIcon, MongoDbIcon } from '@/components
 import {
   LayoutDashboard,
   ShoppingBag,
+  MessageSquare,
   Users,
   Database,
   Trophy,
@@ -19,6 +20,7 @@ import {
 
 export const navigation = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
+  { name: 'Live Chat', href: '/chat', icon: MessageSquare, badge: 'Live' },
   { name: 'Live Orders', href: '/orders', icon: ShoppingBag, badge: 'Live' },
   { name: 'Pricing & Profit', href: '/pricing', icon: BadgePercent },
   { name: 'Leaderboard', href: '/users', icon: Trophy },

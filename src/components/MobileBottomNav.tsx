@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
+  MessageSquare,
   ShoppingBag,
   BadgePercent,
   Trophy,
@@ -13,9 +14,9 @@ import {
 
 const mobileNavItems = [
   { name: 'Overview', href: '/', icon: LayoutDashboard },
+  { name: 'Chat', href: '/chat', icon: MessageSquare, badge: 'Live' },
   { name: 'Orders', href: '/orders', icon: ShoppingBag, badge: 'Live' },
   { name: 'Pricing', href: '/pricing', icon: BadgePercent },
-  { name: 'Leaderboard', href: '/users', icon: Trophy },
   { name: 'Workers', href: '/workers', icon: Users },
 ];
 

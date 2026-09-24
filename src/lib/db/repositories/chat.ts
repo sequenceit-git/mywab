@@ -147,10 +147,19 @@ export const chatRepository = {
             UserModel.find({ id: { $in: userIds } }).lean()
           ]);
 
+          const normalizeSender = (raw: string): 'CUSTOMER' | 'BOT' | 'ADMIN' => {
+            if (raw === 'USER' || raw === 'CUSTOMER') return 'CUSTOMER';
+            if (raw === 'AGENT' || raw === 'ADMIN' || raw === 'HUMAN_AGENT') return 'ADMIN';
+            return 'BOT';
+          };
+
           const messagesByConv = new Map<string, any[]>();
           for (const msg of allMessages) {
             const list = messagesByConv.get(msg.conversation_id) || [];
-            list.push(msg);
+            list.push({
+              ...msg,
+              sender: normalizeSender(msg.sender)
+            });
             messagesByConv.set(msg.conversation_id, list);
           }
 
@@ -159,13 +168,18 @@ export const chatRepository = {
             userById.set(u.id, u);
           }
 
-          return convDocs.map((c: any) => ({
-            ...c,
-            channel: 'WHATSAPP' as const,
-            is_ai_active: c.current_mode !== 'HUMAN',
-            user: c.user_id ? userById.get(c.user_id) : undefined,
-            messages: messagesByConv.get(c.id) || []
-          }));
+          return convDocs.map((c: any) => {
+            const session = mockStore.sessionStates.get(c.id) || c.draft_state;
+            return {
+              ...c,
+              channel: 'WHATSAPP' as const,
+              is_ai_active: c.current_mode !== 'HUMAN',
+              user: c.user_id ? userById.get(c.user_id) : undefined,
+              messages: messagesByConv.get(c.id) || [],
+              draft_state: session,
+              session_state: session
+            };
+          });
         }
       } catch (err) {
         console.error('[MongoDB getConversations error]:', err);
@@ -176,14 +190,23 @@ export const chatRepository = {
       const messages = Array.from(mockStore.messages.values())
         .filter(m => m.conversation_id === c.id)
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      const session = mockStore.sessionStates.get(c.id) || c.draft_state;
       return {
         ...c,
-        messages
+        messages,
+        draft_state: session,
+        session_state: session
       };
     });
   },
 
   async getConversationById(conversationId: string): Promise<Conversation | null> {
+    const normalizeSender = (raw: string): 'CUSTOMER' | 'BOT' | 'ADMIN' => {
+      if (raw === 'USER' || raw === 'CUSTOMER') return 'CUSTOMER';
+      if (raw === 'AGENT' || raw === 'ADMIN' || raw === 'HUMAN_AGENT') return 'ADMIN';
+      return 'BOT';
+    };
+
     if (isDbConfigured()) {
       try {
         await connectToDatabase();
@@ -198,13 +221,20 @@ export const chatRepository = {
             convDoc.user_id ? UserModel.findOne({ id: convDoc.user_id }).lean() : null
           ]);
 
+          const session = mockStore.sessionStates.get(convDoc.id) || convDoc.draft_state;
+
           return {
             ...convDoc,
             user_id: convDoc.user_id || '',
             channel: 'WHATSAPP' as const,
             is_ai_active: convDoc.current_mode !== 'HUMAN',
             user: user as any,
-            messages: (messages as any) || []
+            messages: (messages as any[] || []).map((m: any) => ({
+              ...m,
+              sender: normalizeSender(m.sender)
+            })),
+            draft_state: session,
+            session_state: session
           } as Conversation;
         }
       } catch (err) {
@@ -217,9 +247,12 @@ export const chatRepository = {
     const messages = Array.from(mockStore.messages.values())
       .filter(m => m.conversation_id === conversationId)
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    const session = mockStore.sessionStates.get(conversationId) || conv.draft_state;
     return {
       ...conv,
-      messages
+      messages,
+      draft_state: session,
+      session_state: session
     };
   },
 

@@ -20,8 +20,14 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const isChatPage = pathname === '/chat';
+
   return (
-    <div className="flex min-h-screen antialiased w-full relative overflow-x-hidden bg-dark-950">
+    <div
+      className={`flex antialiased w-full relative overflow-x-hidden bg-dark-950 ${
+        isChatPage ? 'h-screen max-h-screen overflow-hidden' : 'min-h-screen'
+      }`}
+    >
       {/* Desktop Sticky Sidebar */}
       <Sidebar isMobile={false} />
 
@@ -42,7 +48,11 @@ function AppShellContent({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 bg-gradient-to-b from-dark-900 via-dark-950 to-black pb-16 lg:pb-0">
+      <div
+        className={`flex-1 flex flex-col min-w-0 bg-gradient-to-b from-dark-900 via-dark-950 to-black ${
+          isChatPage ? 'h-full max-h-full min-h-0 overflow-hidden pb-16 lg:pb-0' : 'pb-16 lg:pb-0'
+        }`}
+      >
         {children}
       </div>
 
