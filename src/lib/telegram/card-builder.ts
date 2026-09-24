@@ -272,11 +272,12 @@ export function generateOrderCard(
           cardHtml: 
 `🎉 <b>CUSTOMER CONFIRMED CRUNCHYROLL LOGIN! / গ্রাহক লগইন সম্পন্ন করেছেন</b>${crunchyrollBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🍥 <b>Service:</b> <b>${gameTitle}</b>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🍥 <b>Service / Game:</b> <b>${gameTitle}</b>
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -299,11 +300,12 @@ ${itemsText}
           cardHtml: 
 `📤 <b>CRUNCHYROLL CREDENTIALS DELIVERED / অ্যাকাউন্ট পাঠানো হয়েছে</b>${crunchyrollBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🍥 <b>Service:</b> <b>${gameTitle}</b>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🍥 <b>Service / Game:</b> <b>${gameTitle}</b>
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -327,11 +329,12 @@ ${itemsText}
           cardHtml: 
 `🍥 <b>CRUNCHYROLL ORDER CLAIMED — SEND ACCOUNT INFO / তথ্য দিন</b>${crunchyrollBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🍥 <b>Service:</b> <b>${gameTitle}</b>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🍥 <b>Service / Game:</b> <b>${gameTitle}</b>
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -359,12 +362,13 @@ pass123</code>`,
         cardHtml: 
 `▶️ <b>ORDER CLAIMED [AUTO-PAID] / অর্ডার গ্রহণ করা হয়েছে</b>${youtubeBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-📧 <b>YouTube Email:</b> <code>${playerUid}</code>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+📧 <b>YouTube Email:</b> <code>${playerUid}</code>
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -389,11 +393,12 @@ ${itemsText}
           cardHtml: 
 `🎉 <b>CUSTOMER CONFIRMED NETFLIX LOGIN! / গ্রাহক লগইন সম্পন্ন করেছেন</b>${netflixBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🍿 <b>Service:</b> <b>${gameTitle}</b>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🍿 <b>Service / Game:</b> <b>${gameTitle}</b>
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -416,11 +421,12 @@ ${itemsText}
           cardHtml: 
 `🔔 <b>CUSTOMER REQUESTED NETFLIX CODE! / কোড চেয়েছেন</b>${netflixBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🍿 <b>Service:</b> <b>${gameTitle}</b>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🍿 <b>Service / Game:</b> <b>${gameTitle}</b>
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -446,11 +452,12 @@ ${itemsText}
           cardHtml: 
 `📤 <b>NETFLIX CREDENTIALS DELIVERED / অ্যাকাউন্ট পাঠানো হয়েছে</b>${netflixBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🍿 <b>Service:</b> <b>${gameTitle}</b>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🍿 <b>Service / Game:</b> <b>${gameTitle}</b>
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -477,11 +484,12 @@ ${itemsText}
           cardHtml: 
 `🍿 <b>NETFLIX ORDER CLAIMED — SEND ACCOUNT INFO / তথ্য দিন</b>${netflixBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🍿 <b>Service:</b> <b>${gameTitle}</b>
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🍿 <b>Service / Game:</b> <b>${gameTitle}</b>
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -513,12 +521,13 @@ pass123
           cardHtml: 
 `🎯 <b>CUSTOMER SCANNED QR! / গ্রাহক স্ক্যান সম্পন্ন করেছেন</b>${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -542,12 +551,13 @@ ${itemsText}
           cardHtml: 
 `📤 <b>QR CODE SENT TO WHATSAPP / কিউআর পাঠানো হয়েছে</b>${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -575,12 +585,13 @@ ${itemsText}
           cardHtml: 
 `✅ <b>ORDER CLAIMED — SEND QR CODE / কিউআর পাঠান</b>${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -606,13 +617,14 @@ ${itemsText}
           cardHtml:
 `🔑 <b>CODE RECEIVED FROM CUSTOMER! / কাস্টমার কোড পাঠিয়েছেন</b>${codeBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
+👷 <b>Assigned Worker:</b> <b>${workerName}</b>
+💰 <b>Amount:</b> ৳${order.total_amount}
+💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
+📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
 ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 🔑 <b>Verification Code:</b> <code>${receivedCode || 'N/A'}</code>
-👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
-💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
-📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -638,12 +650,13 @@ ${itemsText}
           cardHtml:
 `📧 <b>CODE REQUESTED — WAITING FOR CUSTOMER / কোডের অপেক্ষায়</b>${codeBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -669,12 +682,13 @@ ${itemsText}
           cardHtml:
 `✅ <b>ORDER CLAIMED — REQUEST CODE / কোড রিকোয়েস্ট করুন</b>${codeBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -703,12 +717,13 @@ ${itemsText}
       cardHtml: 
 `${claimedTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -736,12 +751,16 @@ ${itemsText}
       cardHtml: 
 `${processingTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Assigned Worker:</b> <b>${workerName}</b>
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+
+💎 <b>Packages:</b>
+${itemsText}
 
 <i>Click below once order is completed or cancel if invalid:</i>`,
       replyMarkup: {
@@ -766,12 +785,14 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${p
       cardHtml: 
 `${deliveredTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Processed by:</b> <b>${workerName}</b>
 💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+
 💎 <b>Packages:</b>
 ${itemsText}
 🕒 <b>Completed at:</b> ${new Date().toLocaleTimeString()}`,
@@ -793,13 +814,17 @@ ${itemsText}
       cardHtml: 
 `❌ <b>ORDER CANCELLED / অর্ডার বাতিল করা হয়েছে</b>${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 👷 <b>Handled by:</b> <b>${workerName}</b>
-⚠️ <b>Reason / কারণ:</b> ${cancelReason}${refundNotice}
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>
+⚠️ <b>Reason / কারণ:</b> ${cancelReason}${refundNotice}
+
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+
+💎 <b>Packages:</b>
+${itemsText}
 🕒 <b>Cancelled at:</b> ${new Date().toLocaleTimeString()}
 
 <i>⚠️ This order is cancelled. No further worker action needed.</i>`,
@@ -826,11 +851,12 @@ ${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${p
     cardHtml: 
 `${newOrderTitle}${qrBanner}
 📦 <b>Order ID:</b> <code>${order.order_id}</code>
-🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
-💰 <b>Total Amount:</b> ৳${order.total_amount}
+💰 <b>Amount:</b> ৳${order.total_amount}
 💳 <b>Payment:</b> <b>${methodLabel}</b>${proofLines ? `\n${proofLines}` : ''}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
+
+🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
