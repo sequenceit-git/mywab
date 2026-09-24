@@ -169,6 +169,8 @@ export async function sendHelpInfo(phone: string, conversationId: string): Promi
 📌 *বেসিক কমান্ডসমূহ:*
 • */menu* বা */start* : সব গেম ও সার্ভিসের তালিকা
 • */track [OrderID]* : লাইভ অর্ডার স্ট্যাটাস চেক
+• */human* : সরাসরি হিউম্যান সাপোর্ট এজেন্টের সাথে যোগাযোগ
+• */bot* : অটোমেটিক বট পুনরায় সক্রিয় করুন
 • */cancel* : চলমান অর্ডার বাতিল ও মেনুতে ফিরে যাওয়া
 • */website* : অফিশিয়াল ওয়েবসাইট (২% ইনস্ট্যান্ট ছাড়)
 • */help* : সহায়তা ও কমান্ড লিস্ট
@@ -179,12 +181,12 @@ export async function sendHelpInfo(phone: string, conversationId: string): Promi
 • */movie* : Netflix, Crunchyroll, Spotify সাবস্ক্রিপশন
 • */efootball* : eFootball Coins প্রাইস ও টপ-আপ
 
-📞 কোনো সমস্যা বা সহায়তার জন্য আমাদের ইনবক্সে সরাসরি লিখুন।`;
+📞 কোনো সমস্যা বা সহায়তার জন্য আমাদের ইনবক্সে সরাসরি লিখুন বা */human* পাঠান।`;
 
   const buttons = [
     { id: 'btn_main_menu', title: '🎮 সব সার্ভিস ও গেম' },
-    { id: 'btn_track_order', title: '📦 অর্ডার ট্র্যাক' },
-    { id: 'btn_website', title: '🌐 ওয়েবসাইট (২% ছাড়)' }
+    { id: 'btn_human_support', title: '👤 হিউম্যান সাপোর্ট' },
+    { id: 'btn_track_order', title: '📦 অর্ডার ট্র্যাক' }
   ];
 
   await whatsappService.sendInteractiveButtons(phone, text, buttons, 'DS Dukan Help');
@@ -195,6 +197,53 @@ export async function sendHelpInfo(phone: string, conversationId: string): Promi
     content: text,
     metadata: { type: 'HELP_INFO' }
   });
+}
+
+/**
+ * Handle /human command or request to speak with a human agent
+ */
+export async function handleHumanSupportRequest(
+  phone: string,
+  conversationId: string,
+  customerName?: string,
+  rawText?: string
+): Promise<void> {
+  // 1. Turn off AI Bot for this conversation
+  await db.setAiMode(conversationId, false);
+
+  const nameGreeting = customerName ? ` *${customerName}*` : '';
+  const text = 
+`👤 *হিউম্যান সাপোর্ট এজেন্টের সাথে কানেক্ট করা হচ্ছে${nameGreeting}...*
+
+আমাদের কাস্টমার সাপোর্ট টিমকে অবগত করা হয়েছে। খুব শীঘ্রই একজন এজেন্ট আপনার সাথে এই চ্যাটে সরাসরি যুক্ত হবেন। অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করুন। 🤝
+
+_(বট সাময়িকভাবে বন্ধ রাখা হয়েছে। পুনরায় অটোমেটিক বট চালু করতে */bot* বা */menu* লিখুন)_`;
+
+  const buttons = [
+    { id: 'btn_main_menu', title: '🤖 বট পুনরায় চালু করুন' }
+  ];
+
+  await whatsappService.sendInteractiveButtons(phone, text, buttons, 'Human Support');
+
+  await db.addMessage({
+    conversationId,
+    sender: 'BOT',
+    content: text,
+    metadata: { type: 'HUMAN_SUPPORT_TAKEOVER' }
+  });
+
+  // 2. Dispatch alert to Telegram Group
+  try {
+    const { telegramBot } = await import('../../telegram/bot');
+    await telegramBot.notifyHumanSupportRequest({
+      phone,
+      customerName,
+      messageText: rawText,
+      conversationId
+    });
+  } catch (tgErr) {
+    console.warn('[Telegram Alert Error]:', tgErr);
+  }
 }
 
 /**
@@ -230,3 +279,4 @@ export async function handleCancellation(phone: string, conversationId: string, 
     metadata: { type: 'CANCELLATION_REPLY' }
   });
 }
+

@@ -263,5 +263,52 @@ ${cardHtml}`;
       refreshedOrder.telegram_message_id = sendRes.result.message_id;
       await db.updateOrderTelegramMessageId(refreshedOrder.id, sendRes.result.message_id);
     }
+  },
+
+  /**
+   * Notify Telegram group when a customer requests human support or uses /human
+   */
+  async notifyHumanSupportRequest(data: {
+    phone: string;
+    customerName?: string;
+    messageText?: string;
+    conversationId?: string;
+  }): Promise<boolean> {
+    if (!env.telegram.isConfigured) return false;
+
+    const name = data.customerName || 'Customer';
+    const cleanPhone = data.phone.replace(/\D/g, '');
+    const textPreview = data.messageText ? data.messageText.slice(0, 300) : 'Requested Human Support';
+
+    const alertHtml =
+`🚨 <b>HUMAN SUPPORT REQUESTED / হিউম্যান সাপোর্ট রিকোয়েস্ট</b>
+
+👤 <b>Customer:</b> <b>${name}</b>
+📞 <b>Phone:</b> <code>${data.phone}</code>
+💬 <b>Message:</b> <i>${textPreview}</i>
+🕒 <b>Time:</b> ${new Date().toLocaleTimeString()}
+
+⚠️ <i>এই কাস্টমারের জন্য বট অটো-অফ (Human Takeover) করা হয়েছে। অনুগ্রহ করে অ্যাডমিন প্যানেল বা WhatsApp থেকে কাস্টমারকে উত্তর দিন।</i>`;
+
+    const inlineKeyboard = [
+      [
+        {
+          text: '💬 Open WhatsApp Chat',
+          url: `https://wa.me/${cleanPhone}`
+        }
+      ]
+    ];
+
+    try {
+      const sendRes = await telegramClient.sendMessage(env.telegram.workerGroupId, alertHtml, {
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: inlineKeyboard }
+      });
+      return Boolean(sendRes.ok);
+    } catch (err) {
+      console.error('[Telegram Human Support Alert Error]:', err);
+      return false;
+    }
   }
 };
+

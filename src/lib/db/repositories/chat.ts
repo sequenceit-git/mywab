@@ -420,6 +420,7 @@ export const chatRepository = {
   },
 
   async setAiMode(conversationId: string, isAiActive: boolean): Promise<void> {
+    const modeStr = isAiActive ? 'BOT' : 'HUMAN';
     if (isDbConfigured()) {
       try {
         await connectToDatabase();
@@ -427,16 +428,19 @@ export const chatRepository = {
           { id: conversationId },
           {
             $set: {
-              current_mode: isAiActive ? 'BOT' : 'HUMAN',
+              current_mode: modeStr,
               updated_at: new Date().toISOString()
             }
           }
         );
-      } catch (err) {}
+      } catch (err) {
+        console.error('[MongoDB setAiMode error]:', err);
+      }
     }
     const conv = mockStore.conversations.get(conversationId);
     if (conv) {
       (conv as any).is_ai_active = isAiActive;
+      (conv as any).current_mode = modeStr;
     }
   },
 

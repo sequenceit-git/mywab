@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { whatsappService } from '@/lib/whatsapp/service';
 import { env } from '@/lib/config/env';
 import { stateBot } from '@/lib/chat/state-bot';
+import { parseSlashCommand } from '@/lib/chat/input-parser';
 
 export const dynamic = 'force-dynamic';
 
@@ -129,7 +130,23 @@ export async function POST(request: NextRequest) {
             const conversation = await db.getOrCreateConversation(formattedPhone, customerName);
             await db.addMessage(conversation.id, 'CUSTOMER', messageText || buttonId || '');
 
-            console.log(`[DB] Saved | conv=${conversation.id} | phone=${formattedPhone}`);
+            console.log(`[DB] Saved | conv=${conversation.id} | phone=${formattedPhone} | is_ai_active=${conversation.is_ai_active}`);
+
+            // Check if user is requesting to re-enable the AI bot
+            const slash = parseSlashCommand(messageText);
+            const wantsBotReenable = slash?.command === 'bot' || slash?.command === 'menu' || buttonId === 'btn_main_menu';
+
+            if (wantsBotReenable && !conversation.is_ai_active) {
+              console.log(`[Bot Re-enabled] Activating AI bot for ${formattedPhone} via command /${slash?.command || buttonId}`);
+              await db.setAiMode(conversation.id, true);
+              conversation.is_ai_active = true;
+            }
+
+            // If Human Takeover is ACTIVE (is_ai_active is false), DO NOT allow the bot to auto-reply!
+            if (!conversation.is_ai_active) {
+              console.log(`[Human Takeover] AI Bot is paused for ${formattedPhone}. Inbound message saved to admin inbox.`);
+              continue;
+            }
 
             // Process with deterministic sequential State Bot
             await stateBot.handleIncomingMessage({

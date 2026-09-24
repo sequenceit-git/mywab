@@ -779,8 +779,18 @@ export function parseSlashCommand(rawText: string): SlashCommandResult | null {
   }
 
   // 4. Help & Support
-  if (['help', 'support', 'contact', 'info', 'guide', 'হেল্প', 'সাহায্য'].includes(cmd)) {
+  if (['help', 'guide', 'হেল্প', 'সাহায্য'].includes(cmd)) {
     return { isSlashCommand: true, command: 'help', args };
+  }
+
+  // 4.1 Human Support & Agent Takeover
+  if (['human', 'agent', 'admin', 'live', 'support', 'contact', 'মানুষ', 'এজেন্ট', 'এডমিন'].includes(cmd)) {
+    return { isSlashCommand: true, command: 'human', args };
+  }
+
+  // 4.2 Resume / Enable Bot
+  if (['bot', 'ai', 'auto', 'resume', 'বট'].includes(cmd)) {
+    return { isSlashCommand: true, command: 'bot', args };
   }
 
   // 5. Cancel & Reset
@@ -804,4 +814,31 @@ export function parseSlashCommand(rawText: string): SlashCommandResult | null {
 
   return { isSlashCommand: true, command: cmd, args };
 }
+
+/**
+ * Check if customer is asking to talk to a human agent / admin / support
+ */
+export function isHumanSupportRequest(rawText: string): boolean {
+  if (!rawText) return false;
+  const text = rawText.trim().toLowerCase();
+  const clean = text.replace(/[^\w\s\u0980-\u09FF]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const humanWords = [
+    'human', 'agent', 'admin', 'live agent', 'support agent', 'human support', 'customer care',
+    'মানুষ', 'এজেন্ট', 'এডমিন', 'লাইভ সাপোর্ট', 'সাপোর্ট চাই', 'মানুষ চাই', 'মানুষ দেন', 'কথা বলতে চাই'
+  ];
+
+  if (humanWords.includes(text) || humanWords.includes(clean)) {
+    return true;
+  }
+
+  const humanPatterns = [
+    /\b(?:human|agent|live\s*agent|support\s*agent|customer\s*care|talk\s*to\s*(?:human|agent|admin|person)|speak\s*to\s*(?:human|agent|admin)|need\s*(?:human|agent|support))\b/i,
+    /(?:manush(?:er)?\s*sathe|agent(?:er)?\s*sathe|admin(?:er)?\s*sathe|kotha\s*bolte\s*chai|manush\s*chai|agent\s*chai)/i,
+    /(?:মানুষের\s*সাথে\s*(?:কথা\s*বলতে|কথা\s*বলব)|এজেন্টের\s*সাথে\s*(?:কথা\s*বলতে|কথা\s*বলব)|এডমিনের\s*সাথে\s*(?:কথা\s*বলতে|কথা\s*বলব)|মানুষ\s*চাই|এজেন্ট\s*চাই|সাপোর্ট\s*এজেন্ট|লাইভ\s*সাপোর্ট)/
+  ];
+
+  return humanPatterns.some(p => p.test(clean) || p.test(text));
+}
+
 

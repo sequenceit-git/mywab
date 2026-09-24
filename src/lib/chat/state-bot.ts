@@ -7,7 +7,8 @@ import {
   isGreetingOrMenu,
   parseSlashCommand,
   isRefusalOrCancellation,
-  isPriceInquiry
+  isPriceInquiry,
+  isHumanSupportRequest
 } from './input-parser';
 
 import {
@@ -31,7 +32,8 @@ import {
   handleGratitude,
   handleStatusInquiry,
   sendHelpInfo,
-  handleCancellation
+  handleCancellation,
+  handleHumanSupportRequest
 } from './handlers/info-handlers';
 
 export * from './handlers/catalog-navigation';
@@ -74,6 +76,7 @@ export const stateBot = {
   handleStatusInquiry,
   sendHelpInfo,
   handleCancellation,
+  handleHumanSupportRequest,
 
   /**
    * Main entry point for processing incoming WhatsApp events deterministically
@@ -86,10 +89,19 @@ export const stateBot = {
 
     const session = db.getSessionState(conversationId);
 
-    // 0. Slash Commands (e.g. /menu, /start, /track, /cancel, /website, /help, /movie, /pubg, /ff, /efootball)
+    // 0. Slash Commands (e.g. /menu, /start, /track, /human, /bot, /cancel, /website, /help, /movie, /pubg, /ff, /efootball)
     const slash = parseSlashCommand(rawText);
     if (slash) {
       switch (slash.command) {
+        case 'human':
+          await handleHumanSupportRequest(phone, conversationId, customerName, rawText);
+          return;
+
+        case 'bot':
+          await db.setAiMode(conversationId, true);
+          await sendWelcomeAndGameList(phone, conversationId, customerName);
+          return;
+
         case 'menu':
         case 'cancel':
           await sendWelcomeAndGameList(phone, conversationId, customerName);
@@ -106,6 +118,7 @@ export const stateBot = {
         case 'help':
           await sendHelpInfo(phone, conversationId);
           return;
+
 
         case 'movie': {
           const movieGame = findGameCategory('game_movie');
@@ -170,6 +183,12 @@ export const stateBot = {
     // 1. Refusal, Cancellation or Change of mind ("No kinbo na", "pore nibo", "lagbe na", "thak", "দরকার নেই", etc.)
     if (isRefusalOrCancellation(rawText) || isRefusalOrCancellation(triggerId)) {
       await handleCancellation(phone, conversationId, customerName);
+      return;
+    }
+
+    // 1.1 Human Support / Agent Request trigger
+    if (triggerId === 'btn_human_support' || isHumanSupportRequest(rawText) || isHumanSupportRequest(triggerId)) {
+      await handleHumanSupportRequest(phone, conversationId, customerName, rawText);
       return;
     }
 
