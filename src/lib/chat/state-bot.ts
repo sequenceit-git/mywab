@@ -292,12 +292,26 @@ export const stateBot = {
     const baseGame = findGameCategory(triggerId) || findGameCategory(rawText);
     const matchedGame = baseGame ? (db.getCachedCategory(baseGame.id) || baseGame) : undefined;
     if (matchedGame) {
-      // Check if user also directly specified a package in the same message (e.g. "Netflix 1 month", "PUBG 60 UC")
-      const directPackage = findPackage(matchedGame, triggerId) || findPackage(matchedGame, rawText);
-      if (directPackage) {
-        await handlePackageSelection(phone, conversationId, matchedGame, directPackage);
-        return;
+      // If the user explicitly clicked/selected a category (e.g. triggerId is 'game_movie', 'game_pubg_uid', etc.),
+      // ALWAYS show the package list for that category! Do NOT attempt to auto-match rawText against packages.
+      const isExplicitCategoryTrigger = triggerId === matchedGame.id || triggerId.startsWith('game_');
+
+      if (!isExplicitCategoryTrigger) {
+        // Only if user typed free text (e.g. "Netflix 1 month", "PUBG 60 UC"), check if they also specified a package
+        // Make sure rawText isn't just the category name/shortcut (e.g. 'movie', 'anime', '/movie')
+        const isJustCategoryName = ['movie', 'anime', 'subs', 'subscription', 'pubg', 'ff', 'freefire', 'efootball', 'pes'].includes(normalizedText) ||
+          normalizedText === matchedGame.title.toLowerCase() ||
+          normalizedText === matchedGame.fullName.toLowerCase();
+
+        if (!isJustCategoryName) {
+          const directPackage = findPackage(matchedGame, triggerId) || findPackage(matchedGame, rawText);
+          if (directPackage) {
+            await handlePackageSelection(phone, conversationId, matchedGame, directPackage);
+            return;
+          }
+        }
       }
+
       await handleGameSelection(phone, conversationId, matchedGame);
       return;
     }

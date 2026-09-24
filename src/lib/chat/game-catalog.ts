@@ -274,13 +274,13 @@ export function findPackage(game: GameCategory, identifier?: string | null): Gam
     if (clean.includes('netflix') || clean.includes('নেটফ্লিক্স')) {
       return game.packages.find(p => p.id === 'pkg_sub_netflix');
     }
-    if (clean.includes('crunchyroll') || clean.includes('ক্রাঞ্চিরোল') || clean.includes('anime') || clean.includes('এনিমে')) {
+    if (clean.includes('crunchyroll') || clean.includes('ক্রাঞ্চিরোল') || clean.includes('crunchy')) {
       return game.packages.find(p => p.id === 'pkg_sub_crunchyroll');
     }
     if (clean.includes('prime') || clean.includes('amazon') || clean.includes('প্রাইম')) {
       return game.packages.find(p => p.id === 'pkg_sub_prime_vid');
     }
-    if (clean.includes('spotify') || clean.includes('স্পটিফাই') || clean.includes('music')) {
+    if (clean.includes('spotify') || clean.includes('স্পটিফাই')) {
       return game.packages.find(p => p.id === 'pkg_sub_spotify');
     }
     if (clean.includes('youtube') || clean.includes('yt') || clean.includes('ইউটিউব')) {
