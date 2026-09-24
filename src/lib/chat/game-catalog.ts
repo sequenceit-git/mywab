@@ -255,16 +255,18 @@ export function findPackage(game: GameCategory, identifier?: string | null): Gam
   const clean = normalized.replace(/[^\w\s\u0980-\u09FF\[\]\(\)\+\-]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!clean) return undefined;
 
+  const packages = (game.packages || []).filter(p => p.isActive !== false);
+
   // 1. Direct ID match
-  const directId = game.packages.find(p => p.id.toLowerCase() === raw || (raw.startsWith('pkg_') && p.id.toLowerCase().includes(raw)));
+  const directId = packages.find(p => p.id.toLowerCase() === raw || (raw.startsWith('pkg_') && p.id.toLowerCase().includes(raw)));
   if (directId) return directId;
 
   // 2. Direct Name exact match (case insensitive)
-  const exactName = game.packages.find(p => p.name.toLowerCase() === normalized || p.name.toLowerCase() === clean);
+  const exactName = packages.find(p => p.name.toLowerCase() === normalized || p.name.toLowerCase() === clean);
   if (exactName) return exactName;
 
   // 2b. Direct Amount match (e.g. typing "60" or "115" or "1 Month")
-  const exactAmount = game.packages.find(p => p.amount && (p.amount.toLowerCase() === normalized || p.amount.toLowerCase() === clean));
+  const exactAmount = packages.find(p => p.amount && (p.amount.toLowerCase() === normalized || p.amount.toLowerCase() === clean));
   if (exactAmount) return exactAmount;
 
   // 3. Game-specific intelligent intent mapping:
@@ -272,39 +274,39 @@ export function findPackage(game: GameCategory, identifier?: string | null): Gam
   // A. Movie / Streaming subscriptions
   if (game.id === 'game_movie') {
     if (clean.includes('netflix') || clean.includes('নেটফ্লিক্স')) {
-      return game.packages.find(p => p.id === 'pkg_sub_netflix');
+      return packages.find(p => p.id === 'pkg_sub_netflix');
     }
     if (clean.includes('crunchyroll') || clean.includes('ক্রাঞ্চিরোল') || clean.includes('crunchy')) {
-      return game.packages.find(p => p.id === 'pkg_sub_crunchyroll');
+      return packages.find(p => p.id === 'pkg_sub_crunchyroll');
     }
     if (clean.includes('prime') || clean.includes('amazon') || clean.includes('প্রাইম')) {
-      return game.packages.find(p => p.id === 'pkg_sub_prime_vid');
+      return packages.find(p => p.id === 'pkg_sub_prime_vid');
     }
     if (clean.includes('spotify') || clean.includes('স্পটিফাই')) {
-      return game.packages.find(p => p.id === 'pkg_sub_spotify');
+      return packages.find(p => p.id === 'pkg_sub_spotify');
     }
     if (clean.includes('youtube') || clean.includes('yt') || clean.includes('ইউটিউব')) {
-      return game.packages.find(p => p.id === 'pkg_sub_youtube');
+      return packages.find(p => p.id === 'pkg_sub_youtube');
     }
   }
 
   // B. PUBG Subscriptions
   if (game.id === 'game_pubg_sub') {
     if (clean.includes('plus') || clean.includes('প্লাস')) {
-      return game.packages.find(p => p.id === 'pkg_sub_prime_plus');
+      return packages.find(p => p.id === 'pkg_sub_prime_plus');
     }
     if (clean.includes('prime') || clean.includes('প্রাইম')) {
-      return game.packages.find(p => p.id === 'pkg_sub_prime');
+      return packages.find(p => p.id === 'pkg_sub_prime');
     }
   }
 
   // C. Free Fire Memberships
   if (game.id === 'game_ff') {
     if (clean.includes('weekly') || clean.includes('উইকলি') || clean.includes('সাপ্তাহিক')) {
-      return game.packages.find(p => p.id === 'pkg_ff_weekly');
+      return packages.find(p => p.id === 'pkg_ff_weekly');
     }
     if (clean.includes('monthly') || clean.includes('মান্থলি') || clean.includes('মাসিক')) {
-      return game.packages.find(p => p.id === 'pkg_ff_monthly');
+      return packages.find(p => p.id === 'pkg_ff_monthly');
     }
   }
 
@@ -314,7 +316,7 @@ export function findPackage(game: GameCategory, identifier?: string | null): Gam
     for (const numStr of numbersFound) {
       const num = parseInt(numStr, 10);
       // Match against package amount or name containing this number (e.g. '60 UC', '385 UC [50 RP]')
-      const matchedByNum = game.packages.find(p => {
+      const matchedByNum = packages.find(p => {
         if (p.amount) {
           const amtNum = p.amount.match(/\b\d+\b/);
           if (amtNum && parseInt(amtNum[0], 10) === num) return true;
@@ -328,16 +330,16 @@ export function findPackage(game: GameCategory, identifier?: string | null): Gam
 
   // E. RP matching for PUBG (e.g. "50 rp", "100 rp", "rp")
   if (clean.includes('50 rp') || clean.includes('50rp')) {
-    const p50 = game.packages.find(p => p.name.includes('50 RP'));
+    const p50 = packages.find(p => p.name.includes('50 RP'));
     if (p50) return p50;
   }
   if (clean.includes('100 rp') || clean.includes('100rp')) {
-    const p100 = game.packages.find(p => p.name.includes('100 RP'));
+    const p100 = packages.find(p => p.name.includes('100 RP'));
     if (p100) return p100;
   }
 
   // F. Fuzzy substring matching
-  return game.packages.find(p => {
+  return packages.find(p => {
     const pNameLow = p.name.toLowerCase();
     return clean.includes(pNameLow) || pNameLow.includes(clean);
   });

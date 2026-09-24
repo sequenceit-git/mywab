@@ -24,6 +24,32 @@ export interface PricingProduct {
 const memoryPackages = new Map<string, PricingProduct>();
 const deletedPackageIds = new Set<string>();
 let isInitialized = false;
+let lastSyncedAt = 0;
+const SYNC_TTL_MS = 10 * 1000; // 10s TTL for multi-process / webhook sync
+
+/**
+ * Intelligent package sorting helper:
+ * 1. Explicit sortOrder if specified
+ * 2. Numeric value extracted from amount or name (e.g., 60 UC -> 60, 115 UC -> 115, 130 Coins -> 130)
+ * 3. Selling price ascending
+ */
+export function sortPackages<T extends { name: string; amount?: string; price?: number; sortOrder?: number }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const orderA = a.sortOrder ?? 0;
+    const orderB = b.sortOrder ?? 0;
+    if (orderA > 0 && orderB > 0 && orderA !== orderB) {
+      return orderA - orderB;
+    }
+
+    const numA = parseFloat(String(a.amount || a.name).replace(/[^0-9.]/g, '')) || 0;
+    const numB = parseFloat(String(b.amount || b.name).replace(/[^0-9.]/g, '')) || 0;
+    if (numA > 0 && numB > 0 && numA !== numB) {
+      return numA - numB;
+    }
+
+    return (a.price || 0) - (b.price || 0);
+  });
+}
 
 /**
  * Initialize in-memory cache with default catalog
@@ -68,50 +94,51 @@ export const pricingRepository = {
   /**
    * Ensure database data is synced with memory cache
    */
-  async ensureInitialized(): Promise<void> {
-    if (isInitialized) return;
+  async ensureInitialized(forceRefresh = false): Promise<void> {
+    const now = Date.now();
+    if (!forceRefresh && isInitialized && (now - lastSyncedAt < SYNC_TTL_MS)) {
+      return;
+    }
+
     if (isDbConfigured()) {
       try {
         const conn = await connectToDatabase();
-        if (!conn) {
-          isInitialized = true;
-          return;
-        }
-        const docs = await PackageModel.find().sort({ sort_order: 1 }).lean();
+        if (conn) {
+          const docs = await PackageModel.find().lean();
 
-        if (docs && docs.length > 0) {
-          for (const row of docs) {
-            const cat = GAME_CATEGORIES.find(c => c.id === row.category_id);
-            const price = Number(row.price) || 0;
-            const basePrice = Number(row.base_price) || 0;
-            const profit = Math.max(0, price - basePrice);
-            const marginPercent = price > 0 ? Math.round((profit / price) * 100) : 0;
+          if (docs && docs.length > 0) {
+            for (const row of docs) {
+              const cat = GAME_CATEGORIES.find(c => c.id === row.category_id);
+              const price = Number(row.price) || 0;
+              const basePrice = Number(row.base_price) || 0;
+              const profit = Math.max(0, price - basePrice);
+              const marginPercent = price > 0 ? Math.round((profit / price) * 100) : 0;
 
-            memoryPackages.set(row.id, {
-              id: row.id,
-              categoryId: row.category_id,
-              categoryTitle: cat?.title || row.category_id,
-              categoryEmoji: cat?.emoji || '🎮',
-              name: row.name,
-              amount: row.amount || row.name,
-              price,
-              basePrice,
-              profit,
-              marginPercent,
-              description: row.description || '',
-              isActive: row.is_active !== false,
-              sortOrder: row.sort_order || 0,
-              updatedAt: row.updated_at
-            });
+              memoryPackages.set(row.id, {
+                id: row.id,
+                categoryId: row.category_id,
+                categoryTitle: cat?.title || row.category_id,
+                categoryEmoji: cat?.emoji || '🎮',
+                name: row.name,
+                amount: row.amount || row.name,
+                price,
+                basePrice,
+                profit,
+                marginPercent,
+                description: row.description || '',
+                isActive: row.is_active !== false,
+                sortOrder: row.sort_order || 0,
+                updatedAt: row.updated_at
+              });
+            }
           }
-          isInitialized = true;
-          return;
         }
       } catch (err) {
         console.warn('[pricingRepository] Error syncing with MongoDB:', err);
       }
     }
     isInitialized = true;
+    lastSyncedAt = Date.now();
   },
 
   /**
@@ -120,7 +147,8 @@ export const pricingRepository = {
   async getAllProducts(includeInactive = false): Promise<PricingProduct[]> {
     await this.ensureInitialized();
     const list = Array.from(memoryPackages.values()).filter(p => !deletedPackageIds.has(p.id));
-    return includeInactive ? list : list.filter(p => p.isActive);
+    const filtered = includeInactive ? list : list.filter(p => p.isActive);
+    return sortPackages(filtered);
   },
 
   /**
@@ -128,7 +156,7 @@ export const pricingRepository = {
    */
   async getProductsByCategory(categoryId: string, includeInactive = false): Promise<PricingProduct[]> {
     const all = await this.getAllProducts(includeInactive);
-    return all.filter(p => p.categoryId === categoryId);
+    return sortPackages(all.filter(p => p.categoryId === categoryId));
   },
 
   /**
@@ -146,11 +174,11 @@ export const pricingRepository = {
   async getCategories(includeInactive = false): Promise<GameCategory[]> {
     await this.ensureInitialized();
     const products = await this.getAllProducts(includeInactive);
-    return GAME_CATEGORIES.map(cat => ({
-      ...cat,
-      packages: products
-        .filter(p => p.categoryId === cat.id)
-        .map(p => ({
+    return GAME_CATEGORIES.map(cat => {
+      const catPackages = sortPackages(products.filter(p => p.categoryId === cat.id));
+      return {
+        ...cat,
+        packages: catPackages.map(p => ({
           id: p.id,
           name: p.name,
           amount: p.amount,
@@ -159,7 +187,8 @@ export const pricingRepository = {
           description: p.description,
           isActive: p.isActive
         }))
-    }));
+      };
+    });
   },
 
   /**
@@ -167,11 +196,11 @@ export const pricingRepository = {
    */
   getCachedCategories(): GameCategory[] {
     const list = Array.from(memoryPackages.values()).filter(p => !deletedPackageIds.has(p.id) && p.isActive);
-    return GAME_CATEGORIES.map(cat => ({
-      ...cat,
-      packages: list
-        .filter(p => p.categoryId === cat.id)
-        .map(p => ({
+    return GAME_CATEGORIES.map(cat => {
+      const catPackages = sortPackages(list.filter(p => p.categoryId === cat.id));
+      return {
+        ...cat,
+        packages: catPackages.map(p => ({
           id: p.id,
           name: p.name,
           amount: p.amount,
@@ -180,7 +209,8 @@ export const pricingRepository = {
           description: p.description,
           isActive: p.isActive
         }))
-    }));
+      };
+    });
   },
 
   /**
@@ -286,12 +316,13 @@ export const pricingRepository = {
       marginPercent,
       description: params.description?.trim() || '',
       isActive: true,
-      sortOrder: (memoryPackages.size || 0) + 1,
+      sortOrder: 0,
       updatedAt: now
     };
 
     deletedPackageIds.delete(packageId);
     memoryPackages.set(packageId, newProduct);
+    lastSyncedAt = Date.now();
 
     if (isDbConfigured()) {
       try {
