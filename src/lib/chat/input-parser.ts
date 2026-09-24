@@ -563,7 +563,7 @@ export function getGameDeliveryConfig(gameTitleOrCode?: string, firstItemName?: 
 
   if (isCodeMethod) {
     return {
-      deliveryMessage: 'অনুগ্রহ করে ১-১০ মিনিট অপেক্ষা করুন, এর মধ্যে আমাদের টিম আপনার কাছে ভেরিফিকেশন কোড (Code) চাইবে বা ইমেইলে কোড পাঠিয়ে দেবে। কোড আসলে এখানে সরাসরি লিখে পাঠান। 📧⚡',
+      deliveryMessage: 'অনুগ্রহ করে ১-১০ মিনিট অপেক্ষা করুন, এর মধ্যে আমাদের টিম আপনার কাছে ভেরিফিকেশন কোড (Code) চাইবে বা গেম ইমেইলে কোড পাঠিয়ে দেবে। কোড আসলে এখানে সরাসরি লিখে পাঠান। 📧⚡',
       catalogButtonTitle: (text.includes('pubg') || text.includes('kr')) ? '🇰🇷 KR UC প্রাইস' : '⚽ কয়েন প্রাইস',
       catalogButtonId: (text.includes('pubg') || text.includes('kr')) ? 'game_pubg_kr' : 'game_efb_android'
     };

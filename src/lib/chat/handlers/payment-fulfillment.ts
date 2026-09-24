@@ -265,7 +265,7 @@ export async function handleVerificationCodeInput(
   if (!code || code.length < 3) {
     await whatsappService.sendMessage(
       phone,
-      '⚠️ কোডটি স্পষ্টভাবে বুঝতে পারিনি। অনুগ্রহ করে আপনার ইমেইলে পাওয়া ভেরিফিকেশন কোডটি সরাসরি টাইপ করে পাঠান।'
+      '⚠️ কোডটি স্পষ্টভাবে বুঝতে পারিনি। অনুগ্রহ করে আপনার গেম ইমেইলে পাওয়া ভেরিফিকেশন কোডটি সরাসরি টাইপ করে পাঠান।'
     );
     return;
   }
