@@ -275,12 +275,13 @@ export const orderPaymentService = {
       const paymentNote = `Payment Verified via ZiniPay (${paymentMethod} | TXN: ${trxId})`;
       const combinedNotes = `${paymentNote} | ${credsNote}`;
 
-      await db.updateOrderStatus(order.order_id, 'PENDING_CLAIM', {
-        isAdminOverride: true,
-        notes: combinedNotes
-      });
-
       if (service === 'netflix') {
+        // Netflix: PENDING_CLAIM → worker claims for OTP/code support
+        await db.updateOrderStatus(order.order_id, 'PENDING_CLAIM', {
+          isAdminOverride: true,
+          notes: combinedNotes
+        });
+
         await whatsappService.sendNetflixAccountInfo(
           phone,
           order.order_id,
@@ -289,7 +290,25 @@ export const orderPaymentService = {
           presetCreds.pin,
           presetCreds.profileName
         );
+
+        const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
+
+        try {
+          const queueCount = await db.getUndispatchedQueueCount();
+          const dispatchRes = await telegramBot.dispatchNewOrder(refreshedOrder, queueCount);
+          console.log(`[OrderPaymentService] Netflix auto-account dispatch for #${refreshedOrder.order_id}:`, dispatchRes);
+        } catch (tgErr) {
+          console.error('[OrderPaymentService Netflix Telegram Dispatch Error]:', tgErr);
+        }
+
+        return {
+          success: true,
+          order: refreshedOrder,
+          deliveryType: 'STREAMING_AUTO',
+          message: 'Netflix preset account delivered on WhatsApp; Telegram notified for OTP support.'
+        };
       } else {
+        // Crunchyroll: fully auto-deliver → DELIVERED, no TG claim needed
         await whatsappService.sendCrunchyrollAccountInfo(
           phone,
           order.order_id,
@@ -297,27 +316,33 @@ export const orderPaymentService = {
           presetCreds.password,
           presetCreds.profileName
         );
+
+        await db.updateOrderStatus(order.order_id, 'DELIVERED', {
+          isAdminOverride: true,
+          notes: `Auto-Delivered (Crunchyroll Preset) | ${combinedNotes}`
+        });
+
+        const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
+
+        // Send order completion message to customer
+        await whatsappService.sendOrderDeliveredNotification(refreshedOrder);
+
+        // Notify TG with a completed card (informational only, no claim buttons)
+        try {
+          const queueCount = await db.getUndispatchedQueueCount();
+          const dispatchRes = await telegramBot.dispatchNewOrder(refreshedOrder, queueCount);
+          console.log(`[OrderPaymentService] Crunchyroll auto-delivered #${refreshedOrder.order_id}:`, dispatchRes);
+        } catch (tgErr) {
+          console.error('[OrderPaymentService Crunchyroll Telegram Dispatch Error]:', tgErr);
+        }
+
+        return {
+          success: true,
+          order: refreshedOrder,
+          deliveryType: 'STREAMING_AUTO',
+          message: 'Crunchyroll preset account auto-delivered; order completed.'
+        };
       }
-
-      const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
-
-      try {
-        const queueCount = await db.getUndispatchedQueueCount();
-        const dispatchRes = await telegramBot.dispatchNewOrder(refreshedOrder, queueCount);
-        console.log(
-          `[OrderPaymentService] Streaming auto-account dispatch for #${refreshedOrder.order_id}:`,
-          dispatchRes
-        );
-      } catch (tgErr) {
-        console.error('[OrderPaymentService Streaming Telegram Dispatch Error]:', tgErr);
-      }
-
-      return {
-        success: true,
-        order: refreshedOrder,
-        deliveryType: 'STREAMING_AUTO',
-        message: `${service} preset account delivered on WhatsApp; Telegram notified for OTP support.`
-      };
     }
 
     // D. Default: Manual Service (PUBG QR/Login, eFootball, Movie Subscriptions, or Auto-Fulfill Fallback)

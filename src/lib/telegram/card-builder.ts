@@ -434,11 +434,15 @@ export function generateOrderCard(
   // DELIVERED
   // ══════════════════════════════════════════════
   if (order.status === 'DELIVERED') {
-    const title = isAutoVerified ? '🎉 <b>ORDER COMPLETED [AUTO-PAID]</b>' : '🎉 <b>ORDER COMPLETED</b>';
+    const isCrunchyrollAutoDelivered = isCrunchyroll && hasCrunchyrollCredsSent;
+    const title = isCrunchyrollAutoDelivered
+      ? '🤖 <b>AUTO-DELIVERED & COMPLETED</b>'
+      : isAutoVerified ? '🎉 <b>ORDER COMPLETED [AUTO-PAID]</b>' : '🎉 <b>ORDER COMPLETED</b>';
+    const deliveredBanner = isCrunchyrollAutoDelivered ? '\n🍥 <b>[CRUNCHYROLL — AUTO-DELIVERED]</b>\n' : '';
     return {
-      cardHtml: card(title, '',
-        orderBlock('Processed by'),
-        customerBlock(),
+      cardHtml: card(title, deliveredBanner,
+        isCrunchyrollAutoDelivered ? orderBlock() : orderBlock('Processed by'),
+        isCrunchyrollAutoDelivered ? customerBlock(crCredsLines()) : customerBlock(),
         `🕒 <b>Completed:</b> ${new Date().toLocaleTimeString()}`),
       replyMarkup: { inline_keyboard: [] }
     };
