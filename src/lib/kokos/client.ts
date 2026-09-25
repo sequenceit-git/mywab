@@ -98,13 +98,13 @@ export class KokosClient {
     }
 
     const payload: Record<string, any> = {
-      player_id: cleanPlayerId,
-      game_id: params.gameId || 'pubg_mobile',
-      require_receipt: params.requireReceipt !== false
+      playerId: cleanPlayerId,
+      gameId: params.gameId || 'pubg_mobile',
+      requireReceipt: params.requireReceipt !== false
     };
 
     if (params.codeOverride) {
-      payload.code_override = params.codeOverride.trim();
+      payload.codeOverride = params.codeOverride.trim();
     } else if (params.denomination) {
       payload.denomination = Number(params.denomination);
     } else {
