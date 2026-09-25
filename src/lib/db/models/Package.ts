@@ -19,6 +19,11 @@ export interface IPackageDocument extends Document {
     pin?: string;
     profile_name?: string;
   };
+  /**
+   * Per-package Kokos Activator API auto-fulfillment override.
+   * true = force ON for this package, false = force OFF, null/undefined = inherit global setting.
+   */
+  kokos_auto_fulfill?: boolean | null;
 }
 
 const PackageSchema = new Schema<IPackageDocument>(
@@ -40,7 +45,8 @@ const PackageSchema = new Schema<IPackageDocument>(
       password: { type: String, default: '' },
       pin: { type: String, default: '' },
       profile_name: { type: String, default: '' }
-    }
+    },
+    kokos_auto_fulfill: { type: Boolean, default: null }
   },
   {
     timestamps: false,

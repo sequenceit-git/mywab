@@ -104,7 +104,15 @@ export const orderPaymentService = {
       (productName || '').toLowerCase().includes('pubg') ||
       (productName || '').toLowerCase().includes('uc');
 
-    const isKokosEnabled = db.isKokosAutoFulfillEnabled() && kokosClient.isConfigured();
+    // Per-package override takes priority over the global Kokos toggle.
+    // undefined override = inherit the global setting; true/false = force this package.
+    const orderedPackage = firstItem?.product_id
+      ? await db.getProductById(firstItem.product_id)
+      : null;
+    const kokosOverride = orderedPackage?.kokosAutoFulfill;
+    const isKokosEnabledForPackage =
+      kokosOverride !== undefined ? kokosOverride : db.isKokosAutoFulfillEnabled();
+    const isKokosEnabled = isKokosEnabledForPackage && kokosClient.isConfigured();
 
     if (isPubgUid && isKokosEnabled) {
       const denomMatch = (firstItem?.product_name || productName).match(/\d+/);

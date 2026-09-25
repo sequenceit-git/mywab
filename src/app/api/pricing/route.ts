@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Create new package under a category
-    const { categoryId, name, amount, price, basePrice, description } = body;
+    const { categoryId, name, amount, price, basePrice, description, kokosAutoFulfill } = body;
     const presetMerged = applyPresetAccountUpdate(undefined, body);
     const presetAccount =
       presetMerged === undefined || presetMerged === null ? undefined : presetMerged;
@@ -80,7 +80,11 @@ export async function POST(req: NextRequest) {
       price: numPrice,
       basePrice: numBasePrice,
       description: description ? String(description) : undefined,
-      presetAccount
+      presetAccount,
+      kokosAutoFulfill:
+        kokosAutoFulfill === undefined || kokosAutoFulfill === null
+          ? undefined
+          : Boolean(kokosAutoFulfill)
     });
 
     return NextResponse.json({
@@ -97,7 +101,7 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, name, amount, price, basePrice, description, isActive } = body;
+    const { id, name, amount, price, basePrice, description, isActive, kokosAutoFulfill } = body;
 
     if (!id) {
       return NextResponse.json({ success: false, error: 'Package ID is required' }, { status: 400 });
@@ -133,6 +137,11 @@ export async function PUT(req: NextRequest) {
       description: description !== undefined ? String(description) : undefined,
       isActive: isActive !== undefined ? Boolean(isActive) : undefined
     };
+
+    // kokosAutoFulfill: true/false = force override, null = clear override (inherit global), undefined = leave untouched
+    if (kokosAutoFulfill !== undefined) {
+      updatePayload.kokosAutoFulfill = kokosAutoFulfill === null ? null : Boolean(kokosAutoFulfill);
+    }
 
     if (presetUpdate !== undefined) {
       updatePayload.presetAccount = presetUpdate;

@@ -16,6 +16,8 @@ export interface PricingProduct {
   sortOrder?: number;
   updatedAt?: string;
   presetAccount?: PackagePresetAccountPublic;
+  /** Per-package Kokos auto-fulfillment override: true = force ON, false = force OFF, undefined = inherit global toggle */
+  kokosAutoFulfill?: boolean;
 }
 
 export interface CategoryInfo {

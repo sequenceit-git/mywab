@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { CategoryIcon } from '@/components/BrandIcons';
 import { CategoryInfo, PricingProduct } from '../types';
+import { KokosStockCheck } from './KokosStockCheck';
 
 interface CategoryAccordionProps {
   cat: CategoryInfo;
@@ -19,17 +20,23 @@ interface CategoryAccordionProps {
   totalCatProducts: number;
   isExpanded: boolean;
   searchQuery: string;
-  kokosAutoFulfill: boolean;
-  kokosToggling: boolean;
+  kokosGlobalDefault: boolean;
+  kokosPkgToggling: string | null;
+  kokosConfigured: boolean;
+  kokosInventory: Record<string, number> | null;
+  kokosInvLoading: boolean;
+  onCheckKokosInventory: () => void;
+  kokosBulkLoading: boolean;
+  onBulkSetKokosForCategory: (categoryId: string, enable: boolean) => void;
   pinexAutoFulfill: boolean;
   pinexToggling: boolean;
   onToggleExpand: () => void;
-  onToggleKokos: () => void;
   onTogglePinex: () => void;
   onAddPackage: (catId: string) => void;
   onEditPackage: (product: PricingProduct) => void;
   onDeletePackage: (product: PricingProduct) => void;
   onToggleActive: (product: PricingProduct) => void;
+  onToggleKokosForPackage: (product: PricingProduct) => void;
 }
 
 export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
@@ -38,17 +45,23 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
   totalCatProducts,
   isExpanded,
   searchQuery,
-  kokosAutoFulfill,
-  kokosToggling,
+  kokosGlobalDefault,
+  kokosPkgToggling,
+  kokosConfigured,
+  kokosInventory,
+  kokosInvLoading,
+  onCheckKokosInventory,
+  kokosBulkLoading,
+  onBulkSetKokosForCategory,
   pinexAutoFulfill,
   pinexToggling,
   onToggleExpand,
-  onToggleKokos,
   onTogglePinex,
   onAddPackage,
   onEditPackage,
   onDeletePackage,
-  onToggleActive
+  onToggleActive,
+  onToggleKokosForPackage
 }) => {
   return (
     <div
@@ -87,28 +100,8 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
           </div>
         </div>
 
-        {/* Right Controls: Kokos Toggle, Pinex Toggle, Add Package, Chevron */}
+        {/* Right Controls: Pinex Toggle, Add Package, Chevron */}
         <div className="flex items-center gap-2 self-end sm:self-center" onClick={(e) => e.stopPropagation()}>
-          {/* PUBG UID Kokos Toggle */}
-          {cat.id === 'game_pubg_uid' && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleKokos();
-              }}
-              disabled={kokosToggling}
-              title="Toggle Kokos API PUBG Auto-Fulfillment"
-              className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl inline-flex items-center gap-1.5 transition ${
-                kokosAutoFulfill
-                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
-                  : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-white'
-              }`}
-            >
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>Kokos: {kokosAutoFulfill ? 'ON' : 'OFF'}</span>
-            </button>
-          )}
-
           {/* Free Fire Pinex Toggle */}
           {cat.id === 'game_ff' && (
             <button
@@ -162,6 +155,17 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
       {/* Expandable Package Container */}
       {isExpanded && (
         <div className="border-t border-slate-800/80 p-4 sm:p-5 bg-slate-950/40 space-y-3">
+          {cat.id === 'game_pubg_uid' && (
+            <KokosStockCheck
+              kokosConfigured={kokosConfigured}
+              kokosInventory={kokosInventory}
+              kokosInvLoading={kokosInvLoading}
+              onCheckInventory={onCheckKokosInventory}
+              bulkLoading={kokosBulkLoading}
+              onBulkSetAutoFulfill={(enable) => onBulkSetKokosForCategory(cat.id, enable)}
+            />
+          )}
+
           {catProducts.length === 0 ? (
             <div className="py-8 text-center text-slate-500 text-xs space-y-2">
               <Package className="w-7 h-7 text-slate-600 mx-auto opacity-50" />
@@ -191,6 +195,9 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                       <th className="py-2.5 px-3">Net Profit</th>
                       <th className="py-2.5 px-3">Margin</th>
                       <th className="py-2.5 px-3 text-center">Bot Status</th>
+                      {cat.id === 'game_pubg_uid' && (
+                        <th className="py-2.5 px-3 text-center">Auto-Fulfill (Kokos)</th>
+                      )}
                       <th className="py-2.5 px-3 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -276,6 +283,29 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                             </button>
                           </td>
 
+                          {/* Per-Package Kokos Auto-Fulfill Toggle */}
+                          {cat.id === 'game_pubg_uid' && (() => {
+                            const kokosEffective = p.kokosAutoFulfill !== undefined ? p.kokosAutoFulfill : kokosGlobalDefault;
+                            const isTogglingThis = kokosPkgToggling === p.id;
+                            return (
+                              <td className="py-3 px-3 text-center">
+                                <button
+                                  onClick={() => onToggleKokosForPackage(p)}
+                                  disabled={isTogglingThis}
+                                  title={kokosEffective ? 'Kokos auto top-up is ON for this package. Click to turn OFF' : 'Kokos auto top-up is OFF for this package. Click to turn ON'}
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition disabled:opacity-50 ${
+                                    kokosEffective
+                                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30'
+                                      : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-emerald-500/15 hover:text-emerald-400'
+                                  }`}
+                                >
+                                  <Zap className="w-3 h-3 text-amber-400" />
+                                  <span>{isTogglingThis ? '...' : kokosEffective ? 'ON' : 'OFF'}</span>
+                                </button>
+                              </td>
+                            );
+                          })()}
+
                           {/* Actions */}
                           <td className="py-3 px-3 text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -344,6 +374,25 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                           <span className="text-xs font-bold text-emerald-400">+{p.marginPercent}%</span>
                         </div>
                       </div>
+
+                      {cat.id === 'game_pubg_uid' && (() => {
+                        const kokosEffective = p.kokosAutoFulfill !== undefined ? p.kokosAutoFulfill : kokosGlobalDefault;
+                        const isTogglingThis = kokosPkgToggling === p.id;
+                        return (
+                          <button
+                            onClick={() => onToggleKokosForPackage(p)}
+                            disabled={isTogglingThis}
+                            className={`w-full text-[10px] font-bold px-2 py-1.5 rounded-lg inline-flex items-center justify-center gap-1.5 transition disabled:opacity-50 ${
+                              kokosEffective
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-slate-800 text-slate-400 border border-slate-700'
+                            }`}
+                          >
+                            <Zap className="w-3 h-3 text-amber-400" />
+                            <span>Kokos Auto-Fulfill: {isTogglingThis ? '...' : kokosEffective ? 'ON' : 'OFF'}</span>
+                          </button>
+                        );
+                      })()}
 
                       <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/50">
                         <button

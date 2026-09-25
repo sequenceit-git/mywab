@@ -3,44 +3,25 @@
 import React from 'react';
 import {
   CheckCircle2,
-  Zap,
-  ToggleLeft,
-  ToggleRight,
-  Package,
-  RefreshCw,
   Search
 } from 'lucide-react';
 import { PubgUidIcon } from '@/components/BrandIcons';
 
 interface KokosConfigCardProps {
   kokosConfigured: boolean;
-  kokosAutoFulfill: boolean;
-  kokosToggling: boolean;
-  kokosToggleMsg: string | null;
-  kokosInventory: Record<string, number> | null;
-  kokosInvLoading: boolean;
   kokosLookupUid: string;
   setKokosLookupUid: (val: string) => void;
   kokosLookupLoading: boolean;
   kokosLookupResult: { name?: string; error?: string } | null;
-  onToggleKokos: () => void;
-  onCheckInventory: () => void;
   onLookupPlayer: (e: React.FormEvent) => void;
 }
 
 export const KokosConfigCard: React.FC<KokosConfigCardProps> = ({
   kokosConfigured,
-  kokosAutoFulfill,
-  kokosToggling,
-  kokosToggleMsg,
-  kokosInventory,
-  kokosInvLoading,
   kokosLookupUid,
   setKokosLookupUid,
   kokosLookupLoading,
   kokosLookupResult,
-  onToggleKokos,
-  onCheckInventory,
   onLookupPlayer
 }) => {
   return (
@@ -69,83 +50,9 @@ export const KokosConfigCard: React.FC<KokosConfigCardProps> = ({
         </span>
       </div>
 
-      {/* Auto-Fulfillment Master Toggle Switch */}
-      <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
-        <div>
-          <div className="text-xs font-bold text-white flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-brand-400" />
-            <span>PUBG UID Auto-Fulfill Mode</span>
-          </div>
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            {kokosAutoFulfill
-              ? '🟢 ON: Orders redeem instantly via Kokos API & notify on WhatsApp'
-              : '🔵 OFF: Orders dispatch to Telegram Worker Bot for manual claims'}
-          </p>
-        </div>
-
-        <button
-          onClick={onToggleKokos}
-          disabled={kokosToggling}
-          className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
-            kokosAutoFulfill
-              ? 'bg-emerald-500 hover:bg-emerald-400 text-dark-950 shadow-md shadow-emerald-500/20'
-              : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
-          }`}
-        >
-          {kokosAutoFulfill ? (
-            <>
-              <ToggleRight className="w-4 h-4" />
-              <span>ON</span>
-            </>
-          ) : (
-            <>
-              <ToggleLeft className="w-4 h-4" />
-              <span>OFF</span>
-            </>
-          )}
-        </button>
-      </div>
-
-      {kokosToggleMsg && (
-        <div className="p-2.5 rounded-xl bg-brand-500/10 border border-brand-500/20 text-brand-300 text-xs flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          <span>{kokosToggleMsg}</span>
-        </div>
-      )}
-
-      {/* Live Kokos Inventory Check */}
-      <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 space-y-2 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="text-slate-300 font-semibold flex items-center gap-1.5">
-            <Package className="w-3.5 h-3.5 text-slate-400" />
-            <span>Database Code Stock</span>
-          </span>
-          <button
-            onClick={onCheckInventory}
-            disabled={kokosInvLoading || !kokosConfigured}
-            className="text-[11px] text-brand-400 hover:underline flex items-center gap-1 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3 h-3 ${kokosInvLoading ? 'animate-spin' : ''}`} />
-            <span>{kokosInventory ? 'Refresh Stock' : 'Check Stock'}</span>
-          </button>
-        </div>
-
-        {kokosInventory && (
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 pt-1">
-            {['60', '325', '660', '1800', '3850', '8100'].map((uc) => (
-              <div key={uc} className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-center">
-                <div className="text-[10px] text-slate-400">{uc} UC</div>
-                <div
-                  className={`text-xs font-mono font-bold ${
-                    (kokosInventory[uc] || 0) > 0 ? 'text-emerald-400' : 'text-slate-500'
-                  }`}
-                >
-                  {kokosInventory[uc] ?? 0}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Auto-Fulfillment & stock check note: both now live on the Pricing page */}
+      <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 text-[11px] text-slate-400">
+        Auto-fulfillment toggle and UC code stock check have moved to <b className="text-slate-200">Pricing → top of the package list</b>.
       </div>
 
       {/* Test Player Character Lookup */}

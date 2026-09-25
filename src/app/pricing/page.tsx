@@ -47,9 +47,14 @@ export default function PricingPage() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
-  // Kokos Auto-Fulfill Status
+  // Kokos Auto-Fulfill Status (global value is now only an internal fallback default;
+  // actual on/off control happens per-package from the package list)
   const [kokosAutoFulfill, setKokosAutoFulfill] = useState<boolean>(false);
-  const [kokosToggling, setKokosToggling] = useState<boolean>(false);
+  const [kokosPkgToggling, setKokosPkgToggling] = useState<string | null>(null);
+  const [kokosConfigured, setKokosConfigured] = useState<boolean>(false);
+  const [kokosInventory, setKokosInventory] = useState<Record<string, number> | null>(null);
+  const [kokosInvLoading, setKokosInvLoading] = useState<boolean>(false);
+  const [kokosBulkLoading, setKokosBulkLoading] = useState<boolean>(false);
 
   // Pinex Free Fire Auto-Fulfill Status
   const [pinexAutoFulfill, setPinexAutoFulfill] = useState<boolean>(true);
@@ -62,10 +67,28 @@ export default function PricingPage() {
         const data = await res.json();
         if (data.success) {
           setKokosAutoFulfill(data.autoFulfillEnabled);
+          setKokosConfigured(data.configured);
         }
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleCheckKokosInventory = async () => {
+    setKokosInvLoading(true);
+    try {
+      const res = await fetch('/api/system/kokos?inventory=true');
+      const data = await res.json();
+      if (data.success && data.inventory) {
+        setKokosInventory(data.inventory);
+      } else {
+        setKokosInventory({});
+      }
+    } catch (e) {
+      console.error('Failed to fetch Kokos inventory:', e);
+    } finally {
+      setKokosInvLoading(false);
     }
   };
 
@@ -80,29 +103,6 @@ export default function PricingPage() {
       }
     } catch (e) {
       console.error(e);
-    }
-  };
-
-  const handleToggleKokos = async () => {
-    setKokosToggling(true);
-    try {
-      const nextState = !kokosAutoFulfill;
-      const res = await fetch('/api/system/kokos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'TOGGLE_AUTO_FULFILL',
-          enabled: nextState
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setKokosAutoFulfill(data.autoFulfillEnabled);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setKokosToggling(false);
     }
   };
 
@@ -340,6 +340,54 @@ export default function PricingPage() {
     }
   };
 
+  // Toggle Kokos auto-fulfillment directly for one package from the list
+  const handleToggleKokosForPackage = async (product: PricingProduct) => {
+    setKokosPkgToggling(product.id);
+    try {
+      const effective = product.kokosAutoFulfill !== undefined ? product.kokosAutoFulfill : kokosAutoFulfill;
+      await fetch('/api/pricing', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: product.id,
+          kokosAutoFulfill: !effective
+        })
+      });
+      await fetchPricing();
+    } catch (err) {
+      console.error('Failed to toggle Kokos auto-fulfillment for package:', err);
+    } finally {
+      setKokosPkgToggling(null);
+    }
+  };
+
+  // Bulk turn Kokos auto-fulfillment ON or OFF for every package in a category
+  const handleBulkSetKokosForCategory = async (categoryId: string, enable: boolean) => {
+    const catProducts = products.filter((p) => p.categoryId === categoryId);
+    if (catProducts.length === 0) return;
+
+    setKokosBulkLoading(true);
+    try {
+      await Promise.all(
+        catProducts.map((p) =>
+          fetch('/api/pricing', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: p.id,
+              kokosAutoFulfill: enable
+            })
+          })
+        )
+      );
+      await fetchPricing();
+    } catch (err) {
+      console.error('Failed to bulk-toggle Kokos auto-fulfillment for category:', err);
+    } finally {
+      setKokosBulkLoading(false);
+    }
+  };
+
   // Delete package
   const handleDeletePackage = async () => {
     if (!deletingProduct) return;
@@ -476,17 +524,23 @@ export default function PricingPage() {
                   totalCatProducts={totalCatProducts}
                   isExpanded={isExpanded}
                   searchQuery={query}
-                  kokosAutoFulfill={kokosAutoFulfill}
-                  kokosToggling={kokosToggling}
+                  kokosGlobalDefault={kokosAutoFulfill}
+                  kokosPkgToggling={kokosPkgToggling}
+                  kokosConfigured={kokosConfigured}
+                  kokosInventory={kokosInventory}
+                  kokosInvLoading={kokosInvLoading}
+                  onCheckKokosInventory={handleCheckKokosInventory}
+                  kokosBulkLoading={kokosBulkLoading}
+                  onBulkSetKokosForCategory={handleBulkSetKokosForCategory}
                   pinexAutoFulfill={pinexAutoFulfill}
                   pinexToggling={pinexToggling}
                   onToggleExpand={() => toggleCategory(cat.id)}
-                  onToggleKokos={handleToggleKokos}
                   onTogglePinex={handleTogglePinex}
                   onAddPackage={handleOpenAdd}
                   onEditPackage={handleOpenEdit}
                   onDeletePackage={(product) => setDeletingProduct(product)}
                   onToggleActive={handleToggleActive}
+                  onToggleKokosForPackage={handleToggleKokosForPackage}
                 />
               );
             })}

@@ -19,16 +19,12 @@ export default function ConfigPage() {
   const [tgWebhookLoading, setTgWebhookLoading] = useState(false);
   const [tgWebhookMsg, setTgWebhookMsg] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Kokos Activator API State
+  // Kokos Activator API State (auto-fulfillment is now toggled per-package, and stock check
+  // now lives at the top of the Pricing page package list)
   const [kokosConfigured, setKokosConfigured] = useState<boolean>(false);
-  const [kokosAutoFulfill, setKokosAutoFulfill] = useState<boolean>(false);
-  const [kokosInventory, setKokosInventory] = useState<Record<string, number> | null>(null);
-  const [kokosInvLoading, setKokosInvLoading] = useState<boolean>(false);
-  const [kokosToggling, setKokosToggling] = useState<boolean>(false);
   const [kokosLookupUid, setKokosLookupUid] = useState<string>('');
   const [kokosLookupLoading, setKokosLookupLoading] = useState<boolean>(false);
   const [kokosLookupResult, setKokosLookupResult] = useState<{ name?: string; error?: string } | null>(null);
-  const [kokosToggleMsg, setKokosToggleMsg] = useState<string | null>(null);
 
   // Pinex Activator API State
   const [pinexConfigured, setPinexConfigured] = useState<boolean>(false);
@@ -57,7 +53,6 @@ export default function ConfigPage() {
         const data = await res.json();
         if (data.success) {
           setKokosConfigured(data.configured);
-          setKokosAutoFulfill(data.autoFulfillEnabled);
         }
       }
     } catch (e) {
@@ -277,49 +272,6 @@ export default function ConfigPage() {
     }
   };
 
-  const handleToggleKokos = async () => {
-    setKokosToggling(true);
-    setKokosToggleMsg(null);
-    try {
-      const nextState = !kokosAutoFulfill;
-      const res = await fetch('/api/system/kokos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'TOGGLE_AUTO_FULFILL',
-          enabled: nextState
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setKokosAutoFulfill(data.autoFulfillEnabled);
-        setKokosToggleMsg(data.message);
-        setTimeout(() => setKokosToggleMsg(null), 4000);
-      }
-    } catch (e) {
-      console.error('Failed to toggle Kokos auto-fulfillment:', e);
-    } finally {
-      setKokosToggling(false);
-    }
-  };
-
-  const handleCheckInventory = async () => {
-    setKokosInvLoading(true);
-    try {
-      const res = await fetch('/api/system/kokos?inventory=true');
-      const data = await res.json();
-      if (data.success && data.inventory) {
-        setKokosInventory(data.inventory);
-      } else {
-        setKokosInventory({});
-      }
-    } catch (e) {
-      console.error('Failed to fetch inventory:', e);
-    } finally {
-      setKokosInvLoading(false);
-    }
-  };
-
   const handleLookupPlayer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!kokosLookupUid.trim()) return;
@@ -395,17 +347,10 @@ export default function ConfigPage() {
           {/* 2. Kokos Activator API Card (PUBG UID Auto-Fulfillment) */}
           <KokosConfigCard
             kokosConfigured={kokosConfigured}
-            kokosAutoFulfill={kokosAutoFulfill}
-            kokosToggling={kokosToggling}
-            kokosToggleMsg={kokosToggleMsg}
-            kokosInventory={kokosInventory}
-            kokosInvLoading={kokosInvLoading}
             kokosLookupUid={kokosLookupUid}
             setKokosLookupUid={setKokosLookupUid}
             kokosLookupLoading={kokosLookupLoading}
             kokosLookupResult={kokosLookupResult}
-            onToggleKokos={handleToggleKokos}
-            onCheckInventory={handleCheckInventory}
             onLookupPlayer={handleLookupPlayer}
           />
 

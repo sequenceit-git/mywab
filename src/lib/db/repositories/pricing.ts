@@ -20,6 +20,11 @@ export interface PricingProduct {
   sortOrder?: number;
   updatedAt?: string;
   presetAccount?: PackagePresetAccount;
+  /**
+   * Per-package Kokos Activator API auto-fulfillment override.
+   * true = force ON for this package, false = force OFF, undefined = inherit the global Kokos toggle.
+   */
+  kokosAutoFulfill?: boolean;
 }
 
 export function toPublicPresetAccount(
@@ -193,7 +198,11 @@ export const pricingRepository = {
                 isActive: row.is_active !== false,
                 sortOrder: row.sort_order || existingMem?.sortOrder || 0,
                 updatedAt: row.updated_at,
-                presetAccount: parsePresetFromRow(row) || existingMem?.presetAccount
+                presetAccount: parsePresetFromRow(row) || existingMem?.presetAccount,
+                kokosAutoFulfill:
+                  typeof row.kokos_auto_fulfill === 'boolean'
+                    ? row.kokos_auto_fulfill
+                    : existingMem?.kokosAutoFulfill
               });
             }
           }
@@ -355,6 +364,7 @@ export const pricingRepository = {
     basePrice?: number;
     description?: string;
     presetAccount?: PackagePresetAccount;
+    kokosAutoFulfill?: boolean | null;
   }): Promise<PricingProduct> {
     await this.ensureInitialized();
 
@@ -386,7 +396,11 @@ export const pricingRepository = {
       isActive: true,
       sortOrder: 0,
       updatedAt: now,
-      presetAccount: params.presetAccount
+      presetAccount: params.presetAccount,
+      kokosAutoFulfill:
+        params.kokosAutoFulfill === null || params.kokosAutoFulfill === undefined
+          ? undefined
+          : params.kokosAutoFulfill
     };
 
     deletedPackageIds.delete(packageId);
@@ -419,7 +433,8 @@ export const pricingRepository = {
                     pin: newProduct.presetAccount.pin || '',
                     profile_name: newProduct.presetAccount.profileName || ''
                   }
-                : null
+                : null,
+              kokos_auto_fulfill: newProduct.kokosAutoFulfill === undefined ? null : newProduct.kokosAutoFulfill
             }
           },
           { upsert: true, setDefaultsOnInsert: true }
@@ -445,6 +460,12 @@ export const pricingRepository = {
       description?: string;
       isActive?: boolean;
       presetAccount?: PackagePresetAccount | null;
+      /**
+       * true/false = force override for this package.
+       * null = explicitly clear the override (inherit the global Kokos toggle).
+       * undefined = leave the existing override untouched.
+       */
+      kokosAutoFulfill?: boolean | null;
     }
   ): Promise<PricingProduct | null> {
     await this.ensureInitialized();
@@ -465,6 +486,11 @@ export const pricingRepository = {
       nextPreset = updates.presetAccount || undefined;
     }
 
+    let nextKokosAutoFulfill = existing.kokosAutoFulfill;
+    if (updates.kokosAutoFulfill !== undefined) {
+      nextKokosAutoFulfill = updates.kokosAutoFulfill === null ? undefined : updates.kokosAutoFulfill;
+    }
+
     const updatedProduct: PricingProduct = {
       ...existing,
       name: updates.name !== undefined ? updates.name.trim() : existing.name,
@@ -476,7 +502,8 @@ export const pricingRepository = {
       description: updates.description !== undefined ? updates.description.trim() : existing.description,
       isActive: updates.isActive !== undefined ? updates.isActive : existing.isActive,
       updatedAt: now,
-      presetAccount: nextPreset
+      presetAccount: nextPreset,
+      kokosAutoFulfill: nextKokosAutoFulfill
     };
 
     memoryPackages.set(packageId, updatedProduct);
@@ -508,7 +535,9 @@ export const pricingRepository = {
                     pin: updatedProduct.presetAccount.pin || '',
                     profile_name: updatedProduct.presetAccount.profileName || ''
                   }
-                : null
+                : null,
+              kokos_auto_fulfill:
+                updatedProduct.kokosAutoFulfill === undefined ? null : updatedProduct.kokosAutoFulfill
             }
           },
           { upsert: true, setDefaultsOnInsert: true }
