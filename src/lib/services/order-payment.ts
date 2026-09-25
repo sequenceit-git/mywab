@@ -5,6 +5,7 @@ import { telegramQueue } from '../telegram/queue';
 import { kokosClient } from '../kokos/client';
 import { pinexClient } from '../pinex/client';
 import { Order } from '@/types';
+import { buildStreamingCredsNote, resolveStreamingPresetForOrder } from '../streaming-accounts';
 
 export interface PaymentSuccessParams {
   orderIdCode?: string;
@@ -20,7 +21,7 @@ export interface PaymentProcessResult {
   alreadyProcessed?: boolean;
   order?: Order;
   message?: string;
-  deliveryType?: 'KOKOS_AUTO' | 'PINEX_AUTO' | 'TELEGRAM_WORKER';
+  deliveryType?: 'KOKOS_AUTO' | 'PINEX_AUTO' | 'STREAMING_AUTO' | 'TELEGRAM_WORKER';
 }
 
 export const orderPaymentService = {
@@ -245,7 +246,59 @@ export const orderPaymentService = {
       }
     }
 
-    // C. Default: Manual Service (PUBG QR/Login, eFootball, Movie Subscriptions, or Auto-Fulfill Fallback)
+    // C. Netflix / Crunchyroll — preset account auto-delivery (set on Pricing → package)
+    const streamingPreset = await resolveStreamingPresetForOrder(order);
+
+    if (streamingPreset) {
+      const { service, creds: presetCreds } = streamingPreset;
+      const credsNote = buildStreamingCredsNote(service, presetCreds);
+      const paymentNote = `Payment Verified via ZiniPay (${paymentMethod} | TXN: ${trxId})`;
+      const combinedNotes = `${paymentNote} | ${credsNote}`;
+
+      await db.updateOrderStatus(order.order_id, 'PENDING_CLAIM', {
+        isAdminOverride: true,
+        notes: combinedNotes
+      });
+
+      if (service === 'netflix') {
+        await whatsappService.sendNetflixAccountInfo(
+          phone,
+          order.order_id,
+          presetCreds.email,
+          presetCreds.password,
+          presetCreds.pin
+        );
+      } else {
+        await whatsappService.sendCrunchyrollAccountInfo(
+          phone,
+          order.order_id,
+          presetCreds.email,
+          presetCreds.password
+        );
+      }
+
+      const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
+
+      try {
+        const queueCount = await db.getUndispatchedQueueCount();
+        const dispatchRes = await telegramBot.dispatchNewOrder(refreshedOrder, queueCount);
+        console.log(
+          `[OrderPaymentService] Streaming auto-account dispatch for #${refreshedOrder.order_id}:`,
+          dispatchRes
+        );
+      } catch (tgErr) {
+        console.error('[OrderPaymentService Streaming Telegram Dispatch Error]:', tgErr);
+      }
+
+      return {
+        success: true,
+        order: refreshedOrder,
+        deliveryType: 'STREAMING_AUTO',
+        message: `${service} preset account delivered on WhatsApp; Telegram notified for OTP support.`
+      };
+    }
+
+    // D. Default: Manual Service (PUBG QR/Login, eFootball, Movie Subscriptions, or Auto-Fulfill Fallback)
     // Update order status to PENDING_CLAIM and dispatch to Telegram Worker Group
     await db.updateOrderStatus(order.order_id, 'PENDING_CLAIM', {
       isAdminOverride: true,

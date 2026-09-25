@@ -155,6 +155,7 @@ export async function proceedToCreateOrderAndPayment(
       status: 'PENDING_PAYMENT',
       items: [
         {
+          product_id: item?.packageId,
           product_name: `${gameLabel} (${pkgName})`,
           unit_price: amount,
           quantity: 1

@@ -31,6 +31,10 @@ export default function PricingPage() {
   const [modalBasePrice, setModalBasePrice] = useState<number>(0);
   const [modalDescription, setModalDescription] = useState<string>('');
   const [modalIsActive, setModalIsActive] = useState<boolean>(true);
+  const [modalPresetEmail, setModalPresetEmail] = useState('');
+  const [modalPresetPassword, setModalPresetPassword] = useState('');
+  const [modalPresetPin, setModalPresetPin] = useState('');
+  const [modalPresetHasPassword, setModalPresetHasPassword] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -181,6 +185,10 @@ export default function PricingPage() {
     setModalBasePrice(0);
     setModalDescription('');
     setModalIsActive(true);
+    setModalPresetEmail('');
+    setModalPresetPassword('');
+    setModalPresetPin('');
+    setModalPresetHasPassword(false);
     setFeedbackMsg(null);
     setIsModalOpen(true);
   };
@@ -196,8 +204,28 @@ export default function PricingPage() {
     setModalBasePrice(product.basePrice);
     setModalDescription(product.description || '');
     setModalIsActive(product.isActive !== false);
+    setModalPresetEmail(product.presetAccount?.email || '');
+    setModalPresetPassword(product.presetAccount?.password || '');
+    setModalPresetPin(product.presetAccount?.pin || '');
+    setModalPresetHasPassword(Boolean(product.presetAccount?.hasPassword || product.presetAccount?.password));
     setFeedbackMsg(null);
     setIsModalOpen(true);
+  };
+
+  const buildPresetPayload = () => {
+    const blob = `${modalPkgId} ${modalName} ${modalCategoryId}`.toLowerCase();
+    if (!blob.includes('netflix') && !blob.includes('crunchyroll')) {
+      return {};
+    }
+    // Clearing both email and password removes auto-delivery account
+    if (!modalPresetEmail.trim() && !modalPresetPassword.trim()) {
+      return modalPresetHasPassword ? { clearPresetAccount: true } : {};
+    }
+    return {
+      presetEmail: modalPresetEmail.trim(),
+      presetPassword: modalPresetPassword.trim(),
+      presetPin: modalPresetPin.trim()
+    };
   };
 
   // Save package (Create or Update)
@@ -210,6 +238,21 @@ export default function PricingPage() {
     }
     if (modalPrice < 0 || modalBasePrice < 0) {
       setFeedbackMsg({ type: 'error', text: 'Prices cannot be negative numbers' });
+      return;
+    }
+
+    const streamingBlob = `${modalPkgId} ${modalName} ${modalCategoryId}`.toLowerCase();
+    const isStreamingPkg =
+      streamingBlob.includes('netflix') || streamingBlob.includes('crunchyroll');
+    if (
+      isStreamingPkg &&
+      ((modalPresetEmail.trim() && !modalPresetPassword.trim()) ||
+        (!modalPresetEmail.trim() && modalPresetPassword.trim()))
+    ) {
+      setFeedbackMsg({
+        type: 'error',
+        text: 'For auto-delivery, set both login email and password (or leave both empty).'
+      });
       return;
     }
 
@@ -229,7 +272,8 @@ export default function PricingPage() {
             price: Number(modalPrice),
             basePrice: Number(modalBasePrice),
             description: modalDescription.trim(),
-            isActive: modalIsActive
+            isActive: modalIsActive,
+            ...buildPresetPayload()
           })
         });
 
@@ -252,7 +296,8 @@ export default function PricingPage() {
             amount: modalAmount.trim() || modalName.trim(),
             price: Number(modalPrice),
             basePrice: Number(modalBasePrice),
-            description: modalDescription.trim()
+            description: modalDescription.trim(),
+            ...buildPresetPayload()
           })
         });
 
@@ -464,6 +509,14 @@ export default function PricingPage() {
         setModalDescription={setModalDescription}
         modalIsActive={modalIsActive}
         setModalIsActive={setModalIsActive}
+        modalPkgId={modalPkgId}
+        modalPresetEmail={modalPresetEmail}
+        setModalPresetEmail={setModalPresetEmail}
+        modalPresetPassword={modalPresetPassword}
+        setModalPresetPassword={setModalPresetPassword}
+        modalPresetPin={modalPresetPin}
+        setModalPresetPin={setModalPresetPin}
+        modalPresetHasPassword={modalPresetHasPassword}
         feedbackMsg={feedbackMsg}
         isSaving={isSaving}
         onClose={() => setIsModalOpen(false)}

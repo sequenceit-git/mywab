@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { toPublicPricingProduct } from '@/lib/db/repositories/pricing';
+import { applyPresetAccountUpdate } from '@/lib/streaming-accounts';
 
 export async function GET(req: NextRequest) {
   try {
@@ -29,7 +31,7 @@ export async function GET(req: NextRequest) {
         avgMarginPercent,
         avgProfitPerUnit
       },
-      products,
+      products: products.map(toPublicPricingProduct),
       categories
     });
   } catch (error) {
@@ -50,6 +52,9 @@ export async function POST(req: NextRequest) {
 
     // 2. Create new package under a category
     const { categoryId, name, amount, price, basePrice, description } = body;
+    const presetMerged = applyPresetAccountUpdate(undefined, body);
+    const presetAccount =
+      presetMerged === undefined || presetMerged === null ? undefined : presetMerged;
 
     if (!categoryId || !name || price === undefined) {
       return NextResponse.json({
@@ -74,13 +79,14 @@ export async function POST(req: NextRequest) {
       amount: String(amount || name),
       price: numPrice,
       basePrice: numBasePrice,
-      description: description ? String(description) : undefined
+      description: description ? String(description) : undefined,
+      presetAccount
     });
 
     return NextResponse.json({
       success: true,
       message: 'Package created successfully and synced with WhatsApp Bot!',
-      product: newProduct
+      product: toPublicPricingProduct(newProduct)
     }, { status: 201 });
   } catch (error) {
     console.error('Error in pricing POST action:', error);
@@ -97,14 +103,42 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Package ID is required' }, { status: 400 });
     }
 
-    const updated = await db.updatePackage(id, {
+    const existing = await db.getProductById(String(id));
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Package not found' }, { status: 404 });
+    }
+
+    const presetUpdate = applyPresetAccountUpdate(existing.presetAccount, body);
+    if (
+      (body.presetEmail !== undefined ||
+        body.presetPassword !== undefined ||
+        body.presetAccount ||
+        body.clearPresetAccount) &&
+      presetUpdate === undefined
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Preset account needs both email and password, or clear both fields.'
+        },
+        { status: 400 }
+      );
+    }
+
+    const updatePayload: Parameters<typeof db.updatePackage>[1] = {
       name: name !== undefined ? String(name) : undefined,
       amount: amount !== undefined ? String(amount) : undefined,
       price: price !== undefined ? Number(price) : undefined,
       basePrice: basePrice !== undefined ? Number(basePrice) : undefined,
       description: description !== undefined ? String(description) : undefined,
       isActive: isActive !== undefined ? Boolean(isActive) : undefined
-    });
+    };
+
+    if (presetUpdate !== undefined) {
+      updatePayload.presetAccount = presetUpdate;
+    }
+
+    const updated = await db.updatePackage(String(id), updatePayload);
 
     if (!updated) {
       return NextResponse.json({ success: false, error: 'Package not found' }, { status: 404 });
@@ -113,7 +147,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Package updated successfully and synced with WhatsApp Bot!',
-      product: updated
+      product: toPublicPricingProduct(updated)
     });
   } catch (error) {
     console.error('Error updating pricing package:', error);

@@ -841,6 +841,33 @@ ${itemsText}
     };
   }
 
+  // Netflix / Crunchyroll: preset account already sent on WhatsApp — worker still claims for OTP
+  if (
+    order.status === 'PENDING_CLAIM' &&
+    ((isNetflix && hasNetflixCredsSent) || (isCrunchyroll && hasCrunchyrollCredsSent))
+  ) {
+    const syntheticOrder = { ...order, status: 'PROCESSING' as Order['status'] };
+    const { cardHtml, replyMarkup } = generateOrderCard(syntheticOrder, workerName, queueCount);
+    const autoBanner = isNetflix
+      ? '\n🤖 <b>[AUTO-DELIVERED FROM PACKAGE PRESET]</b>\n'
+      : '\n🤖 <b>[AUTO-DELIVERED FROM PACKAGE PRESET]</b>\n';
+    const claimRow = [
+      {
+        text: '⚡ Claim Order (OTP / সহায়তা)',
+        callback_data: `claim:${order.order_id}`
+      }
+    ];
+    const existingRows = replyMarkup?.inline_keyboard || [];
+    return {
+      cardHtml: cardHtml.includes('[AUTO-DELIVERED')
+        ? cardHtml
+        : cardHtml.replace(isNetflix ? netflixBanner : crunchyrollBanner, autoBanner + (isNetflix ? netflixBanner : crunchyrollBanner)),
+      replyMarkup: {
+        inline_keyboard: [claimRow, ...existingRows]
+      }
+    };
+  }
+
   // Default: PENDING_CLAIM / PENDING_PAYMENT
   const pendingQrHint = isQrOrder 
     ? `\n📲 <i>কর্মী: অর্ডার Claim করুন এবং লগইন QR কোড স্ক্রিনশট পাঠিয়ে কাস্টমারকে দিন।</i>`

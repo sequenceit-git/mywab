@@ -365,7 +365,13 @@ export async function handleWorkerTextMessage(message: {
       const combinedGameStr = `${order.customer_notes || ''} ${order.items?.map(i => i.product_name).join(' ') || ''}`.toLowerCase();
       const isNetflix = combinedGameStr.includes('netflix');
 
-      if (isNetflix && (order.status === 'CLAIMED' || order.status === 'PROCESSING')) {
+      const netflixNotes = order.customer_notes || '';
+      const netflixWorkerActive =
+        order.status === 'CLAIMED' ||
+        order.status === 'PROCESSING' ||
+        (order.status === 'PENDING_CLAIM' && netflixNotes.includes('NETFLIX_CREDS_SENT'));
+
+      if (isNetflix && netflixWorkerActive) {
         // 4a. Check if worker provided Netflix Account Credentials (Email + Password + PIN)
         const emailMatch = text.match(/(?:email|mail|ইমেইল|user|username)?\s*[:=–-]?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
         const passMatch = text.match(/(?:password|pass|পাসওয়ার্ড|pwd)\s*[:=–-]?\s*([^\n\r]+)/i);
@@ -487,7 +493,13 @@ export async function handleWorkerTextMessage(message: {
       // 4c. Check if worker provided Crunchyroll Account Credentials (Email + Password)
       const isCrunchyroll = combinedGameStr.includes('crunchyroll');
 
-      if (isCrunchyroll && (order.status === 'CLAIMED' || order.status === 'PROCESSING')) {
+      const crunchyNotes = order.customer_notes || '';
+      const crunchyWorkerActive =
+        order.status === 'CLAIMED' ||
+        order.status === 'PROCESSING' ||
+        (order.status === 'PENDING_CLAIM' && crunchyNotes.includes('CRUNCHYROLL_CREDS_SENT'));
+
+      if (isCrunchyroll && crunchyWorkerActive) {
         const emailMatch = text.match(/(?:email|mail|ইমেইল|user|username)?\s*[:=–-]?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
         const passMatch = text.match(/(?:password|pass|পাসওয়ার্ড|pwd)\s*[:=–-]?\s*([^\n\r]+)/i);
 

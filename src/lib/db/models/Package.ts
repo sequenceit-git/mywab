@@ -13,6 +13,11 @@ export interface IPackageDocument extends Document {
   is_active: boolean;
   sort_order: number;
   updated_at: string;
+  preset_account?: {
+    email: string;
+    password: string;
+    pin?: string;
+  };
 }
 
 const PackageSchema = new Schema<IPackageDocument>(
@@ -29,6 +34,11 @@ const PackageSchema = new Schema<IPackageDocument>(
     is_active: { type: Boolean, default: true },
     sort_order: { type: Number, default: 0 },
     updated_at: { type: String, default: () => new Date().toISOString() },
+    preset_account: {
+      email: { type: String, default: '' },
+      password: { type: String, default: '' },
+      pin: { type: String, default: '' }
+    }
   },
   {
     timestamps: false,

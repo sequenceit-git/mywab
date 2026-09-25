@@ -23,6 +23,14 @@ interface PackageModalProps {
   setModalDescription: (val: string) => void;
   modalIsActive: boolean;
   setModalIsActive: (val: boolean) => void;
+  modalPkgId: string;
+  modalPresetEmail: string;
+  setModalPresetEmail: (val: string) => void;
+  modalPresetPassword: string;
+  setModalPresetPassword: (val: string) => void;
+  modalPresetPin: string;
+  setModalPresetPin: (val: string) => void;
+  modalPresetHasPassword: boolean;
   feedbackMsg: { type: 'success' | 'error'; text: string } | null;
   isSaving: boolean;
   onClose: () => void;
@@ -47,6 +55,14 @@ export const PackageModal: React.FC<PackageModalProps> = ({
   setModalDescription,
   modalIsActive,
   setModalIsActive,
+  modalPkgId,
+  modalPresetEmail,
+  setModalPresetEmail,
+  modalPresetPassword,
+  setModalPresetPassword,
+  modalPresetPin,
+  setModalPresetPin,
+  modalPresetHasPassword,
   feedbackMsg,
   isSaving,
   onClose,
@@ -57,10 +73,14 @@ export const PackageModal: React.FC<PackageModalProps> = ({
   const liveProfit = modalPrice - modalBasePrice;
   const liveMargin = modalPrice > 0 ? Math.round((liveProfit / modalPrice) * 100) : 0;
   const currentCategory = categories.find((c) => c.id === modalCategoryId);
+  const streamingBlob = `${modalPkgId} ${modalName} ${modalCategoryId}`.toLowerCase();
+  const isNetflixPkg = streamingBlob.includes('netflix');
+  const isCrunchyrollPkg = streamingBlob.includes('crunchyroll');
+  const showPresetAccount = isNetflixPkg || isCrunchyrollPkg;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-dark-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl relative space-y-4">
+      <div className="bg-dark-900 border border-slate-800 rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl relative space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-3">
             <CategoryIcon categoryId={modalCategoryId} className="w-9 h-9" />
@@ -207,6 +227,46 @@ export const PackageModal: React.FC<PackageModalProps> = ({
               </span>
             </div>
           </div>
+
+          {showPresetAccount && (
+            <div className="p-3.5 rounded-xl bg-rose-500/5 border border-rose-500/25 space-y-2.5">
+              <div>
+                <p className="text-xs font-bold text-rose-200">
+                  {isNetflixPkg ? '🍿 Netflix auto-delivery account' : '🍥 Crunchyroll auto-delivery account'}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  After payment, these credentials are sent on WhatsApp automatically. Workers only help with Netflix OTP when the customer asks.
+                </p>
+              </div>
+              <input
+                type="text"
+                value={modalPresetEmail}
+                onChange={(e) => setModalPresetEmail(e.target.value)}
+                placeholder="Login email"
+                autoComplete="off"
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs"
+              />
+              <input
+                type="text"
+                value={modalPresetPassword}
+                onChange={(e) => setModalPresetPassword(e.target.value)}
+                placeholder="Password"
+                autoComplete="off"
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs"
+              />
+              {isNetflixPkg && (
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={modalPresetPin}
+                  onChange={(e) => setModalPresetPin(e.target.value)}
+                  placeholder="Profile PIN (optional)"
+                  autoComplete="off"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs"
+                />
+              )}
+            </div>
+          )}
 
           {/* Description */}
           <div>

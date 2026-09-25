@@ -536,13 +536,23 @@ export function getGameDeliveryConfig(gameTitleOrCode?: string, firstItemName?: 
 
   if (text.includes('netflix')) {
     return {
-      deliveryMessage: 'পেমেন্ট নিশ্চিত হয়েছে! আমাদের কর্মী খুব দ্রুত এই WhatsApp চ্যাটে আপনার Netflix অ্যাকাউন্ট (Email, Password, PIN) পাঠিয়ে দেবে এবং লগইন কোড দিয়ে সহায়তা করবে! 🍿🚀',
+      deliveryMessage:
+        'পেমেন্ট নিশ্চিত হলে এই চ্যাটে স্বয়ংক্রিয়ভাবে Netflix অ্যাকাউন্ট (Email, Password, PIN) পাঠানো হবে। লগইনে OTP/কোড লাগলে *📩 কোড প্রয়োজন* বাটনে চাপ দিন — আমাদের কর্মী কোড পাঠিয়ে দেবেন। 🍿⚡',
       catalogButtonTitle: '🍿 Netflix প্যাকেজ',
       catalogButtonId: 'game_movie'
     };
   }
 
-  if (text.includes('movie') || text.includes('anime') || text.includes('spotify') || text.includes('prime') || text.includes('crunchyroll') || text.includes('youtube') || (text.includes('sub') && !text.includes('pubg'))) {
+  if (text.includes('crunchyroll')) {
+    return {
+      deliveryMessage:
+        'পেমেন্ট নিশ্চিত হলে এই চ্যাটে স্বয়ংক্রিয়ভাবে Crunchyroll অ্যাকাউন্ট (Email, Password) পাঠানো হবে। লগইন শেষে *✅ লগইন সম্পন্ন* বাটনে চাপ দিন। 🍥⚡',
+      catalogButtonTitle: '🍥 Crunchyroll প্যাকেজ',
+      catalogButtonId: 'game_movie'
+    };
+  }
+
+  if (text.includes('movie') || text.includes('anime') || text.includes('spotify') || text.includes('prime') || text.includes('youtube') || (text.includes('sub') && !text.includes('pubg'))) {
     return {
       deliveryMessage: 'আমাদের টিম খুব দ্রুত আপনার সাবস্ক্রিপশন চালু করে অ্যাকাউন্ট/লগইন তথ্য পাঠিয়ে দেবে! 🍿🚀',
       catalogButtonTitle: '🍿 সাবস্ক্রিপশন',

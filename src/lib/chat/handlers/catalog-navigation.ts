@@ -158,6 +158,7 @@ export async function handlePackageSelection(
   const draftOrder = {
     items: [{
       skuOrName: pkg.name,
+      packageId: pkg.id,
       quantity: 1,
       unitPrice: pkg.price,
       productName: `${game.fullName} (${pkg.name})`

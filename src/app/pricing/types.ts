@@ -1,3 +1,5 @@
+import { PackagePresetAccountPublic } from '@/types';
+
 export interface PricingProduct {
   id: string;
   categoryId: string;
@@ -13,6 +15,7 @@ export interface PricingProduct {
   isActive?: boolean;
   sortOrder?: number;
   updatedAt?: string;
+  presetAccount?: PackagePresetAccountPublic;
 }
 
 export interface CategoryInfo {

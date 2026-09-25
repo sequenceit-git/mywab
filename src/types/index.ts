@@ -158,11 +158,26 @@ export type ConversationStep =
   | 'AWAITING_VERIFICATION_CODE' // Worker requested email verification code, waiting for customer to send it (PUBG KR / eFootball)
   | 'ORDER_PLACED';     // Order created, confirmation sent
 
+export interface PackagePresetAccount {
+  email: string;
+  password: string;
+  pin?: string;
+}
+
+/** Preset login returned to admin Pricing UI (admin-only API) */
+export interface PackagePresetAccountPublic {
+  email: string;
+  password: string;
+  hasPassword: boolean;
+  pin?: string;
+}
+
 export interface DraftOrderItem {
   skuOrName: string;
   quantity: number;
   unitPrice?: number;
   productName?: string;
+  packageId?: string;
 }
 
 export interface ConversationDraftOrder {

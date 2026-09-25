@@ -1,3 +1,5 @@
+import type { PackagePresetAccount } from '@/types';
+
 export interface GamePackage {
   id: string;          // Button/selection ID e.g. 'pkg_pubg_60'
   name: string;        // e.g. '60 UC'
@@ -7,6 +9,8 @@ export interface GamePackage {
   description?: string;
   isActive?: boolean;
   sortOrder?: number;
+  /** Server-side only — never exposed on WhatsApp catalog payloads */
+  presetAccount?: PackagePresetAccount;
 }
 
 export interface GameCategory {

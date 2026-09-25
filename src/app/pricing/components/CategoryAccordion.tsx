@@ -207,8 +207,13 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                         >
                           {/* Name & ID */}
                           <td className="py-3 px-3">
-                            <div className="font-bold text-white text-xs flex items-center gap-2">
+                            <div className="font-bold text-white text-xs flex items-center gap-2 flex-wrap">
                               <span>{p.name}</span>
+                              {p.presetAccount?.hasPassword && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/25">
+                                  Auto account
+                                </span>
+                              )}
                               {p.description && (
                                 <span className="text-[10px] text-slate-500 font-normal truncate max-w-[160px]" title={p.description}>
                                   ({p.description})

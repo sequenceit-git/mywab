@@ -2,6 +2,7 @@ import { GAME_CATEGORIES, GameCategory, GamePackage } from '../../chat/game-cata
 import { connectToDatabase, isDbConfigured } from '../client';
 import { PackageModel } from '../models/Package';
 import { mockStore } from '../mock-store';
+import { PackagePresetAccount, PackagePresetAccountPublic } from '@/types';
 
 export interface PricingProduct {
   id: string;
@@ -18,6 +19,37 @@ export interface PricingProduct {
   isActive: boolean;
   sortOrder?: number;
   updatedAt?: string;
+  presetAccount?: PackagePresetAccount;
+}
+
+export function toPublicPresetAccount(
+  preset?: PackagePresetAccount
+): PackagePresetAccountPublic | undefined {
+  if (!preset?.email?.trim()) return undefined;
+  return {
+    email: preset.email.trim(),
+    password: preset.password?.trim() || '',
+    hasPassword: Boolean(preset.password?.trim()),
+    pin: preset.pin?.trim() || undefined
+  };
+}
+
+export function toPublicPricingProduct(product: PricingProduct): Omit<PricingProduct, 'presetAccount'> & {
+  presetAccount?: PackagePresetAccountPublic;
+} {
+  const { presetAccount, ...rest } = product;
+  const pub = toPublicPresetAccount(presetAccount);
+  return pub ? { ...rest, presetAccount: pub } : rest;
+}
+
+function parsePresetFromRow(row: { preset_account?: { email?: string; password?: string; pin?: string } }): PackagePresetAccount | undefined {
+  const pa = row.preset_account;
+  if (!pa?.email?.trim() || !pa?.password?.trim()) return undefined;
+  return {
+    email: pa.email.trim(),
+    password: pa.password.trim(),
+    pin: pa.pin?.trim() || undefined
+  };
 }
 
 // In-memory store for packages (default seeded + runtime created/edited)
@@ -108,7 +140,37 @@ export const pricingRepository = {
 
           if (docs && docs.length > 0) {
             for (const row of docs) {
-              const cat = GAME_CATEGORIES.find(c => c.id === row.category_id);
+              if (!row?.id) continue;
+
+              // Repair upserts that previously wrote packages without category_id
+              // (those would vanish from the Pricing category list).
+              const existingMem = memoryPackages.get(row.id);
+              const categoryId = row.category_id || existingMem?.categoryId || '';
+              if (!categoryId) {
+                console.warn(`[pricingRepository] Skipping package ${row.id}: missing category_id`);
+                continue;
+              }
+
+              if (!row.category_id && existingMem?.categoryId) {
+                PackageModel.updateOne(
+                  { id: row.id },
+                  {
+                    $set: {
+                      category_id: existingMem.categoryId,
+                      name: row.name || existingMem.name,
+                      amount: row.amount || existingMem.amount,
+                      price: row.price ?? existingMem.price,
+                      base_price: row.base_price ?? existingMem.basePrice,
+                      is_active: row.is_active !== false,
+                      sort_order: row.sort_order || existingMem.sortOrder || 0
+                    }
+                  }
+                ).catch(err => {
+                  console.warn('[pricingRepository] Failed to repair missing category_id:', err);
+                });
+              }
+
+              const cat = GAME_CATEGORIES.find(c => c.id === categoryId);
               const price = Number(row.price) || 0;
               const basePrice = Number(row.base_price) || 0;
               const profit = Math.max(0, price - basePrice);
@@ -116,19 +178,20 @@ export const pricingRepository = {
 
               memoryPackages.set(row.id, {
                 id: row.id,
-                categoryId: row.category_id,
-                categoryTitle: cat?.title || row.category_id,
-                categoryEmoji: cat?.emoji || '🎮',
-                name: row.name,
-                amount: row.amount || row.name,
+                categoryId,
+                categoryTitle: cat?.title || existingMem?.categoryTitle || categoryId,
+                categoryEmoji: cat?.emoji || existingMem?.categoryEmoji || '🎮',
+                name: row.name || existingMem?.name || row.id,
+                amount: row.amount || existingMem?.amount || row.name || row.id,
                 price,
                 basePrice,
                 profit,
                 marginPercent,
-                description: row.description || '',
+                description: row.description || existingMem?.description || '',
                 isActive: row.is_active !== false,
-                sortOrder: row.sort_order || 0,
-                updatedAt: row.updated_at
+                sortOrder: row.sort_order || existingMem?.sortOrder || 0,
+                updatedAt: row.updated_at,
+                presetAccount: parsePresetFromRow(row) || existingMem?.presetAccount
               });
             }
           }
@@ -287,6 +350,7 @@ export const pricingRepository = {
     price: number;
     basePrice?: number;
     description?: string;
+    presetAccount?: PackagePresetAccount;
   }): Promise<PricingProduct> {
     await this.ensureInitialized();
 
@@ -317,7 +381,8 @@ export const pricingRepository = {
       description: params.description?.trim() || '',
       isActive: true,
       sortOrder: 0,
-      updatedAt: now
+      updatedAt: now,
+      presetAccount: params.presetAccount
     };
 
     deletedPackageIds.delete(packageId);
@@ -342,10 +407,17 @@ export const pricingRepository = {
               description: newProduct.description,
               is_active: newProduct.isActive,
               sort_order: newProduct.sortOrder,
-              updated_at: now
+              updated_at: now,
+              preset_account: newProduct.presetAccount
+                ? {
+                    email: newProduct.presetAccount.email,
+                    password: newProduct.presetAccount.password,
+                    pin: newProduct.presetAccount.pin || ''
+                  }
+                : null
             }
           },
-          { upsert: true }
+          { upsert: true, setDefaultsOnInsert: true }
         );
       } catch (err) {
         console.warn('[pricingRepository] MongoDB createPackage error:', err);
@@ -367,6 +439,7 @@ export const pricingRepository = {
       basePrice?: number;
       description?: string;
       isActive?: boolean;
+      presetAccount?: PackagePresetAccount | null;
     }
   ): Promise<PricingProduct | null> {
     await this.ensureInitialized();
@@ -382,6 +455,11 @@ export const pricingRepository = {
     const marginPercent = price > 0 ? Math.round((profit / price) * 100) : 0;
     const now = new Date().toISOString();
 
+    let nextPreset = existing.presetAccount;
+    if (updates.presetAccount !== undefined) {
+      nextPreset = updates.presetAccount || undefined;
+    }
+
     const updatedProduct: PricingProduct = {
       ...existing,
       name: updates.name !== undefined ? updates.name.trim() : existing.name,
@@ -392,7 +470,8 @@ export const pricingRepository = {
       marginPercent,
       description: updates.description !== undefined ? updates.description.trim() : existing.description,
       isActive: updates.isActive !== undefined ? updates.isActive : existing.isActive,
-      updatedAt: now
+      updatedAt: now,
+      presetAccount: nextPreset
     };
 
     memoryPackages.set(packageId, updatedProduct);
@@ -404,18 +483,28 @@ export const pricingRepository = {
           { id: packageId },
           {
             $set: {
+              id: packageId,
+              category_id: updatedProduct.categoryId,
               name: updatedProduct.name,
               amount: updatedProduct.amount,
               price: updatedProduct.price,
               base_price: updatedProduct.basePrice,
               profit: updatedProduct.profit,
               margin_percent: updatedProduct.marginPercent,
-              description: updatedProduct.description,
+              description: updatedProduct.description || '',
               is_active: updatedProduct.isActive,
-              updated_at: now
+              sort_order: updatedProduct.sortOrder || 0,
+              updated_at: now,
+              preset_account: updatedProduct.presetAccount
+                ? {
+                    email: updatedProduct.presetAccount.email,
+                    password: updatedProduct.presetAccount.password,
+                    pin: updatedProduct.presetAccount.pin || ''
+                  }
+                : null
             }
           },
-          { upsert: true }
+          { upsert: true, setDefaultsOnInsert: true }
         );
       } catch (err) {
         console.warn('[pricingRepository] MongoDB updatePackage error:', err);

@@ -4,16 +4,9 @@ import { telegramClient } from '../../telegram/client';
 import { generateOrderCard, sanitizeReplyMarkup } from '../../telegram/card-builder';
 import { env } from '../../config/env';
 import { Order } from '@/types';
+import { isNetflixOrder, isCrunchyrollOrder } from '../../streaming-accounts';
 
-/**
- * Check if an order is a Netflix account order
- */
-export function isNetflixOrder(order?: { items?: Array<{ product_name?: string }>; customer_notes?: string | null }): boolean {
-  if (!order) return false;
-  const itemNames = (order.items || []).map(i => i.product_name?.toLowerCase() || '').join(' ');
-  const notes = (order.customer_notes || '').toLowerCase();
-  return itemNames.includes('netflix') || notes.includes('netflix');
-}
+export { isNetflixOrder, isCrunchyrollOrder };
 
 /**
  * Find active Netflix order for a customer's phone
@@ -140,16 +133,6 @@ export async function handleNetflixCustomerAction(
       }
     }
   }
-}
-
-/**
- * Check if an order is a Crunchyroll account order
- */
-export function isCrunchyrollOrder(order?: { items?: Array<{ product_name?: string }>; customer_notes?: string | null }): boolean {
-  if (!order) return false;
-  const itemNames = (order.items || []).map(i => i.product_name?.toLowerCase() || '').join(' ');
-  const notes = (order.customer_notes || '').toLowerCase();
-  return itemNames.includes('crunchyroll') || notes.includes('crunchyroll');
 }
 
 /**
