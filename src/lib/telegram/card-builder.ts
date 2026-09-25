@@ -377,8 +377,8 @@ export function generateOrderCard(
       if (hasCodeReceived) {
         return {
           cardHtml: card('🔑 <b>CODE RECEIVED FROM CUSTOMER!</b>', codeBanner,
-            orderBlock('Worker', [`🔑 <b>Code:</b> <code>${receivedCode || 'N/A'}</code>`]),
-            customerBlock(),
+            orderBlock('Worker'),
+            customerBlock([`🔑 <b>Code:</b> <code>${receivedCode || 'N/A'}</code>`]),
             '✅ কোড দিয়ে সাইটে ভেরিফাই করুন। সফল হলে Completed, ব্যর্থ হলে Code Expired চাপুন।'),
           replyMarkup: { inline_keyboard: [
             completedBtn(oid),
