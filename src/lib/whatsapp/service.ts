@@ -1,6 +1,7 @@
 import { Order } from '@/types';
 import { env } from '../config/env';
 import { getAccountFieldInfo, formatPaymentDisplayForWhatsApp, getGameDeliveryConfig } from '../chat/input-parser';
+import { isNetflixOneDevicePackage, NETFLIX_ONE_DEVICE_RULES } from '../streaming-accounts';
 
 export interface SendMessageResult {
   success: boolean;
@@ -640,11 +641,15 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
     email: string,
     pass: string,
     pin?: string,
-    profileName?: string
+    profileName?: string,
+    packageName?: string
   ): Promise<SendMessageResult> {
     const cleanPhone = toPhone.replace(/\D/g, '');
     const profileText = profileName ? `\n👤 *প্রোফাইল নাম / Profile:* \`${profileName}\`` : '';
     const pinText = pin ? `\n📌 *প্রোফাইল পিন (PIN):* \`${pin}\`` : '';
+    const rulesText = isNetflixOneDevicePackage(packageName || 'Netflix 1M (1 Screen)')
+      ? `\n\n${NETFLIX_ONE_DEVICE_RULES}`
+      : '';
 
     const bodyText = 
 `🍿 *আপনার Netflix অ্যাকাউন্ট ও লগইন তথ্য:*
@@ -654,7 +659,7 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
 📦 *অর্ডার আইডি:* \`#${orderIdCode}\`
 
 📲 *লগইন নির্দেশিকা:*
-অনুগ্রহ করে আপনার ডিভাইসে/টিভিতে নেটফ্লিক্সে লগইন করুন। টিভিতে বা ব্রাউজারে ভেরিফিকেশন কোড বা হাউসহোল্ড কোড চাইলে নিচের *'📩 কোড প্রয়োজন'* বাটনে চাপ দিন।`;
+অনুগ্রহ করে আপনার ডিভাইসে/টিভিতে নেটফ্লিক্সে লগইন করুন। টিভিতে বা ব্রাউজারে ভেরিফিকেশন কোড বা হাউসহোল্ড কোড চাইলে নিচের *'📩 কোড প্রয়োজন'* বাটনে চাপ দিন।${rulesText}`;
 
     const buttons: WhatsAppButton[] = [
       { id: `netflix_need_code:${orderIdCode}`, title: '📩 কোড প্রয়োজন' },
@@ -901,13 +906,16 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
     const { toPhone, orderIdCode, paymentUrl, amount, gameLabel, packageName, playerUid, accountLabelBn, playerName } = params;
 
     const playerNameLine = playerName ? `\n• 👤 Player Name: *${playerName}*` : '';
+    const netflixRules = isNetflixOneDevicePackage(`${gameLabel} ${packageName}`)
+      ? `\n\n${NETFLIX_ONE_DEVICE_RULES}`
+      : '';
 
     const messageText = 
 `📝 *অর্ডার সামারি:*
 • গেম / সার্ভিস: *${gameLabel}*
 • প্যাকেজ: *${packageName}*
 • 🆔 ${accountLabelBn || 'Player ID'}: \`${playerUid}\`${playerNameLine}
-• প্রদেয় মূল্য: *৳${amount} Tk*
+• প্রদেয় মূল্য: *৳${amount} Tk*${netflixRules}
 
 ⚡ *পেমেন্ট সম্পন্ন করতে নিচের লিংকে ক্লিক করুন:*
 ${paymentUrl}

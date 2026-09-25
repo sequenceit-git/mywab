@@ -21,6 +21,21 @@ export function isNetflixOrder(order?: {
   return itemNames.includes('netflix') || notes.includes('netflix');
 }
 
+/** True for Netflix 1 Screen / 1 Device packages (not 2+ screen plans). */
+export function isNetflixOneDevicePackage(name?: string): boolean {
+  const t = (name || '').toLowerCase();
+  if (!t.includes('netflix')) return false;
+  if (/\b([2-9]|1[0-9]+)\s*(screen|device)/i.test(t)) return false;
+  return /1\s*(screen|device|ডিভাইস|স্ক্রিন)/i.test(t) || t.includes('(1 ');
+}
+
+export const NETFLIX_ONE_DEVICE_RULES =
+`⚠️ *নিয়মাবলী — শুধুমাত্র ১টি ডিভাইস:*
+• এই প্যাকেজ *একটি ডিভাইসেই* ব্যবহার করুন
+• একসাথে অন্য মোবাইল/টিভিতে লগইন করবেন না
+• পাসওয়ার্ড বা প্রোফাইল পরিবর্তন করবেন না
+নিয়ম না মানলে অ্যাকাউন্ট বন্ধ হয়ে যেতে পারে।`;
+
 export function isCrunchyrollOrder(order?: {
   items?: Array<{ product_name?: string }>;
   customer_notes?: string | null;

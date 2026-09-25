@@ -401,7 +401,9 @@ export async function handleWorkerTextMessage(message: {
             order.order_id,
             credEmail,
             credPass,
-            credPin || undefined
+            credPin || undefined,
+            undefined,
+            order.items?.[0]?.product_name
           );
 
           const updatedNotes = `${order.customer_notes || ''} | NETFLIX_CREDS_SENT | Email: ${credEmail} | Pass: ${credPass}${credPin ? ` | PIN: ${credPin}` : ''}`;

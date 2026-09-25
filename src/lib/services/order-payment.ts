@@ -288,7 +288,8 @@ export const orderPaymentService = {
           presetCreds.email,
           presetCreds.password,
           presetCreds.pin,
-          presetCreds.profileName
+          presetCreds.profileName,
+          firstItem?.product_name
         );
 
         const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;

@@ -535,9 +535,12 @@ export function getGameDeliveryConfig(gameTitleOrCode?: string, firstItemName?: 
   const text = `${gameTitleOrCode || ''} ${firstItemName || ''}`.toLowerCase();
 
   if (text.includes('netflix')) {
+    const oneDeviceNote = /1\s*(screen|device)|1m \(1 /i.test(text)
+      ? '\n\n⚠️ *নিয়মাবলী — শুধুমাত্র ১টি ডিভাইস:* এই প্যাকেজ *একটি ডিভাইসেই* ব্যবহার করুন। একসাথে অন্য মোবাইল/টিভিতে লগইন করবেন না, পাসওয়ার্ড বা প্রোফাইল পরিবর্তন করবেন না।'
+      : '';
     return {
       deliveryMessage:
-        'পেমেন্ট নিশ্চিত হলে এই চ্যাটে স্বয়ংক্রিয়ভাবে Netflix অ্যাকাউন্ট (Email, Password, PIN) পাঠানো হবে। লগইনে OTP/কোড লাগলে *📩 কোড প্রয়োজন* বাটনে চাপ দিন — আমাদের কর্মী কোড পাঠিয়ে দেবেন। 🍿⚡',
+        `পেমেন্ট নিশ্চিত হলে এই চ্যাটে স্বয়ংক্রিয়ভাবে Netflix অ্যাকাউন্ট (Email, Password, PIN) পাঠানো হবে। লগইনে OTP/কোড লাগলে *📩 কোড প্রয়োজন* বাটনে চাপ দিন — আমাদের কর্মী কোড পাঠিয়ে দেবেন। 🍿⚡${oneDeviceNote}`,
       catalogButtonTitle: '🍿 Netflix প্যাকেজ',
       catalogButtonId: 'game_movie'
     };
