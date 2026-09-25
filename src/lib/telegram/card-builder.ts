@@ -191,8 +191,8 @@ export function generateOrderCard(
 
   // ── Reusable layout blocks ──
 
-  // TOP: Quick order summary (no package details)
-  const orderBlock = (workerLabel?: string, extraLines?: string[]) => {
+  // TOP: Static order facts only
+  const orderBlock = () => {
     const lines: string[] = [
       `📦 <b>Order:</b> <code>${order.order_id}</code>`,
       `🕹️ <b>Service:</b> ${gameTitle}`,
@@ -200,18 +200,16 @@ export function generateOrderCard(
       `💳 <b>Payment:</b> ${methodLabel}`,
     ];
     if (proofLines) lines.push(proofLines);
-    if (workerLabel) lines.push(`👷 <b>${workerLabel}:</b> ${workerName}`);
-    if (extraLines) lines.push(...extraLines);
     return lines.join('\n');
   };
 
-  // BOTTOM: Package breakdown + customer details
-  const customerBlock = (extraLines?: string[]) => {
-    const lines: string[] = [
-      `💎 <b>Package:</b>\n${itemsText}`,
-      `📞 <b>Phone:</b> <code>${order.delivery_phone}</code>`,
-      `${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>`,
-    ];
+  // BOTTOM: All dynamic/changeable data — worker, package, customer, creds, etc.
+  const customerBlock = (workerLabel?: string, extraLines?: string[]) => {
+    const lines: string[] = [];
+    if (workerLabel) lines.push(`👷 <b>${workerLabel}:</b> ${workerName}`);
+    lines.push(`💎 <b>Package:</b>\n${itemsText}`);
+    lines.push(`📞 <b>Phone:</b> <code>${order.delivery_phone}</code>`);
+    lines.push(`${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>`);
     if (playerName) lines.push(`👤 <b>Player Name:</b> ${playerName}`);
     if (password) lines.push(`🔐 <b>Password:</b> <code>${password}</code>`);
     if (extraLines) lines.push(...extraLines);
@@ -254,7 +252,7 @@ export function generateOrderCard(
       if (hasCrunchyrollLoginDone) {
         return {
           cardHtml: card('🎉 <b>CUSTOMER CONFIRMED CRUNCHYROLL LOGIN!</b>', crBanner,
-            orderBlock('Worker', creds), customerBlock(),
+            orderBlock(), customerBlock('Worker', creds),
             '✅ কাস্টমার লগইন সম্পন্ন করেছেন! নিচের বাটনে চাপ দিন।'),
           replyMarkup: { inline_keyboard: [completedBtn(oid), cancelBtn(oid)] }
         };
@@ -262,7 +260,7 @@ export function generateOrderCard(
       if (hasCrunchyrollCredsSent) {
         return {
           cardHtml: card('📤 <b>CRUNCHYROLL CREDENTIALS DELIVERED</b>', crBanner,
-            orderBlock('Worker', creds), customerBlock(),
+            orderBlock(), customerBlock('Worker', creds),
             '✅ WhatsApp-এ অ্যাকাউন্ট পাঠানো হয়েছে। কাস্টমার লগইন করলে নোটিফিকেশন আসবে।'),
           replyMarkup: { inline_keyboard: [
             [btn('🔑 Resend Account', `crunchyroll_creds_hint:${oid}`), btn('✅ Completed', `status_delivered:${oid}`)],
@@ -272,7 +270,7 @@ export function generateOrderCard(
       }
       return {
         cardHtml: card('🍥 <b>CRUNCHYROLL — SEND ACCOUNT INFO</b>', crBanner,
-          orderBlock('Worker'), customerBlock(),
+          orderBlock(), customerBlock('Worker'),
           `🔑 <b>ACTION:</b> রিপ্লাই করে Email ও Password পাঠান।\n<code>user@crunchyroll.com\npass123</code>`),
         replyMarkup: { inline_keyboard: [
           [btn('🔑 Send Account Info', `crunchyroll_creds_hint:${oid}`)],
@@ -286,7 +284,7 @@ export function generateOrderCard(
       const ytBanner = '\n▶️ <b>[YOUTUBE PREMIUM]</b>\n';
       return {
         cardHtml: card('▶️ <b>YOUTUBE ORDER CLAIMED</b>', ytBanner,
-          orderBlock('Worker'), customerBlock([`📧 <b>YouTube Email:</b> <code>${playerUid}</code>`]),
+          orderBlock(), customerBlock('Worker', [`📧 <b>YouTube Email:</b> <code>${playerUid}</code>`]),
           `👉 কাস্টমারের ইমেইলে YouTube Premium ইনভাইট পাঠিয়ে Completed চাপুন।`),
         replyMarkup: { inline_keyboard: [completedBtn(oid), cancelBtn(oid)] }
       };
@@ -299,7 +297,7 @@ export function generateOrderCard(
       if (hasNetflixLoginDone) {
         return {
           cardHtml: card('🎉 <b>CUSTOMER CONFIRMED NETFLIX LOGIN!</b>', nfBanner,
-            orderBlock('Worker', creds), customerBlock(),
+            orderBlock(), customerBlock('Worker', creds),
             '✅ কাস্টমার লগইন সম্পন্ন করেছেন! নিচের বাটনে চাপ দিন।'),
           replyMarkup: { inline_keyboard: [completedBtn(oid), cancelBtn(oid)] }
         };
@@ -307,7 +305,7 @@ export function generateOrderCard(
       if (hasNetflixCodeRequested) {
         return {
           cardHtml: card('🔔 <b>CUSTOMER REQUESTED NETFLIX CODE!</b>', nfBanner,
-            orderBlock('Worker', creds), customerBlock(),
+            orderBlock(), customerBlock('Worker', creds),
             '⏳ কাস্টমার কোড চেয়েছেন! রিপ্লাই করে কোড পাঠান (যেমন: <code>482910</code>)'),
           replyMarkup: { inline_keyboard: [
             [btn('📤 Send Code', `netflix_code_hint:${oid}`)],
@@ -318,7 +316,7 @@ export function generateOrderCard(
       if (hasNetflixCredsSent) {
         return {
           cardHtml: card('📤 <b>NETFLIX CREDENTIALS DELIVERED</b>', nfBanner,
-            orderBlock('Worker', creds), customerBlock(),
+            orderBlock(), customerBlock('Worker', creds),
             '✅ WhatsApp-এ অ্যাকাউন্ট পাঠানো হয়েছে। কোড চাইলে নোটিফিকেশন আসবে।'),
           replyMarkup: { inline_keyboard: [
             [btn('🔑 Resend Account', `netflix_creds_hint:${oid}`), btn('📤 Send Code', `netflix_code_hint:${oid}`)],
@@ -328,7 +326,7 @@ export function generateOrderCard(
       }
       return {
         cardHtml: card('🍿 <b>NETFLIX — SEND ACCOUNT INFO</b>', nfBanner,
-          orderBlock('Worker'), customerBlock(),
+          orderBlock(), customerBlock('Worker'),
           `🔑 <b>ACTION:</b> রিপ্লাই করে Email, Password ও PIN পাঠান।\n<code>user@netflix.com\npass123\n1234</code>`),
         replyMarkup: { inline_keyboard: [
           [btn('🔑 Send Account Info', `netflix_creds_hint:${oid}`)],
@@ -343,7 +341,7 @@ export function generateOrderCard(
       if (hasQrScanned) {
         return {
           cardHtml: card('🎯 <b>CUSTOMER SCANNED QR!</b>', qrBanner,
-            orderBlock('Worker'), customerBlock(),
+            orderBlock(), customerBlock('Worker'),
             '✅ গ্রাহক QR স্ক্যান করেছেন! Midasbuy-তে টপ-আপ করে Completed চাপুন।'),
           replyMarkup: { inline_keyboard: [completedBtn(oid), cancelBtn(oid)] }
         };
@@ -351,7 +349,7 @@ export function generateOrderCard(
       if (hasQrSent) {
         return {
           cardHtml: card('📤 <b>QR CODE SENT TO WHATSAPP</b>', qrBanner,
-            orderBlock('Worker'), customerBlock(),
+            orderBlock(), customerBlock('Worker'),
             '⏱️ ৫ মিনিট কাউন্টডাউন। গ্রাহক স্ক্যান করলে আপডেট আসবে।'),
           replyMarkup: { inline_keyboard: [
             [btn('⏳ Waiting for Scan', `qr_waiting:${oid}`)],
@@ -362,7 +360,7 @@ export function generateOrderCard(
       }
       return {
         cardHtml: card('✅ <b>QR ORDER CLAIMED — SEND QR CODE</b>', qrBanner,
-          orderBlock('Worker'), customerBlock(),
+          orderBlock(), customerBlock('Worker'),
           '📸 <b>ACTION:</b> রিপ্লাই করে Login QR কোডের স্ক্রিনশট পাঠান।'),
         replyMarkup: { inline_keyboard: [
           [btn('📸 Send QR Screenshot', `qr_hint:${oid}`)],
@@ -377,8 +375,8 @@ export function generateOrderCard(
       if (hasCodeReceived) {
         return {
           cardHtml: card('🔑 <b>CODE RECEIVED FROM CUSTOMER!</b>', codeBanner,
-            orderBlock('Worker'),
-            customerBlock([`🔑 <b>Code:</b> <code>${receivedCode || 'N/A'}</code>`]),
+            orderBlock(),
+            customerBlock('Worker', [`🔑 <b>Code:</b> <code>${receivedCode || 'N/A'}</code>`]),
             '✅ কোড দিয়ে সাইটে ভেরিফাই করুন। সফল হলে Completed, ব্যর্থ হলে Code Expired চাপুন।'),
           replyMarkup: { inline_keyboard: [
             completedBtn(oid),
@@ -390,7 +388,7 @@ export function generateOrderCard(
       if (hasCodeRequested) {
         return {
           cardHtml: card('📧 <b>CODE REQUESTED — WAITING</b>', codeBanner,
-            orderBlock('Worker'), customerBlock(),
+            orderBlock(), customerBlock('Worker'),
             '⏳ কাস্টমারকে কোড দিতে বলা হয়েছে। কোড পাঠালে এখানে আপডেট আসবে।'),
           replyMarkup: { inline_keyboard: [
             [btn('🔄 Resend Request', `code_request:${oid}`)],
@@ -400,7 +398,7 @@ export function generateOrderCard(
       }
       return {
         cardHtml: card('✅ <b>CODE ORDER CLAIMED — REQUEST CODE</b>', codeBanner,
-          orderBlock('Worker'), customerBlock(),
+          orderBlock(), customerBlock('Worker'),
           '📧 <b>ACTION:</b> নিচের বাটনে চাপ দিয়ে কাস্টমারকে ভেরিফিকেশন কোড দিতে বলুন।'),
         replyMarkup: { inline_keyboard: [
           [btn('📧 Request Code', `code_request:${oid}`)],
@@ -413,7 +411,7 @@ export function generateOrderCard(
     const claimedTitle = isAutoVerified ? '✅ <b>ORDER CLAIMED [AUTO-PAID]</b>' : '✅ <b>ORDER CLAIMED</b>';
     return {
       cardHtml: card(claimedTitle, '',
-        orderBlock('Worker'), customerBlock(),
+        orderBlock(), customerBlock('Worker'),
         '<i>Process the order and click below when complete:</i>'),
       replyMarkup: { inline_keyboard: [completedBtn(oid), cancelBtn(oid)] }
     };
@@ -426,7 +424,7 @@ export function generateOrderCard(
     const title = isAutoVerified ? '⚡ <b>PROCESSING [AUTO-PAID]</b>' : '⚡ <b>PROCESSING</b>';
     return {
       cardHtml: card(title, '',
-        orderBlock('Worker'), customerBlock(),
+        orderBlock(), customerBlock('Worker'),
         '<i>Click below once completed:</i>'),
       replyMarkup: { inline_keyboard: [completedBtn(oid), cancelBtn(oid)] }
     };
@@ -439,8 +437,8 @@ export function generateOrderCard(
     const title = isAutoVerified ? '🎉 <b>ORDER COMPLETED [AUTO-PAID]</b>' : '🎉 <b>ORDER COMPLETED</b>';
     return {
       cardHtml: card(title, '',
-        orderBlock('Processed by'),
-        customerBlock(),
+        orderBlock(),
+        customerBlock('Processed by'),
         `🕒 <b>Completed:</b> ${new Date().toLocaleTimeString()}`),
       replyMarkup: { inline_keyboard: [] }
     };
@@ -457,10 +455,10 @@ export function generateOrderCard(
     const refundNotice = isAutoVerified ? '\n💸 <b>Refund:</b> অটো-পেইড অর্ডার — অ্যাডমিন প্যানেল থেকে রিফান্ড প্রদান করুন।' : '';
     return {
       cardHtml: card('❌ <b>ORDER CANCELLED</b>', '',
-        orderBlock('Handled by', [
+        orderBlock(),
+        customerBlock('Handled by', [
           `⚠️ <b>Reason:</b> ${cancelReason}${refundNotice}`
         ]),
-        customerBlock(),
         `🕒 <b>Cancelled:</b> ${new Date().toLocaleTimeString()}\n<i>⚠️ This order is cancelled. No further action needed.</i>`),
       replyMarkup: { inline_keyboard: [] }
     };
@@ -475,7 +473,7 @@ export function generateOrderCard(
     const creds = isNetflix ? nfCredsLines() : crCredsLines();
     return {
       cardHtml: card('🤖 <b>AUTO-DELIVERED — CLAIM FOR OTP SUPPORT</b>', presetBanner,
-        orderBlock(undefined, creds), customerBlock(),
+        orderBlock(), customerBlock(undefined, creds),
         '⚡ অ্যাকাউন্ট WhatsApp-এ পাঠানো হয়েছে। OTP/কোড সহায়তার জন্য Claim করুন।'),
       replyMarkup: { inline_keyboard: [claimBtn(oid)] }
     };
