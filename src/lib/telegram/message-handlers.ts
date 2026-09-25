@@ -166,7 +166,7 @@ export async function handleWorkerTextMessage(message: {
   if (checkCmdMatch) {
     let targetCode = checkCmdMatch[1]?.trim();
     if (!targetCode) {
-      const replyOrderMatch = replyText.match(/Order ID:\s*([A-Za-z0-9-]+)/i) || replyText.match(/#(WAP-[0-9]+-[0-9]+)/i);
+      const replyOrderMatch = replyText.match(/Order(?:\s*ID)?:\s*([A-Za-z0-9-]+)/i) || replyText.match(/#(WAP-[0-9]+-[0-9]+)/i);
       if (replyOrderMatch) {
         targetCode = replyOrderMatch[1];
       }
@@ -242,7 +242,7 @@ export async function handleWorkerTextMessage(message: {
 
     // If user replied to an order message with "/cancel <reason>"
     if (!targetOrderCode || targetOrderCode.length < 5 || !targetOrderCode.toUpperCase().startsWith('WAP-')) {
-      const replyOrderMatch = replyText.match(/Order ID:\s*([A-Za-z0-9-]+)/i) || replyText.match(/#(WAP-[0-9]+-[0-9]+)/i);
+      const replyOrderMatch = replyText.match(/Order(?:\s*ID)?:\s*([A-Za-z0-9-]+)/i) || replyText.match(/#(WAP-[0-9]+-[0-9]+)/i);
       if (replyOrderMatch) {
         cmdReason = [targetOrderCode, cmdReason].filter(Boolean).join(' ');
         targetOrderCode = replyOrderMatch[1];
@@ -324,7 +324,7 @@ export async function handleWorkerTextMessage(message: {
   }
 
   // 3. Check if message is a direct reply to an order card prompt asking for cancellation reason
-  const replyOrderMatch = replyText.match(/Order ID:\s*([A-Za-z0-9-]+)/i) || replyText.match(/#(WAP-[0-9]+-[0-9]+)/i);
+  const replyOrderMatch = replyText.match(/Order(?:\s*ID)?:\s*([A-Za-z0-9-]+)/i) || replyText.match(/#(WAP-[0-9]+-[0-9]+)/i);
   if (replyOrderMatch && (replyText.includes('WRITE CANCELLATION REASON') || replyText.includes('বাতিলের কারণ লিখুন'))) {
     const orderIdCode = replyOrderMatch[1];
     const cancelReason = text;
@@ -593,7 +593,7 @@ export async function handleWorkerPhotoMessage(message: {
   let targetOrderCode = '';
 
   // 1a. Check reply text
-  const replyMatch = replyText.match(/Order ID:\s*([A-Za-z0-9-]+)/i) || replyText.match(/#(WAP-[0-9]+-[0-9]+|DS-[0-9]+|[A-Za-z0-9-]+)/i);
+  const replyMatch = replyText.match(/Order(?:\s*ID)?:\s*([A-Za-z0-9-]+)/i) || replyText.match(/#(WAP-[0-9]+-[0-9]+|DS-[0-9]+|[A-Za-z0-9-]+)/i);
   if (replyMatch) {
     targetOrderCode = replyMatch[1].replace('#', '');
   }
