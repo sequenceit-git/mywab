@@ -30,6 +30,8 @@ interface PackageModalProps {
   setModalPresetPassword: (val: string) => void;
   modalPresetPin: string;
   setModalPresetPin: (val: string) => void;
+  modalPresetProfileName: string;
+  setModalPresetProfileName: (val: string) => void;
   modalPresetHasPassword: boolean;
   feedbackMsg: { type: 'success' | 'error'; text: string } | null;
   isSaving: boolean;
@@ -62,6 +64,8 @@ export const PackageModal: React.FC<PackageModalProps> = ({
   setModalPresetPassword,
   modalPresetPin,
   setModalPresetPin,
+  modalPresetProfileName,
+  setModalPresetProfileName,
   modalPresetHasPassword,
   feedbackMsg,
   isSaving,
@@ -251,6 +255,14 @@ export const PackageModal: React.FC<PackageModalProps> = ({
                 value={modalPresetPassword}
                 onChange={(e) => setModalPresetPassword(e.target.value)}
                 placeholder="Password"
+                autoComplete="off"
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs"
+              />
+              <input
+                type="text"
+                value={modalPresetProfileName}
+                onChange={(e) => setModalPresetProfileName(e.target.value)}
+                placeholder="Profile name (which profile customer should use)"
                 autoComplete="off"
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs"
               />

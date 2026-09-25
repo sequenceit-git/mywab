@@ -633,16 +633,18 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
     orderIdCode: string,
     email: string,
     pass: string,
-    pin?: string
+    pin?: string,
+    profileName?: string
   ): Promise<SendMessageResult> {
     const cleanPhone = toPhone.replace(/\D/g, '');
+    const profileText = profileName ? `\n👤 *প্রোফাইল নাম / Profile:* \`${profileName}\`` : '';
     const pinText = pin ? `\n📌 *প্রোফাইল পিন (PIN):* \`${pin}\`` : '';
 
     const bodyText = 
 `🍿 *আপনার Netflix অ্যাকাউন্ট ও লগইন তথ্য:*
 
 📧 *ইমেইল / Email:* \`${email}\`
-🔑 *পাসওয়ার্ড / Password:* \`${pass}\`${pinText}
+🔑 *পাসওয়ার্ড / Password:* \`${pass}\`${profileText}${pinText}
 📦 *অর্ডার আইডি:* \`#${orderIdCode}\`
 
 📲 *লগইন নির্দেশিকা:*
@@ -673,15 +675,17 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
     toPhone: string,
     orderIdCode: string,
     email: string,
-    pass: string
+    pass: string,
+    profileName?: string
   ): Promise<SendMessageResult> {
     const cleanPhone = toPhone.replace(/\D/g, '');
+    const profileText = profileName ? `\n👤 *প্রোফাইল নাম / Profile:* \`${profileName}\`` : '';
 
     const bodyText = 
 `🍥 *আপনার Crunchyroll অ্যাকাউন্ট ও লগইন তথ্য:*
 
 📧 *ইমেইল / Email:* \`${email}\`
-🔑 *পাসওয়ার্ড / Password:* \`${pass}\`
+🔑 *পাসওয়ার্ড / Password:* \`${pass}\`${profileText}
 📦 *অর্ডার আইডি:* \`#${orderIdCode}\`
 
 📲 *লগইন নির্দেশিকা:*

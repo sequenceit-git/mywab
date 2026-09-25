@@ -17,6 +17,7 @@ export interface IPackageDocument extends Document {
     email: string;
     password: string;
     pin?: string;
+    profile_name?: string;
   };
 }
 
@@ -37,7 +38,8 @@ const PackageSchema = new Schema<IPackageDocument>(
     preset_account: {
       email: { type: String, default: '' },
       password: { type: String, default: '' },
-      pin: { type: String, default: '' }
+      pin: { type: String, default: '' },
+      profile_name: { type: String, default: '' }
     }
   },
   {

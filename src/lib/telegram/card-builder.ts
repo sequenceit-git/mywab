@@ -266,10 +266,12 @@ export function generateOrderCard(
   const hasCrunchyrollLoginDone = crunchyrollNotes.includes('CRUNCHYROLL_LOGIN_DONE');
   const crunchyrollCredEmail = crunchyrollNotes.match(/Email:\s*([^\s|]+)/i)?.[1] || '';
   const crunchyrollCredPass = crunchyrollNotes.match(/Pass:\s*([^\s|]+)/i)?.[1] || '';
+  const crunchyrollCredProfile = crunchyrollNotes.match(/Profile:\s*([^|]+)/i)?.[1]?.trim() || '';
 
   const netflixCredEmail = netflixNotes.match(/Email:\s*([^\s|]+)/i)?.[1] || '';
   const netflixCredPass = netflixNotes.match(/Pass:\s*([^\s|]+)/i)?.[1] || '';
   const netflixCredPin = netflixNotes.match(/PIN:\s*([^\s|]+)/i)?.[1] || '';
+  const netflixCredProfile = netflixNotes.match(/Profile:\s*([^|]+)/i)?.[1]?.trim() || '';
   const netflixCodeSent = netflixNotes.match(/NETFLIX_CODE_SENT:\s*([^\s|]+)/i)?.[1] || '';
 
   if (order.status === 'CLAIMED' || order.status === 'PROCESSING') {
@@ -285,7 +287,7 @@ export function generateOrderCard(
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🍥 <b>Service / Game:</b> <b>${gameTitle}</b>
-${crunchyrollCredEmail ? `📧 <b>Email:</b> <code>${crunchyrollCredEmail}</code>\n` : ''}${crunchyrollCredPass ? `🔐 <b>Password:</b> <code>${crunchyrollCredPass}</code>\n` : ''}
+${crunchyrollCredEmail ? `📧 <b>Email:</b> <code>${crunchyrollCredEmail}</code>\n` : ''}${crunchyrollCredPass ? `🔐 <b>Password:</b> <code>${crunchyrollCredPass}</code>\n` : ''}${crunchyrollCredProfile ? `👤 <b>Profile:</b> <code>${crunchyrollCredProfile}</code>\n` : ''}
 💎 <b>Packages:</b>
 ${itemsText}
 
@@ -313,7 +315,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🍥 <b>Service / Game:</b> <b>${gameTitle}</b>
-${crunchyrollCredEmail ? `📧 <b>Email:</b> <code>${crunchyrollCredEmail}</code>\n` : ''}${crunchyrollCredPass ? `🔐 <b>Password:</b> <code>${crunchyrollCredPass}</code>\n` : ''}
+${crunchyrollCredEmail ? `📧 <b>Email:</b> <code>${crunchyrollCredEmail}</code>\n` : ''}${crunchyrollCredPass ? `🔐 <b>Password:</b> <code>${crunchyrollCredPass}</code>\n` : ''}${crunchyrollCredProfile ? `👤 <b>Profile:</b> <code>${crunchyrollCredProfile}</code>\n` : ''}
 💎 <b>Packages:</b>
 ${itemsText}
 
@@ -406,7 +408,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🍿 <b>Service / Game:</b> <b>${gameTitle}</b>
-${netflixCredEmail ? `📧 <b>Email:</b> <code>${netflixCredEmail}</code>\n` : ''}${netflixCredPass ? `🔐 <b>Password:</b> <code>${netflixCredPass}</code>\n` : ''}${netflixCredPin ? `📌 <b>PIN:</b> <code>${netflixCredPin}</code>\n` : ''}${netflixCodeSent ? `🔑 <b>Verification Code:</b> <code>${netflixCodeSent}</code>\n` : ''}
+${netflixCredEmail ? `📧 <b>Email:</b> <code>${netflixCredEmail}</code>\n` : ''}${netflixCredPass ? `🔐 <b>Password:</b> <code>${netflixCredPass}</code>\n` : ''}${netflixCredProfile ? `👤 <b>Profile:</b> <code>${netflixCredProfile}</code>\n` : ''}${netflixCredPin ? `📌 <b>PIN:</b> <code>${netflixCredPin}</code>\n` : ''}${netflixCodeSent ? `🔑 <b>Verification Code:</b> <code>${netflixCodeSent}</code>\n` : ''}
 💎 <b>Packages:</b>
 ${itemsText}
 
@@ -434,7 +436,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🍿 <b>Service / Game:</b> <b>${gameTitle}</b>
-${netflixCredEmail ? `📧 <b>Email:</b> <code>${netflixCredEmail}</code>\n` : ''}${netflixCredPass ? `🔐 <b>Password:</b> <code>${netflixCredPass}</code>\n` : ''}${netflixCredPin ? `📌 <b>PIN:</b> <code>${netflixCredPin}</code>\n` : ''}
+${netflixCredEmail ? `📧 <b>Email:</b> <code>${netflixCredEmail}</code>\n` : ''}${netflixCredPass ? `🔐 <b>Password:</b> <code>${netflixCredPass}</code>\n` : ''}${netflixCredProfile ? `👤 <b>Profile:</b> <code>${netflixCredProfile}</code>\n` : ''}${netflixCredPin ? `📌 <b>PIN:</b> <code>${netflixCredPin}</code>\n` : ''}
 💎 <b>Packages:</b>
 ${itemsText}
 
@@ -465,7 +467,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🍿 <b>Service / Game:</b> <b>${gameTitle}</b>
-${netflixCredEmail ? `📧 <b>Email:</b> <code>${netflixCredEmail}</code>\n` : ''}${netflixCredPass ? `🔐 <b>Password:</b> <code>${netflixCredPass}</code>\n` : ''}${netflixCredPin ? `📌 <b>PIN:</b> <code>${netflixCredPin}</code>\n` : ''}${netflixCodeSent ? `🔑 <b>Verification Code:</b> <code>${netflixCodeSent}</code>\n` : ''}
+${netflixCredEmail ? `📧 <b>Email:</b> <code>${netflixCredEmail}</code>\n` : ''}${netflixCredPass ? `🔐 <b>Password:</b> <code>${netflixCredPass}</code>\n` : ''}${netflixCredProfile ? `👤 <b>Profile:</b> <code>${netflixCredProfile}</code>\n` : ''}${netflixCredPin ? `📌 <b>PIN:</b> <code>${netflixCredPin}</code>\n` : ''}${netflixCodeSent ? `🔑 <b>Verification Code:</b> <code>${netflixCodeSent}</code>\n` : ''}
 💎 <b>Packages:</b>
 ${itemsText}
 

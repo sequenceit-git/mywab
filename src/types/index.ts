@@ -162,6 +162,7 @@ export interface PackagePresetAccount {
   email: string;
   password: string;
   pin?: string;
+  profileName?: string;
 }
 
 /** Preset login returned to admin Pricing UI (admin-only API) */
@@ -170,6 +171,7 @@ export interface PackagePresetAccountPublic {
   password: string;
   hasPassword: boolean;
   pin?: string;
+  profileName?: string;
 }
 
 export interface DraftOrderItem {

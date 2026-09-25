@@ -266,14 +266,16 @@ export const orderPaymentService = {
           order.order_id,
           presetCreds.email,
           presetCreds.password,
-          presetCreds.pin
+          presetCreds.pin,
+          presetCreds.profileName
         );
       } else {
         await whatsappService.sendCrunchyrollAccountInfo(
           phone,
           order.order_id,
           presetCreds.email,
-          presetCreds.password
+          presetCreds.password,
+          presetCreds.profileName
         );
       }
 

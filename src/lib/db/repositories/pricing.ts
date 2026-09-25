@@ -30,7 +30,8 @@ export function toPublicPresetAccount(
     email: preset.email.trim(),
     password: preset.password?.trim() || '',
     hasPassword: Boolean(preset.password?.trim()),
-    pin: preset.pin?.trim() || undefined
+    pin: preset.pin?.trim() || undefined,
+    profileName: preset.profileName?.trim() || undefined
   };
 }
 
@@ -42,13 +43,14 @@ export function toPublicPricingProduct(product: PricingProduct): Omit<PricingPro
   return pub ? { ...rest, presetAccount: pub } : rest;
 }
 
-function parsePresetFromRow(row: { preset_account?: { email?: string; password?: string; pin?: string } }): PackagePresetAccount | undefined {
+function parsePresetFromRow(row: { preset_account?: { email?: string; password?: string; pin?: string; profile_name?: string } }): PackagePresetAccount | undefined {
   const pa = row.preset_account;
   if (!pa?.email?.trim() || !pa?.password?.trim()) return undefined;
   return {
     email: pa.email.trim(),
     password: pa.password.trim(),
-    pin: pa.pin?.trim() || undefined
+    pin: pa.pin?.trim() || undefined,
+    profileName: pa.profile_name?.trim() || undefined
   };
 }
 
@@ -414,7 +416,8 @@ export const pricingRepository = {
                 ? {
                     email: newProduct.presetAccount.email,
                     password: newProduct.presetAccount.password,
-                    pin: newProduct.presetAccount.pin || ''
+                    pin: newProduct.presetAccount.pin || '',
+                    profile_name: newProduct.presetAccount.profileName || ''
                   }
                 : null
             }
@@ -502,7 +505,8 @@ export const pricingRepository = {
                 ? {
                     email: updatedProduct.presetAccount.email,
                     password: updatedProduct.presetAccount.password,
-                    pin: updatedProduct.presetAccount.pin || ''
+                    pin: updatedProduct.presetAccount.pin || '',
+                    profile_name: updatedProduct.presetAccount.profileName || ''
                   }
                 : null
             }

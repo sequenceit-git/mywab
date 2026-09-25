@@ -8,6 +8,7 @@ export interface StreamingAccountCredentials {
   email: string;
   password: string;
   pin?: string;
+  profileName?: string;
 }
 
 export function isNetflixOrder(order?: {
@@ -48,7 +49,8 @@ export function presetAccountToCredentials(
   return {
     email: preset.email.trim(),
     password: preset.password.trim(),
-    pin: preset.pin?.trim() || undefined
+    pin: preset.pin?.trim() || undefined,
+    profileName: preset.profileName?.trim() || undefined
   };
 }
 
@@ -108,29 +110,32 @@ export function buildStreamingCredsNote(
   creds: StreamingAccountCredentials
 ): string {
   if (service === 'netflix') {
-    return `NETFLIX_CREDS_SENT | Email: ${creds.email} | Pass: ${creds.password}${creds.pin ? ` | PIN: ${creds.pin}` : ''}`;
+    return `NETFLIX_CREDS_SENT | Email: ${creds.email} | Pass: ${creds.password}${creds.pin ? ` | PIN: ${creds.pin}` : ''}${creds.profileName ? ` | Profile: ${creds.profileName}` : ''}`;
   }
-  return `CRUNCHYROLL_CREDS_SENT | Email: ${creds.email} | Pass: ${creds.password}`;
+  return `CRUNCHYROLL_CREDS_SENT | Email: ${creds.email} | Pass: ${creds.password}${creds.profileName ? ` | Profile: ${creds.profileName}` : ''}`;
 }
 
 export function parsePresetAccountRequestBody(body: {
-  presetAccount?: { email?: string; password?: string; pin?: string; clear?: boolean };
+  presetAccount?: { email?: string; password?: string; pin?: string; profileName?: string; clear?: boolean };
   presetEmail?: string;
   presetPassword?: string;
   presetPin?: string;
+  presetProfileName?: string;
   clearPresetAccount?: boolean;
-}): { email?: string; password?: string; pin?: string; clear?: boolean } | undefined {
+}): { email?: string; password?: string; pin?: string; profileName?: string; clear?: boolean } | undefined {
   if (body.presetAccount) return body.presetAccount;
   if (
     body.clearPresetAccount ||
     body.presetEmail !== undefined ||
     body.presetPassword !== undefined ||
-    body.presetPin !== undefined
+    body.presetPin !== undefined ||
+    body.presetProfileName !== undefined
   ) {
     return {
       email: body.presetEmail,
       password: body.presetPassword,
       pin: body.presetPin,
+      profileName: body.presetProfileName,
       clear: body.clearPresetAccount
     };
   }
@@ -148,7 +153,7 @@ export function applyPresetAccountUpdate(
 
 export function mergePackagePresetInput(
   existing: PackagePresetAccount | undefined,
-  input?: { email?: string; password?: string; pin?: string; clear?: boolean }
+  input?: { email?: string; password?: string; pin?: string; profileName?: string; clear?: boolean }
 ): PackagePresetAccount | null | undefined {
   if (input?.clear) return null;
   if (!input) return existing;
@@ -170,7 +175,7 @@ export function mergePackagePresetInput(
     return null;
   }
 
-  if (!email && !password && input.pin === undefined) {
+  if (!email && !password && input.pin === undefined && input.profileName === undefined) {
     return existing;
   }
 
@@ -184,6 +189,12 @@ export function mergePackagePresetInput(
     if (pin) merged.pin = pin;
   } else if (existing?.pin) {
     merged.pin = existing.pin;
+  }
+  if (input.profileName !== undefined) {
+    const profileName = String(input.profileName).trim();
+    if (profileName) merged.profileName = profileName;
+  } else if (existing?.profileName) {
+    merged.profileName = existing.profileName;
   }
   return merged;
 }

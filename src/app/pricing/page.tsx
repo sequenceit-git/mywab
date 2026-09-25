@@ -34,6 +34,7 @@ export default function PricingPage() {
   const [modalPresetEmail, setModalPresetEmail] = useState('');
   const [modalPresetPassword, setModalPresetPassword] = useState('');
   const [modalPresetPin, setModalPresetPin] = useState('');
+  const [modalPresetProfileName, setModalPresetProfileName] = useState('');
   const [modalPresetHasPassword, setModalPresetHasPassword] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -188,6 +189,7 @@ export default function PricingPage() {
     setModalPresetEmail('');
     setModalPresetPassword('');
     setModalPresetPin('');
+    setModalPresetProfileName('');
     setModalPresetHasPassword(false);
     setFeedbackMsg(null);
     setIsModalOpen(true);
@@ -207,6 +209,7 @@ export default function PricingPage() {
     setModalPresetEmail(product.presetAccount?.email || '');
     setModalPresetPassword(product.presetAccount?.password || '');
     setModalPresetPin(product.presetAccount?.pin || '');
+    setModalPresetProfileName(product.presetAccount?.profileName || '');
     setModalPresetHasPassword(Boolean(product.presetAccount?.hasPassword || product.presetAccount?.password));
     setFeedbackMsg(null);
     setIsModalOpen(true);
@@ -224,7 +227,8 @@ export default function PricingPage() {
     return {
       presetEmail: modalPresetEmail.trim(),
       presetPassword: modalPresetPassword.trim(),
-      presetPin: modalPresetPin.trim()
+      presetPin: modalPresetPin.trim(),
+      presetProfileName: modalPresetProfileName.trim()
     };
   };
 
@@ -516,6 +520,8 @@ export default function PricingPage() {
         setModalPresetPassword={setModalPresetPassword}
         modalPresetPin={modalPresetPin}
         setModalPresetPin={setModalPresetPin}
+        modalPresetProfileName={modalPresetProfileName}
+        setModalPresetProfileName={setModalPresetProfileName}
         modalPresetHasPassword={modalPresetHasPassword}
         feedbackMsg={feedbackMsg}
         isSaving={isSaving}
