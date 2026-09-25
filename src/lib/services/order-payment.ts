@@ -110,13 +110,19 @@ export const orderPaymentService = {
       ? await db.getProductById(firstItem.product_id)
       : null;
     const kokosOverride = orderedPackage?.kokosAutoFulfill;
+    const globalKokosSetting = db.isKokosAutoFulfillEnabled();
     const isKokosEnabledForPackage =
-      kokosOverride !== undefined ? kokosOverride : db.isKokosAutoFulfillEnabled();
-    const isKokosEnabled = isKokosEnabledForPackage && kokosClient.isConfigured();
+      kokosOverride !== undefined ? kokosOverride : globalKokosSetting;
+    const isKokosConfigured = kokosClient.isConfigured();
+    const isKokosEnabled = isKokosEnabledForPackage && isKokosConfigured;
+
+    console.log(`[Kokos Debug] Order #${order.order_id} | isPubgUid=${isPubgUid} | product_id=${firstItem?.product_id || 'MISSING'} | product_name=${productName} | playerUid=${playerUid} | packageFound=${!!orderedPackage} | kokosOverride=${kokosOverride} | globalSetting=${globalKokosSetting} | isKokosEnabledForPkg=${isKokosEnabledForPackage} | isConfigured=${isKokosConfigured} | FINAL isKokosEnabled=${isKokosEnabled}`);
 
     if (isPubgUid && isKokosEnabled) {
       const denomMatch = (firstItem?.product_name || productName).match(/\d+/);
       const denomination = denomMatch ? parseInt(denomMatch[0], 10) : null;
+
+      console.log(`[Kokos Debug] denomination=${denomination} | playerUid=${playerUid} | willAttemptRedeem=${!!(denomination && playerUid && playerUid !== 'N/A')}`);
 
       if (denomination && playerUid && playerUid !== 'N/A') {
         console.log(`[Kokos Auto-Fulfill] Redeeming ${denomination} UC for Player ${playerUid}...`);
@@ -127,6 +133,8 @@ export const orderPaymentService = {
           gameId: 'pubg_mobile',
           requireReceipt: true
         });
+
+        console.log(`[Kokos Debug] redeemCode result: success=${kokosResult.success} | receipt=${kokosResult.receipt?.id || 'NONE'} | error=${JSON.stringify(kokosResult.error || null)}`);
 
         if (kokosResult.success && kokosResult.receipt) {
           const receipt = kokosResult.receipt;
@@ -164,9 +172,13 @@ export const orderPaymentService = {
             message: 'PUBG UC auto-delivered via Kokos.'
           };
         } else {
-          console.warn('[Kokos Auto-Fulfill Warning]: Kokos failed, falling back to Telegram staff queue:', kokosResult.error);
+          console.warn('[Kokos Auto-Fulfill Warning]: Kokos failed, falling back to Telegram staff queue:', JSON.stringify(kokosResult.error));
         }
       }
+    } else if (isPubgUid && !isKokosEnabled) {
+      console.log(`[Kokos Debug] SKIPPED auto-fulfill for PUBG order #${order.order_id}: Kokos not enabled (override=${kokosOverride}, global=${globalKokosSetting}, configured=${isKokosConfigured})`);
+    } else if (!isPubgUid) {
+      console.log(`[Kokos Debug] SKIPPED: Order #${order.order_id} not detected as PUBG UID (productName="${productName}", notes="${(order.customer_notes || '').substring(0, 80)}...")`);
     }
 
     // B. Free Fire UID -> Pinex Auto-Redemption
