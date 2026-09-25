@@ -191,11 +191,11 @@ export function generateOrderCard(
 
   // ── Reusable layout blocks ──
 
+  // TOP: Quick order summary (no package details)
   const orderBlock = (workerLabel?: string, extraLines?: string[]) => {
     const lines: string[] = [
       `📦 <b>Order:</b> <code>${order.order_id}</code>`,
       `🕹️ <b>Service:</b> ${gameTitle}`,
-      `💎 <b>Package:</b>\n${itemsText}`,
       `💰 <b>Total:</b> ৳${order.total_amount}`,
       `💳 <b>Payment:</b> ${methodLabel}`,
     ];
@@ -205,8 +205,10 @@ export function generateOrderCard(
     return lines.join('\n');
   };
 
+  // BOTTOM: Package breakdown + customer details
   const customerBlock = (extraLines?: string[]) => {
     const lines: string[] = [
+      `💎 <b>Package:</b>\n${itemsText}`,
       `📞 <b>Phone:</b> <code>${order.delivery_phone}</code>`,
       `${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>`,
     ];
@@ -437,8 +439,9 @@ export function generateOrderCard(
     const title = isAutoVerified ? '🎉 <b>ORDER COMPLETED [AUTO-PAID]</b>' : '🎉 <b>ORDER COMPLETED</b>';
     return {
       cardHtml: card(title, '',
-        orderBlock('Processed by', [`🕒 <b>Completed:</b> ${new Date().toLocaleTimeString()}`]),
-        customerBlock()),
+        orderBlock('Processed by'),
+        customerBlock(),
+        `🕒 <b>Completed:</b> ${new Date().toLocaleTimeString()}`),
       replyMarkup: { inline_keyboard: [] }
     };
   }
@@ -455,11 +458,10 @@ export function generateOrderCard(
     return {
       cardHtml: card('❌ <b>ORDER CANCELLED</b>', '',
         orderBlock('Handled by', [
-          `⚠️ <b>Reason:</b> ${cancelReason}${refundNotice}`,
-          `🕒 <b>Cancelled:</b> ${new Date().toLocaleTimeString()}`
+          `⚠️ <b>Reason:</b> ${cancelReason}${refundNotice}`
         ]),
         customerBlock(),
-        '<i>⚠️ This order is cancelled. No further action needed.</i>'),
+        `🕒 <b>Cancelled:</b> ${new Date().toLocaleTimeString()}\n<i>⚠️ This order is cancelled. No further action needed.</i>`),
       replyMarkup: { inline_keyboard: [] }
     };
   }
