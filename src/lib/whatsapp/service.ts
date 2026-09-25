@@ -605,13 +605,19 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
   async sendVerificationCodeRequest(
     toPhone: string,
     orderIdCode: string,
-    isResend = false
+    isResend = false,
+    gameType?: string
   ): Promise<SendMessageResult> {
     const cleanPhone = toPhone.replace(/\D/g, '');
 
+    const isEfootball = (gameType || '').toLowerCase().includes('efootball') ||
+      (gameType || '').toLowerCase().includes('coin') ||
+      (gameType || '').toLowerCase().includes('fc mobile');
+    const emailLabel = isEfootball ? 'ইমেইল/Gmail' : 'গেম ইমেইল';
+
     const bodyText = isResend
-      ? `⚠️ *কোডের মেয়াদ শেষ হয়ে গেছে!*\n\nআমাদের এডমিন আপনার গেম ইমেইলে *নতুন* একটি ভেরিফিকেশন কোড পাঠিয়েছেন। অনুগ্রহ করে আপনার গেম ইমেইল চেক করে নতুন কোডটি *এখানে টাইপ করে পাঠান*।\n\n📦 *অর্ডার আইডি:* \`#${orderIdCode}\``
-      : `📧 *ভেরিফিকেশন কোড প্রয়োজন!*\n\nআমাদের এডমিন আপনার গেম ইমেইলে একটি ভেরিফিকেশন কোড পাঠিয়েছেন। অনুগ্রহ করে আপনার গেম ইমেইল চেক করে কোডটি *এখানে টাইপ করে পাঠান*।\n\n📦 *অর্ডার আইডি:* \`#${orderIdCode}\``;
+      ? `⚠️ *কোডের মেয়াদ শেষ হয়ে গেছে!*\n\nআমাদের এডমিন আপনার ${emailLabel}-এ *নতুন* একটি ভেরিফিকেশন কোড পাঠিয়েছেন। অনুগ্রহ করে আপনার ${emailLabel} চেক করে নতুন কোডটি *এখানে টাইপ করে পাঠান*।\n\n📦 *অর্ডার আইডি:* \`#${orderIdCode}\``
+      : `📧 *ভেরিফিকেশন কোড প্রয়োজন!*\n\nআমাদের এডমিন আপনার ${emailLabel}-এ একটি ভেরিফিকেশন কোড পাঠিয়েছেন। অনুগ্রহ করে আপনার ${emailLabel} চেক করে কোডটি *এখানে টাইপ করে পাঠান*।\n\n📦 *অর্ডার আইডি:* \`#${orderIdCode}\``;
 
     const buttons: WhatsAppButton[] = [
       { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }

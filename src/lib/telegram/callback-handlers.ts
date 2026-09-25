@@ -143,7 +143,8 @@ export async function handleCallbackQuery(callbackQuery: {
     const isResend = (existingOrder.customer_notes || '').includes('CODE_REQUESTED');
 
     try {
-      const sendResult = await whatsappService.sendVerificationCodeRequest(existingOrder.delivery_phone, existingOrder.order_id, isResend);
+      const productName = existingOrder.items?.[0]?.product_name || '';
+      const sendResult = await whatsappService.sendVerificationCodeRequest(existingOrder.delivery_phone, existingOrder.order_id, isResend, productName);
       if (!sendResult.success) {
         await telegramClient.answerCallbackQuery(id, `⚠️ কাস্টমারকে নোটিফাই করা যায়নি: ${sendResult.error || 'Unknown error'}`, true);
         return { success: false, message: sendResult.error || 'Failed to notify customer' };
