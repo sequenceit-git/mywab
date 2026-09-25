@@ -341,6 +341,7 @@ export const stateBot = {
     }
 
     // 9. Check if trigger or text is selecting one of the game categories (supported in any step!)
+    await db.ensureInitialized();
     const baseGame = findGameCategory(triggerId) || findGameCategory(rawText);
     const matchedGame = baseGame ? (db.getCachedCategory(baseGame.id) || baseGame) : undefined;
     if (matchedGame) {
@@ -397,7 +398,12 @@ export const stateBot = {
         break;
 
       case 'SELECTING_PACKAGE':
-        const selectedGame = session.draftOrder.selectedGame ? findGameCategory(session.draftOrder.selectedGame) : undefined;
+        const selectedGameBase = session.draftOrder.selectedGame
+          ? findGameCategory(session.draftOrder.selectedGame)
+          : undefined;
+        const selectedGame = selectedGameBase
+          ? (db.getCachedCategory(selectedGameBase.id) || selectedGameBase)
+          : undefined;
         if (selectedGame) {
           await sendPackageList(phone, conversationId, selectedGame);
         } else {

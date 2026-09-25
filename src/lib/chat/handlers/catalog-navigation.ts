@@ -3,6 +3,14 @@ import { whatsappService } from '../../whatsapp/service';
 import { GameCategory, GamePackage, formatWhatsAppRow, formatWhatsAppButton } from '../game-catalog';
 import { proceedToCreateOrderAndPayment } from './order-creation';
 
+async function getLiveCategory(gameOrId: GameCategory | string): Promise<GameCategory | undefined> {
+  // Always sync pricing cache from Mongo so admin disable/enable is reflected on WhatsApp
+  await db.ensureInitialized();
+  const id = typeof gameOrId === 'string' ? gameOrId : gameOrId.id;
+  const code = typeof gameOrId === 'string' ? gameOrId : gameOrId.code;
+  return db.getCachedCategory(id) || db.getCachedCategory(code);
+}
+
 export async function sendWelcomeAndGameList(phone: string, conversationId: string, customerName?: string): Promise<void> {
   db.setSessionState(conversationId, {
     step: 'SELECTING_GAME',
@@ -19,6 +27,7 @@ export async function sendWelcomeAndGameList(phone: string, conversationId: stri
 
 💡 *কমান্ড টিপস:* যেকোনো সময় মেনু দেখতে */menu*, অর্ডার ট্র্যাক করতে */track* বা সহায়তার জন্য */help* লিখুন।`;
 
+  await db.ensureInitialized();
   const categories = db.getCachedCategories();
 
   const sections = [
@@ -53,6 +62,7 @@ export async function sendWelcomeAndGameList(phone: string, conversationId: stri
  * Resend only the game list
  */
 export async function sendGameList(phone: string, conversationId: string): Promise<void> {
+  await db.ensureInitialized();
   const categories = db.getCachedCategories();
 
   const sections = [
@@ -80,7 +90,7 @@ export async function sendGameList(phone: string, conversationId: string): Promi
  * Step 1 -> Step 2: Handle game category choice and show price list + package options
  */
 export async function handleGameSelection(phone: string, conversationId: string, game: GameCategory): Promise<void> {
-  const liveGame = db.getCachedCategory(game.id) || game;
+  const liveGame = (await getLiveCategory(game)) || game;
 
   db.setSessionState(conversationId, {
     step: 'SELECTING_PACKAGE',
@@ -98,19 +108,32 @@ export async function handleGameSelection(phone: string, conversationId: string,
  * Send the price list and package selection buttons / list for a specific game
  */
 export async function sendPackageList(phone: string, conversationId: string, game: GameCategory): Promise<void> {
-  const liveGame = db.getCachedCategory(game.id) || game;
-  const activePackages = liveGame.packages.filter(p => p.isActive !== false);
+  // Force refresh so a just-disabled package cannot linger on a stale seed cache
+  await db.ensureInitialized(true);
+  const liveGame = db.getCachedCategory(game.id) || db.getCachedCategory(game.code) || game;
+  const packagesToShow = (liveGame.packages || []).filter(p => p.isActive !== false);
 
   // Build price list text
   let priceListText = `🎮 *${liveGame.fullName} — PRICE LIST*\n\n`;
-  activePackages.forEach((pkg) => {
+  packagesToShow.forEach((pkg) => {
     priceListText += `• *${pkg.name}* : ৳${pkg.price} Tk\n`;
   });
   priceListText += `\n⚡ ডেলিভারি সময়: ৫–১৫ মিনিট\n🎁 ওয়েবসাইট থেকে কিনলে ২% ইনস্ট্যান্ট ডিসকাউন্ট!`;
 
+  if (packagesToShow.length === 0) {
+    await whatsappService.sendInteractiveButtons(
+      phone,
+      `${priceListText}\n\n⚠️ এই ক্যাটাগরিতে এখন কোনো সক্রিয় প্যাকেজ নেই। অন্য সার্ভিস বেছে নিন।`,
+      [{ id: 'btn_main_menu', title: '🔙 মেইন মেনু' }],
+      `${liveGame.emoji} ${liveGame.title}`,
+      'DS Dukan'
+    );
+    return;
+  }
+
   // If game has 3 or fewer packages, send interactive quick-reply buttons
-  if (activePackages.length <= 3) {
-    const buttons = activePackages.map(p => formatWhatsAppButton(p));
+  if (packagesToShow.length <= 3) {
+    const buttons = packagesToShow.map(p => formatWhatsAppButton(p));
 
     await whatsappService.sendInteractiveButtons(
       phone,
@@ -124,7 +147,7 @@ export async function sendPackageList(phone: string, conversationId: string, gam
     const sections = [
       {
         title: `${liveGame.title} Packages`.slice(0, 24),
-        rows: activePackages.slice(0, 10).map(pkg => formatWhatsAppRow(pkg))
+        rows: packagesToShow.slice(0, 10).map(pkg => formatWhatsAppRow(pkg))
       }
     ];
 
@@ -155,26 +178,52 @@ export async function handlePackageSelection(
   game: GameCategory,
   pkg: GamePackage
 ): Promise<void> {
+  await db.ensureInitialized(true);
+  const liveGame = db.getCachedCategory(game.id) || db.getCachedCategory(game.code) || game;
+  const product = await db.getProductById(pkg.id);
+  const livePkg =
+    (liveGame.packages || []).find(p => p.id === pkg.id) ||
+    (product && product.isActive !== false
+      ? {
+          id: product.id,
+          name: product.name,
+          amount: product.amount,
+          price: product.price,
+          basePrice: product.basePrice,
+          description: product.description,
+          isActive: product.isActive
+        }
+      : undefined);
+
+  if (!product || product.isActive === false || !livePkg) {
+    await whatsappService.sendMessage(
+      phone,
+      '⚠️ এই প্যাকেজটি এখন আর সক্রিয় নেই। অনুগ্রহ করে অন্য প্যাকেজ বেছে নিন।'
+    );
+    await sendPackageList(phone, conversationId, liveGame);
+    return;
+  }
+
   const draftOrder = {
     items: [{
-      skuOrName: pkg.name,
-      packageId: pkg.id,
+      skuOrName: livePkg.name,
+      packageId: livePkg.id,
       quantity: 1,
-      unitPrice: pkg.price,
-      productName: `${game.fullName} (${pkg.name})`
+      unitPrice: livePkg.price,
+      productName: `${liveGame.fullName} (${livePkg.name})`
     }],
-    totalAmount: pkg.price,
-    selectedGame: game.code,
-    selectedGameLabel: game.fullName
+    totalAmount: livePkg.price,
+    selectedGame: liveGame.code,
+    selectedGameLabel: liveGame.fullName
   };
 
   // Check if this is a Netflix or Crunchyroll package (no client info needed — direct WhatsApp account delivery)
-  const isNetflix = pkg.id.includes('netflix') || 
-                    pkg.name.toLowerCase().includes('netflix') || 
-                    (game.id === 'game_movie' && pkg.name.toLowerCase().includes('netflix'));
-  const isCrunchyroll = pkg.id.includes('crunchyroll') || 
-                        pkg.name.toLowerCase().includes('crunchyroll') || 
-                        (game.id === 'game_movie' && pkg.name.toLowerCase().includes('crunchyroll'));
+  const isNetflix = livePkg.id.includes('netflix') || 
+                    livePkg.name.toLowerCase().includes('netflix') || 
+                    (liveGame.id === 'game_movie' && livePkg.name.toLowerCase().includes('netflix'));
+  const isCrunchyroll = livePkg.id.includes('crunchyroll') || 
+                        livePkg.name.toLowerCase().includes('crunchyroll') || 
+                        (liveGame.id === 'game_movie' && livePkg.name.toLowerCase().includes('crunchyroll'));
 
   if (isNetflix || isCrunchyroll) {
     const sessionState = {
@@ -202,14 +251,14 @@ export async function handlePackageSelection(
     draftOrder
   });
 
-  const isYouTube = pkg.id.includes('youtube') || pkg.name.toLowerCase().includes('youtube');
+  const isYouTube = livePkg.id.includes('youtube') || livePkg.name.toLowerCase().includes('youtube');
   const inputInstruction = isYouTube
     ? '▶️ আপনার *Email / Gmail অ্যাড্রেস* লিখে পাঠান (যেখানে YouTube Premium সাবস্ক্রিপশন নিতে চান):'
-    : game.inputPrompt;
+    : liveGame.inputPrompt;
 
   const promptMessage = 
-`✅ *সিলেক্টেড প্যাকেজ:* ${pkg.name}
-💰 *মূল্য:* ৳${pkg.price} Tk
+`✅ *সিলেক্টেড প্যাকেজ:* ${livePkg.name}
+💰 *মূল্য:* ৳${livePkg.price} Tk
 
 ${inputInstruction}`;
 
@@ -228,6 +277,6 @@ ${inputInstruction}`;
     conversationId,
     sender: 'BOT',
     content: promptMessage,
-    metadata: { step: 'COLLECTING_UID', package: pkg.name, price: pkg.price }
+    metadata: { step: 'COLLECTING_UID', package: livePkg.name, price: livePkg.price }
   });
 }

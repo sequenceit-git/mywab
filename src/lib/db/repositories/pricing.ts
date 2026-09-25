@@ -258,7 +258,9 @@ export const pricingRepository = {
    * Synchronously get current cached categories and active packages
    */
   getCachedCategories(): GameCategory[] {
-    const list = Array.from(memoryPackages.values()).filter(p => !deletedPackageIds.has(p.id) && p.isActive);
+    const list = Array.from(memoryPackages.values()).filter(
+      p => !deletedPackageIds.has(p.id) && p.isActive !== false
+    );
     return GAME_CATEGORIES.map(cat => {
       const catPackages = sortPackages(list.filter(p => p.categoryId === cat.id));
       return {
@@ -475,6 +477,7 @@ export const pricingRepository = {
     };
 
     memoryPackages.set(packageId, updatedProduct);
+    lastSyncedAt = Date.now();
 
     if (isDbConfigured()) {
       try {
@@ -492,7 +495,7 @@ export const pricingRepository = {
               profit: updatedProduct.profit,
               margin_percent: updatedProduct.marginPercent,
               description: updatedProduct.description || '',
-              is_active: updatedProduct.isActive,
+              is_active: updatedProduct.isActive !== false,
               sort_order: updatedProduct.sortOrder || 0,
               updated_at: now,
               preset_account: updatedProduct.presetAccount
