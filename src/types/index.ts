@@ -187,6 +187,7 @@ export interface ConversationDraftOrder {
   customerName?: string;
   customerPhone?: string;
   playerUid?: string;
+  playerName?: string;
   accountPassword?: string;
   paymentMethod?: string;
   trxId?: string;

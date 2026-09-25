@@ -1,11 +1,15 @@
 import { db } from '../../db';
 import { whatsappService } from '../../whatsapp/service';
 import { zinipayClient } from '../../zinipay/client';
+import { kokosClient } from '../../kokos/client';
 import { env } from '../../config/env';
 import { extractCleanUid, getAccountFieldInfo, isRefusalOrCancellation, isGreetingOrMenu } from '../input-parser';
 import { ConversationSessionState } from '@/types';
 import { sendWelcomeAndGameList } from './catalog-navigation';
 import { handleCancellation } from './info-handlers';
+
+/** Games whose UIDs should be validated via Kokos /character before proceeding to payment */
+const KOKOS_VALIDATED_GAMES = new Set(['pubg_uid', 'pubg_kr']);
 
 /**
  * Step 3 -> Step 4: Validate UID input and display Payment summary + 1-Tap Method Selection Buttons
@@ -44,6 +48,45 @@ export async function handleUidInput(
     return;
   }
 
+  // --- Kokos UID Validation for PUBG UID / PUBG KR orders ---
+  const selectedGame = session.draftOrder.selectedGame || '';
+  const shouldValidateViaKokos = KOKOS_VALIDATED_GAMES.has(selectedGame) && kokosClient.isConfigured();
+
+  let validatedPlayerName: string | undefined;
+
+  if (shouldValidateViaKokos) {
+    const kokosGameId = selectedGame === 'pubg_kr' ? 'pubg_mobile_kr' : 'pubg_mobile';
+
+    await whatsappService.sendMessage(phone, `⏳ *Player UID যাচাই করা হচ্ছে...* অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করুন।`);
+
+    const lookupResult = await kokosClient.getCharacter(cleanUid, kokosGameId);
+
+    if (!lookupResult.success || !lookupResult.name) {
+      console.log(`[UID Validation] Kokos lookup failed for UID ${cleanUid} (game=${kokosGameId}): ${lookupResult.error || 'no name returned'}`);
+
+      await whatsappService.sendInteractiveButtons(
+        phone,
+        `❌ *Player UID সঠিক নয়!*\n\nআপনার প্রদানকৃত UID \`${cleanUid}\` দিয়ে কোনো PUBG Mobile প্লেয়ার খুঁজে পাওয়া যায়নি।\n\n⚠️ অনুগ্রহ করে আপনার সঠিক *Player UID* আবার লিখে পাঠান:`,
+        [{ id: 'btn_main_menu', title: '🔙 মেইন মেনু' }],
+        'সঠিক UID দিন'
+      );
+      return;
+    }
+
+    validatedPlayerName = lookupResult.name;
+    console.log(`[UID Validation] Success: UID=${cleanUid}, Name="${validatedPlayerName}"`);
+
+    // Store validated player name in session for the payment summary
+    db.setSessionState(conversationId, {
+      step: session.step,
+      draftOrder: {
+        ...session.draftOrder,
+        playerUid: cleanUid,
+        playerName: validatedPlayerName
+      }
+    });
+  }
+
   // Check if this game requires account password after UID/Email (e.g. eFootball Android / iOS)
   const isEfootball = (session.draftOrder.selectedGame || '').includes('efb') ||
                       (session.draftOrder.selectedGameLabel || '').toLowerCase().includes('efootball') ||
@@ -79,7 +122,7 @@ export async function handleUidInput(
     return;
   }
 
-  await proceedToCreateOrderAndPayment(phone, conversationId, cleanUid, '', session, userId);
+  await proceedToCreateOrderAndPayment(phone, conversationId, cleanUid, '', session, userId, validatedPlayerName);
 }
 
 /**
@@ -134,7 +177,8 @@ export async function proceedToCreateOrderAndPayment(
   cleanUid: string,
   password: string,
   session: ConversationSessionState,
-  userId?: string
+  userId?: string,
+  validatedPlayerName?: string
 ): Promise<void> {
   const item = session.draftOrder.items?.[0];
   const amount = session.draftOrder.totalAmount || item?.unitPrice || 0;
@@ -144,6 +188,7 @@ export async function proceedToCreateOrderAndPayment(
   const effectiveUserId = userId || (await db.getOrCreateUser(phone)).id;
 
   const passwordNote = password ? ` | Password: ${password}` : '';
+  const playerNameNote = validatedPlayerName ? ` | PlayerName: ${validatedPlayerName}` : '';
 
   try {
     // 1. Create order in Database with PENDING_PAYMENT
@@ -161,13 +206,13 @@ export async function proceedToCreateOrderAndPayment(
           quantity: 1
         }
       ],
-      customerNotes: `State Bot Order | Game: ${gameLabel} | ${accountInfo.labelEn}: ${cleanUid}${passwordNote} | Mode: Auto ZiniPay`
+      customerNotes: `State Bot Order | Game: ${gameLabel} | ${accountInfo.labelEn}: ${cleanUid}${playerNameNote}${passwordNote} | Mode: Auto ZiniPay`
     });
 
     // 2. Create Hosted Invoice via ZiniPay API
     const invoiceRes = await zinipayClient.createInvoice({
       amount,
-      cus_name: `Player ${cleanUid}`,
+      cus_name: validatedPlayerName ? `${validatedPlayerName} (${cleanUid})` : `Player ${cleanUid}`,
       cus_email: `customer_${phone.replace(/\D/g, '') || 'guest'}@sequenceit.software`,
       metadata: {
         order_id: pendingOrder.order_id,
@@ -208,7 +253,8 @@ export async function proceedToCreateOrderAndPayment(
         gameLabel,
         packageName: pkgName,
         playerUid: cleanUid,
-        accountLabelBn: accountInfo.labelBn
+        accountLabelBn: accountInfo.labelBn,
+        playerName: validatedPlayerName
       });
 
       await db.addMessage({

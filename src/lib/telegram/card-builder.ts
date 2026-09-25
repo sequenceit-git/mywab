@@ -177,6 +177,10 @@ export function generateOrderCard(
     order.customer_notes?.match(/(?:PUBG UID|UID|Player UID|Email|Account):\s*([0-9a-zA-Z@._+-]+)/i)?.[1] ||
     'N/A';
 
+  const playerName =
+    order.customer_notes?.match(/PlayerName:\s*([^|\n]+)/i)?.[1]?.trim() || '';
+  const playerNameLine = playerName ? `\n👤 <b>Player Name:</b> ${playerName}` : '';
+
   const password = 
     order.customer_notes?.match(/Password:\s*([^|\n]+)/i)?.[1]?.trim() || 
     (order.delivery_address as any)?.password || 
@@ -536,7 +540,7 @@ pass123
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${playerNameLine}${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -566,7 +570,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${playerNameLine}${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -600,7 +604,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${playerNameLine}${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -632,7 +636,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${playerNameLine}${passwordLine}
 🔑 <b>Verification Code:</b> <code>${receivedCode || 'N/A'}</code>
 
 💎 <b>Packages:</b>
@@ -665,7 +669,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${playerNameLine}${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -697,7 +701,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${playerNameLine}${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -732,7 +736,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${playerNameLine}${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -766,7 +770,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${playerNameLine}${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -800,7 +804,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${playerNameLine}${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -830,7 +834,7 @@ ${itemsText}
 ⚠️ <b>Reason / কারণ:</b> ${cancelReason}${refundNotice}
 
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${playerNameLine}${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}
@@ -892,7 +896,7 @@ ${itemsText}
 📞 <b>Customer Phone:</b> <code>${order.delivery_phone}</code>${customNotesLine}
 
 🕹️ <b>Service / Game:</b> <b>${gameTitle}</b>
-${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${passwordLine}
+${accountInfo.emoji} <b>${accountInfo.labelEn}:</b> <code>${playerUid}</code>${playerNameLine}${passwordLine}
 
 💎 <b>Packages:</b>
 ${itemsText}

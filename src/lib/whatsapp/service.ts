@@ -890,14 +890,17 @@ ${reason ? `\n📌 *কারণ / Reason:* ${reason}` : ''}
     packageName: string;
     playerUid: string;
     accountLabelBn?: string;
+    playerName?: string;
   }): Promise<SendMessageResult> {
-    const { toPhone, orderIdCode, paymentUrl, amount, gameLabel, packageName, playerUid, accountLabelBn } = params;
+    const { toPhone, orderIdCode, paymentUrl, amount, gameLabel, packageName, playerUid, accountLabelBn, playerName } = params;
+
+    const playerNameLine = playerName ? `\n• 👤 Player Name: *${playerName}*` : '';
 
     const messageText = 
 `📝 *অর্ডার সামারি:*
 • গেম / সার্ভিস: *${gameLabel}*
 • প্যাকেজ: *${packageName}*
-• 🆔 ${accountLabelBn || 'Player ID'}: \`${playerUid}\`
+• 🆔 ${accountLabelBn || 'Player ID'}: \`${playerUid}\`${playerNameLine}
 • প্রদেয় মূল্য: *৳${amount} Tk*
 
 ⚡ *পেমেন্ট সম্পন্ন করতে নিচের লিংকে ক্লিক করুন:*
