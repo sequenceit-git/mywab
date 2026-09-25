@@ -468,15 +468,16 @@ export function generateOrderCard(
 
   // ══════════════════════════════════════════════
   // PENDING_CLAIM — Streaming preset auto-delivered (Netflix/Crunchyroll needs OTP claim)
+  // Show ONLY the Claim button; action buttons appear after claiming.
   // ══════════════════════════════════════════════
   if (order.status === 'PENDING_CLAIM' && ((isNetflix && hasNetflixCredsSent) || (isCrunchyroll && hasCrunchyrollCredsSent))) {
-    const syntheticOrder = { ...order, status: 'PROCESSING' as Order['status'] };
-    const { cardHtml, replyMarkup } = generateOrderCard(syntheticOrder, workerName, queueCount);
-    const autoBanner = '\n🤖 <b>[AUTO-DELIVERED FROM PRESET]</b>';
-    const existingRows = replyMarkup?.inline_keyboard || [];
+    const presetBanner = isNetflix ? '\n🍿 <b>[NETFLIX — AUTO-DELIVERED]</b>\n' : '\n🍥 <b>[CRUNCHYROLL — AUTO-DELIVERED]</b>\n';
+    const creds = isNetflix ? nfCredsLines() : crCredsLines();
     return {
-      cardHtml: cardHtml.includes('[AUTO-DELIVERED') ? cardHtml : autoBanner + '\n' + cardHtml,
-      replyMarkup: { inline_keyboard: [claimBtn(oid), ...existingRows] }
+      cardHtml: card('🤖 <b>AUTO-DELIVERED — CLAIM FOR OTP SUPPORT</b>', presetBanner,
+        orderBlock(undefined, creds), customerBlock(),
+        '⚡ অ্যাকাউন্ট WhatsApp-এ পাঠানো হয়েছে। OTP/কোড সহায়তার জন্য Claim করুন।'),
+      replyMarkup: { inline_keyboard: [claimBtn(oid)] }
     };
   }
 
