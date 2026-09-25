@@ -9,7 +9,7 @@ import { sendWelcomeAndGameList } from './catalog-navigation';
 import { handleCancellation } from './info-handlers';
 
 /** Games whose UIDs should be validated via Kokos /character before proceeding to payment */
-const KOKOS_VALIDATED_GAMES = new Set(['pubg_uid', 'pubg_kr']);
+const KOKOS_VALIDATED_GAMES = new Set(['pubg_uid']);
 
 /**
  * Step 3 -> Step 4: Validate UID input and display Payment summary + 1-Tap Method Selection Buttons
