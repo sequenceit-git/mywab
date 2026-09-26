@@ -65,7 +65,11 @@ export const GAME_CATEGORIES: GameCategory[] = [
       { id: 'pkg_login_8100', name: '6000+2100 UC (QR)', amount: '8100', price: 9400, basePrice: 7700, description: 'QR Code Login Top-Up' },
       { id: 'pkg_spec_1', name: 'Special Pack 1 (QR)', amount: 'Special 1', price: 450, basePrice: 360, description: 'Special Login QR UC' },
       { id: 'pkg_spec_2', name: 'Special Pack 2 (QR)', amount: 'Special 2', price: 890, basePrice: 710, description: 'Special Login QR UC' },
-      { id: 'pkg_spec_3', name: 'Special Pack 3 (QR)', amount: 'Special 3', price: 1750, basePrice: 1400, description: 'Special Login QR UC' }
+      { id: 'pkg_spec_3', name: 'Special Pack 3 (QR)', amount: 'Special 3', price: 1750, basePrice: 1400, description: 'Special Login QR UC' },
+      { id: 'pkg_spec_750', name: 'Special Pack 750+ UC', amount: '750+', price: 1100, basePrice: 900, description: 'Special Login QR UC' },
+      { id: 'pkg_spec_2100', name: 'Special Pack 2100+ UC', amount: '2100+', price: 2800, basePrice: 2300, description: 'Special Login QR UC' },
+      { id: 'pkg_spec_4100', name: 'Special Pack 4100+ UC', amount: '4100+', price: 5200, basePrice: 4250, description: 'Special Login QR UC' },
+      { id: 'pkg_spec_9100', name: 'Special Pack 9100+ UC', amount: '9100+', price: 10800, basePrice: 8800, description: 'Special Login QR UC' }
     ]
   },
   {
@@ -207,7 +211,7 @@ export function findGameCategory(identifier?: string | null): GameCategory | und
   }
 
   if (clean.includes('special') || clean.includes('স্পেশাল')) {
-    return GAME_CATEGORIES.find(g => g.id === 'game_pubg_special');
+    return GAME_CATEGORIES.find(g => g.id === 'game_pubg_login');
   }
 
   if (clean.includes('login') || clean.includes('লগইন') || clean.includes('qr') || clean.includes('কিউআর')) {

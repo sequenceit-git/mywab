@@ -143,22 +143,33 @@ export async function sendPackageList(phone: string, conversationId: string, gam
       'DS Dukan'
     );
   } else {
-    // If game has >3 packages, send an Interactive List Message (supports up to 10 rows)
-    const sections = [
-      {
-        title: `${liveGame.title} Packages`.slice(0, 24),
-        rows: packagesToShow.slice(0, 10).map(pkg => formatWhatsAppRow(pkg))
-      }
-    ];
+    // WhatsApp list messages allow at most 10 rows — send extra packs in follow-up lists
+    const chunks: GamePackage[][] = [];
+    for (let i = 0; i < packagesToShow.length; i += 10) {
+      chunks.push(packagesToShow.slice(i, i + 10));
+    }
 
-    await whatsappService.sendInteractiveList(
-      phone,
-      `${priceListText}\n\nনিচের বাটন থেকে আপনার কাঙ্ক্ষিত প্যাকেজটি সিলেক্ট করুন:`,
-      'প্যাকেজ বেছে নিন 💎',
-      sections,
-      `${liveGame.emoji} ${liveGame.title}`,
-      'DS Dukan'
-    );
+    for (let i = 0; i < chunks.length; i++) {
+      const isFirst = i === 0;
+      const body = isFirst
+        ? `${priceListText}\n\nনিচের বাটন থেকে আপনার কাঙ্ক্ষিত প্যাকেজটি সিলেক্ট করুন:`
+        : `📋 *আরও প্যাকেজ (${i + 1}/${chunks.length})*\nনিচের লিস্ট থেকে বেছে নিন:`;
+      const sections = [
+        {
+          title: (isFirst ? `${liveGame.title} Packages` : `More Packages ${i + 1}`).slice(0, 24),
+          rows: chunks[i].map(pkg => formatWhatsAppRow(pkg))
+        }
+      ];
+
+      await whatsappService.sendInteractiveList(
+        phone,
+        body,
+        'প্যাকেজ বেছে নিন 💎',
+        sections,
+        `${liveGame.emoji} ${liveGame.title}`,
+        'DS Dukan'
+      );
+    }
   }
 
   await db.addMessage({
