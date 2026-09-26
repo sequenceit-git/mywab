@@ -257,10 +257,19 @@ export const usersRepository = {
     );
   },
 
-  async getUsersLeaderboard(): Promise<import('@/types').UserLeaderboardEntry[]> {
+  async getUsersLeaderboard(period?: { year?: number; month?: number }): Promise<import('@/types').UserLeaderboardEntry[]> {
+    const now = new Date();
+    const year = period?.year && period.year > 2000 ? period.year : now.getFullYear();
+    const month = period?.month && period.month >= 1 && period.month <= 12 ? period.month : now.getMonth() + 1;
+
     const users = await this.getUsers();
     const { ordersRepository } = await import('./orders');
     const orders = await ordersRepository.getOrders();
+    const inSelectedMonth = (dateStr?: string) => {
+      if (!dateStr) return false;
+      const dt = new Date(dateStr);
+      return dt.getFullYear() === year && dt.getMonth() + 1 === month;
+    };
 
     // Map orders by user_id and phone
     const ordersByUserId = new Map<string, typeof orders>();
@@ -289,13 +298,14 @@ export const usersRepository = {
         ])
       );
 
-      const nonCancelledOrders = userOrders.filter(o => o.status !== 'CANCELLED');
-      const deliveredOrders = userOrders.filter(o => o.status === 'DELIVERED');
+      const monthOrders = userOrders.filter(o => inSelectedMonth(o.created_at));
+      const nonCancelledOrders = monthOrders.filter(o => o.status !== 'CANCELLED');
+      const deliveredOrders = monthOrders.filter(o => o.status === 'DELIVERED');
       
       const totalSpent = nonCancelledOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
       
       // Sort orders by date descending
-      const sortedOrders = [...userOrders].sort(
+      const sortedOrders = [...monthOrders].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 
@@ -311,7 +321,7 @@ export const usersRepository = {
 
       // Count favorite game/product
       const gameCounts = new Map<string, number>();
-      for (const ord of userOrders) {
+      for (const ord of monthOrders) {
         for (const item of ord.items || []) {
           const name = item.product_name || 'Top-Up';
           gameCounts.set(name, (gameCounts.get(name) || 0) + 1);
@@ -332,7 +342,7 @@ export const usersRepository = {
         name: user.name,
         status_tag: user.status_tag || 'REGULAR',
         total_spent: totalSpent,
-        total_orders: userOrders.length,
+        total_orders: monthOrders.length,
         delivered_orders: deliveredOrders.length,
         last_order_at: lastOrderAt,
         latest_uid: latestUid,
@@ -350,10 +360,12 @@ export const usersRepository = {
       return b.total_orders - a.total_orders;
     });
 
-    leaderboard.forEach((entry, idx) => {
+    const monthlyBoard = leaderboard.filter(entry => entry.total_orders > 0);
+
+    monthlyBoard.forEach((entry, idx) => {
       entry.rank = idx + 1;
     });
 
-    return leaderboard;
+    return monthlyBoard;
   }
 };

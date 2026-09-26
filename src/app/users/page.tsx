@@ -19,7 +19,10 @@ import {
   RefreshCw,
   Copy,
   Check,
-  ChevronDown
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Calendar
 } from 'lucide-react';
 import { UserLeaderboardEntry } from '@/types';
 import { WhatsAppIcon } from '@/components/BrandIcons';
@@ -214,11 +217,26 @@ export default function UsersLeaderboardPage() {
   const [sortBy, setSortBy] = useState<'SPENT' | 'ORDERS' | 'RECENT'>('SPENT');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const now = new Date();
+  const [period, setPeriod] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 });
+
+  const monthLabel = new Date(period.year, period.month - 1, 1).toLocaleString('en-US', {
+    month: 'long',
+    year: 'numeric'
+  });
+  const isCurrentMonth = period.year === now.getFullYear() && period.month === now.getMonth() + 1;
+
+  const shiftMonth = (delta: number) => {
+    const next = new Date(period.year, period.month - 1 + delta, 1);
+    const current = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (next > current) return;
+    setPeriod({ year: next.getFullYear(), month: next.getMonth() + 1 });
+  };
 
   const fetchLeaderboard = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch(`/api/users?year=${period.year}&month=${period.month}`);
       const data = await res.json();
       if (data.success && Array.isArray(data.leaderboard)) {
         setLeaderboard(data.leaderboard);
@@ -232,7 +250,7 @@ export default function UsersLeaderboardPage() {
 
   useEffect(() => {
     fetchLeaderboard();
-  }, []);
+  }, [period.year, period.month]);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -303,7 +321,7 @@ export default function UsersLeaderboardPage() {
     <div className="flex-1 flex flex-col min-h-screen bg-slate-950">
       <Header
         title="Customer Leaderboard & Loyalty"
-        subtitle="Unique customers, lifetime purchases, game top-up preferences, and VIP rankings"
+        subtitle="Monthly rankings by spend, orders, and VIP status"
       />
 
       <main className="p-4 sm:p-6 max-w-7xl mx-auto w-full space-y-6 pb-20 lg:pb-6">
@@ -316,19 +334,44 @@ export default function UsersLeaderboardPage() {
               </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Customer Leaderboard</h1>
-                <p className="text-xs sm:text-sm text-slate-400">Unique customers, lifetime purchases, and loyalty rankings</p>
+                <p className="text-xs sm:text-sm text-slate-400">Ranked by this month's completed purchases</p>
               </div>
             </div>
           </div>
 
-          <button
-            onClick={fetchLeaderboard}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 text-xs sm:text-sm font-medium transition self-start sm:self-auto shadow-sm"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh List
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <div className="flex items-center gap-1 rounded-xl bg-slate-800/80 border border-slate-700/60 p-1">
+              <button
+                type="button"
+                onClick={() => shiftMonth(-1)}
+                className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition"
+                aria-label="Previous month"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-1.5 px-2 min-w-[140px] justify-center">
+                <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-semibold text-white">{monthLabel}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => shiftMonth(1)}
+                disabled={isCurrentMonth}
+                className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition disabled:opacity-30 disabled:pointer-events-none"
+                aria-label="Next month"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            <button
+              onClick={fetchLeaderboard}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 text-xs sm:text-sm font-medium transition shadow-sm"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
         </div>
 
       {/* KPI Overview Grid */}
@@ -368,12 +411,12 @@ export default function UsersLeaderboardPage() {
 
         <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-sm">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase">Avg LTV</span>
+            <span className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase">Monthly Avg</span>
             <Sparkles className="w-4 h-4 text-amber-400" />
           </div>
           <div className="mt-2">
             <span className="text-xl sm:text-2xl font-extrabold text-amber-300">৳{avgLtv.toLocaleString()}</span>
-            <span className="text-[10px] text-slate-400 block mt-0.5">Average spent / user</span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Average spent this month</span>
           </div>
         </div>
       </div>

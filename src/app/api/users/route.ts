@@ -13,10 +13,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, users });
     }
 
-    const leaderboard = await db.getUsersLeaderboard();
+    const now = new Date();
+    const year = Number(searchParams.get('year')) || now.getFullYear();
+    const month = Number(searchParams.get('month')) || now.getMonth() + 1;
+    const leaderboard = await db.getUsersLeaderboard({ year, month });
     return NextResponse.json({
       success: true,
       count: leaderboard.length,
+      period: { year, month },
       leaderboard
     });
   } catch (err: any) {
