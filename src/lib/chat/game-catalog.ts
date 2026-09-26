@@ -82,8 +82,17 @@ export const GAME_CATEGORIES: GameCategory[] = [
     inputLabel: 'Player UID',
     inputPrompt: '👑 আপনার *PUBG Player UID* টি লিখে পাঠান:',
     packages: [
-      { id: 'pkg_sub_prime', name: 'Prime (1 Month)', amount: 'Prime', price: 150, basePrice: 110, description: 'Instant UID Activation' },
-      { id: 'pkg_sub_prime_plus', name: 'Prime Plus (1 Month)', amount: 'Prime Plus', price: 1150, basePrice: 930, description: 'Instant UID Activation' }
+      { id: 'pkg_sub_prime', name: 'Prime 1 Month', amount: 'Prime 1M', price: 150, basePrice: 110, description: 'Instant UID Activation' },
+      { id: 'pkg_sub_prime_3m', name: 'Prime 3 Month', amount: 'Prime 3M', price: 420, basePrice: 310, description: 'Instant UID Activation' },
+      { id: 'pkg_sub_prime_6m', name: 'Prime 6 Month', amount: 'Prime 6M', price: 800, basePrice: 590, description: 'Instant UID Activation' },
+      { id: 'pkg_sub_prime_12m', name: 'Prime 12 Month', amount: 'Prime 12M', price: 1500, basePrice: 1100, description: 'Instant UID Activation' },
+      { id: 'pkg_sub_prime_plus', name: 'Prime Plus 1 Month', amount: 'Prime Plus 1M', price: 1150, basePrice: 930, description: 'Instant UID Activation' },
+      { id: 'pkg_sub_prime_plus_3m', name: 'Prime Plus 3 Month', amount: 'Prime Plus 3M', price: 3300, basePrice: 2680, description: 'Instant UID Activation' },
+      { id: 'pkg_sub_prime_plus_6m', name: 'Prime Plus 6 Month', amount: 'Prime Plus 6M', price: 6200, basePrice: 5050, description: 'Instant UID Activation' },
+      { id: 'pkg_sub_prime_plus_12m', name: 'Prime Plus 12 Month', amount: 'Prime Plus 12M', price: 11500, basePrice: 9400, description: 'Instant UID Activation' },
+      { id: 'pkg_sub_growth_1', name: 'Growth Pack 1', amount: 'Growth 1', price: 250, basePrice: 180, description: 'Instant UID Activation' },
+      { id: 'pkg_sub_growth_2', name: 'Growth Pack 2', amount: 'Growth 2', price: 500, basePrice: 370, description: 'Instant UID Activation' },
+      { id: 'pkg_sub_growth_3', name: 'Growth Pack 3', amount: 'Growth 3', price: 900, basePrice: 680, description: 'Instant UID Activation' }
     ]
   },
   {
@@ -300,10 +309,29 @@ export function findPackage(game: GameCategory, identifier?: string | null): Gam
 
   // B. PUBG Subscriptions
   if (game.id === 'game_pubg_sub') {
-    if (clean.includes('plus') || clean.includes('প্লাস')) {
+    const isPlus = clean.includes('plus') || clean.includes('প্লাস');
+    const isGrowth = clean.includes('growth') || clean.includes('গ্রোথ');
+    const months =
+      clean.includes('12') || clean.includes('1 year') || clean.includes('year') ? 12 :
+      clean.includes('6') ? 6 :
+      clean.includes('3') ? 3 :
+      clean.includes('1') ? 1 : 0;
+
+    if (isGrowth) {
+      if (clean.includes('3')) return packages.find(p => p.id === 'pkg_sub_growth_3');
+      if (clean.includes('2')) return packages.find(p => p.id === 'pkg_sub_growth_2');
+      return packages.find(p => p.id === 'pkg_sub_growth_1');
+    }
+    if (isPlus) {
+      if (months === 12) return packages.find(p => p.id === 'pkg_sub_prime_plus_12m');
+      if (months === 6) return packages.find(p => p.id === 'pkg_sub_prime_plus_6m');
+      if (months === 3) return packages.find(p => p.id === 'pkg_sub_prime_plus_3m');
       return packages.find(p => p.id === 'pkg_sub_prime_plus');
     }
     if (clean.includes('prime') || clean.includes('প্রাইম')) {
+      if (months === 12) return packages.find(p => p.id === 'pkg_sub_prime_12m');
+      if (months === 6) return packages.find(p => p.id === 'pkg_sub_prime_6m');
+      if (months === 3) return packages.find(p => p.id === 'pkg_sub_prime_3m');
       return packages.find(p => p.id === 'pkg_sub_prime');
     }
   }
