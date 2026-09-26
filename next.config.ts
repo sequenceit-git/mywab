@@ -12,7 +12,15 @@ const nextConfig: NextConfig = {
   // Allow all ngrok tunnels and local/custom domain origins
   experimental: {
     serverActions: {
-      allowedOrigins: ['*.ngrok-free.app', '*.ngrok.app', '*.ngrok.io', 'localhost:3000', '127.0.0.1:3000'],
+      allowedOrigins: [
+        '*.ngrok-free.app',
+        '*.ngrok.app',
+        '*.ngrok.io',
+        'localhost:3000',
+        '127.0.0.1:3000',
+        'dsdukan.cloud',
+        'www.dsdukan.cloud'
+      ],
     },
   },
   async headers() {

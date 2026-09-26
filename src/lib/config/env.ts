@@ -85,7 +85,7 @@ export const env = {
       if (process.env.NEXT_PUBLIC_APP_URL) {
         return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '');
       }
-      return 'https://mywab.sequenceit.software';
+      return 'https://dsdukan.cloud';
     },
     get domain() {
       if (process.env.DOMAIN) return process.env.DOMAIN;
@@ -96,7 +96,7 @@ export const env = {
           // ignore
         }
       }
-      return 'mywab.sequenceit.software';
+      return 'dsdukan.cloud';
     },
   }
 };

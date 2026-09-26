@@ -83,7 +83,7 @@ export class ZiniPayClient {
     const idTag = rawPhone || rawUid || 'guest';
 
     const cusName = (params.cus_name || (params.metadata?.player_uid ? `Player ${params.metadata.player_uid}` : `Customer ${idTag}`)).trim();
-    const cusEmail = (params.cus_email || `customer_${idTag}@sequenceit.software`).trim();
+    const cusEmail = (params.cus_email || `customer_${idTag}@dsdukan.cloud`).trim();
 
     const payload: Record<string, any> = {
       amount: Math.round(params.amount),

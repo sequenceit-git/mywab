@@ -10,18 +10,27 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - DOMAIN=${DOMAIN:-dsdukan.cloud}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://dsdukan.cloud}
     labels:
       - "traefik.enable=true"
-      
+
       # HTTP Router (port 80)
-      - "traefik.http.routers.wapbusiness-http.rule=Host(`${DOMAIN:-mywab.sequenceit.software}`)"
+      - "traefik.http.routers.wapbusiness-http.rule=Host(`${DOMAIN:-dsdukan.cloud}`) || Host(`www.${DOMAIN:-dsdukan.cloud}`)"
       - "traefik.http.routers.wapbusiness-http.entrypoints=web"
-      
+
       # HTTPS Router (port 443 with TLS)
-      - "traefik.http.routers.wapbusiness-https.rule=Host(`${DOMAIN:-mywab.sequenceit.software}`)"
+      - "traefik.http.routers.wapbusiness-https.rule=Host(`${DOMAIN:-dsdukan.cloud}`) || Host(`www.${DOMAIN:-dsdukan.cloud}`)"
       - "traefik.http.routers.wapbusiness-https.entrypoints=websecure"
       - "traefik.http.routers.wapbusiness-https.tls=true"
       - "traefik.http.routers.wapbusiness-https.tls.certresolver=${CERT_RESOLVER:-letsencrypt}"
-      
+
       # Container port for Traefik load balancer
       - "traefik.http.services.wapbusiness.loadbalancer.server.port=3000"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik-network}

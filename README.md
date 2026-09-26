@@ -49,7 +49,7 @@ flowchart TD
         DB_Service["Database Service Facade\n(src/lib/db.ts)"]
         TG_Service["Telegram Dispatch Service\n(src/lib/telegram/bot.ts)"]
         WA_Service["WhatsApp Outbound Service\n(src/lib/whatsapp/service.ts)"]
-        Admin_Panel["Admin Dashboard & Live Inbox\n(mywab.sequenceit.software)"]
+        Admin_Panel["Admin Dashboard & Live Inbox\n(dsdukan.cloud)"]
     end
 
     subgraph Database["MongoDB Atlas Cloud"]
@@ -313,9 +313,9 @@ TELEGRAM_BOT_TOKEN=123456789:ABC...
 TELEGRAM_WORKER_GROUP_ID=-1001234567890
 
 # Subdomain & Admin Auth
-NEXT_PUBLIC_APP_URL=https://mywab.sequenceit.software
-DOMAIN=mywab.sequenceit.software
-ADMIN_EMAIL=admin@sequenceit.software
+NEXT_PUBLIC_APP_URL=https://dsdukan.cloud
+DOMAIN=dsdukan.cloud
+ADMIN_EMAIL=admin@dsdukan.cloud
 ADMIN_PASSWORD=admin123456
 AUTH_SECRET=your_super_secret_session_key
 ```
@@ -338,7 +338,8 @@ This project is configured with a multi-stage Docker build and native Traefik re
 ### 1. Subdomain & Network Matching
 Ensure your `.env` contains your domain and Traefik Docker network:
 ```env
-DOMAIN=mywab.sequenceit.software
+DOMAIN=dsdukan.cloud
+NEXT_PUBLIC_APP_URL=https://dsdukan.cloud
 TRAEFIK_NETWORK=traefik-network   # Name of your active Traefik external network
 CERT_RESOLVER=letsencrypt
 ```
@@ -360,8 +361,8 @@ The dashboard is protected by session middleware (`src/middleware.ts`).
 
 | Field | Default Value |
 |---|---|
-| **Login URL** | `https://mywab.sequenceit.software/login` |
-| **Default Email** | `admin@sequenceit.software` |
+| **Login URL** | `https://dsdukan.cloud/login` |
+| **Default Email** | `admin@dsdukan.cloud` |
 | **Default Password** | `admin123456` |
 
 *You can customize admin credentials anytime in `.env` using `ADMIN_EMAIL` and `ADMIN_PASSWORD`.*

@@ -128,7 +128,7 @@ export class PinexClient {
     const quantity = params.quantity || resolved.quantity || 1;
 
     // Determine callback URL
-    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://mywab.sequenceit.software').replace(/\/$/, '');
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://dsdukan.cloud').replace(/\/$/, '');
     const callbackUrl = params.callbackUrl || `${appUrl}/api/system/pinex/callback`;
 
     const payload = {

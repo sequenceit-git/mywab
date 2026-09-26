@@ -213,7 +213,7 @@ export async function proceedToCreateOrderAndPayment(
     const invoiceRes = await zinipayClient.createInvoice({
       amount,
       cus_name: validatedPlayerName ? `${validatedPlayerName} (${cleanUid})` : `Player ${cleanUid}`,
-      cus_email: `customer_${phone.replace(/\D/g, '') || 'guest'}@sequenceit.software`,
+      cus_email: `customer_${phone.replace(/\D/g, '') || 'guest'}@dsdukan.cloud`,
       metadata: {
         order_id: pendingOrder.order_id,
         customer_phone: phone,

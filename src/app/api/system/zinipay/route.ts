@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       const invoiceRes = await zinipayClient.createInvoice({
         amount: testAmount,
         cus_name: 'Test Customer',
-        cus_email: 'test@sequenceit.software',
+        cus_email: 'test@dsdukan.cloud',
         metadata: {
           test: true,
           order_id: testOrderRef,
