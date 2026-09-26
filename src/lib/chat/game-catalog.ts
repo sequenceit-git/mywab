@@ -25,6 +25,15 @@ export interface GameCategory {
   packages: GamePackage[];
 }
 
+/** Old catalog SKUs replaced by newer packs — hidden from WhatsApp / Pricing lists */
+export const RETIRED_PACKAGE_IDS = new Set([
+  'pkg_kr_60',
+  'pkg_kr_180',
+  'pkg_kr_360',
+  'pkg_kr_660',
+  'pkg_kr_1200'
+]);
+
 export const GAME_CATEGORIES: GameCategory[] = [
   {
     id: 'game_pubg_uid',
@@ -99,17 +108,19 @@ export const GAME_CATEGORIES: GameCategory[] = [
     id: 'game_pubg_kr',
     code: 'pubg_kr',
     title: 'PUBG KR — KOREAN UC',
-    fullName: 'PUBG MOBILE KR — KOREAN UC',
+    fullName: 'PUBG MOBILE KR — KOREAN UC (UID)',
     emoji: '🇰🇷',
     requiresUid: true,
     inputLabel: 'Player UID',
     inputPrompt: '🇰🇷 আপনার *PUBG Korean (KR) Player UID* টি লিখে পাঠান:',
     packages: [
-      { id: 'pkg_kr_60', name: '60 KR UC', amount: '60', price: 130, basePrice: 105, description: 'PUBG KR UID Top-Up' },
-      { id: 'pkg_kr_180', name: '180 KR UC', amount: '180', price: 390, basePrice: 315, description: 'PUBG KR UID Top-Up' },
-      { id: 'pkg_kr_360', name: '360 KR UC', amount: '360', price: 750, basePrice: 610, description: 'PUBG KR UID Top-Up' },
-      { id: 'pkg_kr_660', name: '660 KR UC', amount: '660', price: 1350, basePrice: 1100, description: 'PUBG KR UID Top-Up' },
-      { id: 'pkg_kr_1200', name: '1200 KR UC', amount: '1200', price: 2400, basePrice: 1950, description: 'PUBG KR UID Top-Up' }
+      { id: 'pkg_kr_375', name: '375 KR UC', amount: '375', price: 700, basePrice: 575, description: 'PUBG KR UID Top-Up' },
+      { id: 'pkg_kr_680', name: '680 KR UC', amount: '680', price: 1100, basePrice: 900, description: 'PUBG KR UID Top-Up' },
+      { id: 'pkg_kr_1850', name: '1850 KR UC', amount: '1850', price: 2850, basePrice: 2340, description: 'PUBG KR UID Top-Up' },
+      { id: 'pkg_kr_2530', name: '2530 KR UC', amount: '2530', price: 3950, basePrice: 3240, description: 'PUBG KR UID Top-Up' },
+      { id: 'pkg_kr_3950', name: '3950 KR UC', amount: '3950', price: 5650, basePrice: 4630, description: 'PUBG KR UID Top-Up' },
+      { id: 'pkg_kr_5800', name: '5800 KR UC', amount: '5800', price: 8450, basePrice: 6930, description: 'PUBG KR UID Top-Up' },
+      { id: 'pkg_kr_8300', name: '8300 KR UC', amount: '8300', price: 10650, basePrice: 8730, description: 'PUBG KR UID Top-Up' }
     ]
   },
   {

@@ -1,4 +1,4 @@
-import { GAME_CATEGORIES, GameCategory, GamePackage } from '../../chat/game-catalog';
+import { GAME_CATEGORIES, RETIRED_PACKAGE_IDS, GameCategory, GamePackage } from '../../chat/game-catalog';
 import { connectToDatabase, isDbConfigured } from '../client';
 import { PackageModel } from '../models/Package';
 import { mockStore } from '../mock-store';
@@ -221,7 +221,9 @@ export const pricingRepository = {
   async getAllProducts(includeInactive = false): Promise<PricingProduct[]> {
     await this.ensureInitialized();
     const list = Array.from(memoryPackages.values()).filter(p => !deletedPackageIds.has(p.id));
-    const filtered = includeInactive ? list : list.filter(p => p.isActive);
+    const filtered = includeInactive
+      ? list
+      : list.filter(p => p.isActive && !RETIRED_PACKAGE_IDS.has(p.id));
     return sortPackages(filtered);
   },
 
@@ -270,7 +272,7 @@ export const pricingRepository = {
    */
   getCachedCategories(): GameCategory[] {
     const list = Array.from(memoryPackages.values()).filter(
-      p => !deletedPackageIds.has(p.id) && p.isActive !== false
+      p => !deletedPackageIds.has(p.id) && p.isActive !== false && !RETIRED_PACKAGE_IDS.has(p.id)
     );
     return GAME_CATEGORIES.map(cat => {
       const catPackages = sortPackages(list.filter(p => p.categoryId === cat.id));
