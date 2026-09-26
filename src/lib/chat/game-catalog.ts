@@ -179,13 +179,23 @@ export const GAME_CATEGORIES: GameCategory[] = [
     inputLabel: 'Free Fire Player UID',
     inputPrompt: '🔥 আপনার *Free Fire Player UID* টি লিখে পাঠান (যেমন: `123456789`):',
     packages: [
-      { id: 'pkg_ff_115', name: '115 Diamonds', amount: '115', price: 95, basePrice: 76, description: 'Direct UID Top-Up' },
-      { id: 'pkg_ff_240', name: '240 Diamonds', amount: '240', price: 190, basePrice: 152, description: 'Direct UID Top-Up' },
-      { id: 'pkg_ff_355', name: '355 Diamonds', amount: '355', price: 280, basePrice: 225, description: 'Direct UID Top-Up' },
-      { id: 'pkg_ff_610', name: '610 Diamonds', amount: '610', price: 470, basePrice: 375, description: 'Direct UID Top-Up' },
-      { id: 'pkg_ff_1240', name: '1240 Diamonds', amount: '1240', price: 930, basePrice: 745, description: 'Direct UID Top-Up' },
-      { id: 'pkg_ff_weekly', name: 'Weekly Membership', amount: 'Weekly', price: 190, basePrice: 150, description: 'Weekly Pass' },
-      { id: 'pkg_ff_monthly', name: 'Monthly Membership', amount: 'Monthly', price: 930, basePrice: 740, description: 'Monthly Pass' }
+      { id: 'pkg_ff_25', name: '25 Diamonds', amount: '25', price: 25, basePrice: 18, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_50', name: '50 Diamonds', amount: '50', price: 40, basePrice: 30, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_115', name: '115 Diamonds', amount: '115', price: 90, basePrice: 74, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_240', name: '240 Diamonds', amount: '240', price: 170, basePrice: 139, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_355', name: '355 Diamonds', amount: '355', price: 250, basePrice: 205, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_480', name: '480 Diamonds', amount: '480', price: 340, basePrice: 279, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_610', name: '610 Diamonds', amount: '610', price: 400, basePrice: 328, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_850', name: '850 Diamonds', amount: '850', price: 550, basePrice: 451, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_1090', name: '1090 Diamonds', amount: '1090', price: 720, basePrice: 590, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_1240', name: '1240 Diamonds', amount: '1240', price: 850, basePrice: 697, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_1850', name: '1850 Diamonds', amount: '1850', price: 1350, basePrice: 1107, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_2530', name: '2530 Diamonds', amount: '2530', price: 1800, basePrice: 1476, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_5060', name: '5060 Diamonds', amount: '5060', price: 3500, basePrice: 2870, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_10120', name: '10120 Diamonds', amount: '10120', price: 7000, basePrice: 5740, description: 'Direct UID Top-Up' },
+      { id: 'pkg_ff_weekly', name: 'Weekly Pack', amount: 'Weekly', price: 170, basePrice: 139, description: 'Weekly Pass' },
+      { id: 'pkg_ff_monthly', name: 'Monthly Pack', amount: 'Monthly', price: 800, basePrice: 656, description: 'Monthly Pass' },
+      { id: 'pkg_ff_lvlup', name: 'Lvl Up Pass', amount: 'Lvl Up', price: 170, basePrice: 139, description: 'Level Up Pass' }
     ]
   },
   {

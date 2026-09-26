@@ -57,11 +57,19 @@ export class PinexClient {
     const raw = String(packageNameOrAmount || '').toLowerCase().trim();
 
     // 1. Memberships / Passes
-    if (raw.includes('weekly') || raw.includes('সাপ্তাহিক') || raw.includes('pass') || raw.includes('lite')) {
-      return { type: 'shell', product: 'lite', quantity: 1, description: 'Free Fire Weekly Membership (Shell lite)' };
-    }
     if (raw.includes('monthly') || raw.includes('মাসিক')) {
       return { type: 'shell', product: 'lvl30', quantity: 1, description: 'Free Fire Monthly Membership (Shell lvl30)' };
+    }
+    if (
+      raw.includes('weekly') ||
+      raw.includes('সাপ্তাহিক') ||
+      raw.includes('lvl up') ||
+      raw.includes('level up') ||
+      raw.includes('lvlup') ||
+      raw.includes('pass') ||
+      raw.includes('lite')
+    ) {
+      return { type: 'shell', product: 'lite', quantity: 1, description: 'Free Fire Weekly / Lvl Up Pass (Shell lite)' };
     }
 
     // 2. Direct Pinex Shell level tags
@@ -78,20 +86,42 @@ export class PinexClient {
 
     if (amount <= 50) {
       return { type: 'shell', product: 'lvl6', quantity: 1, description: `${amount} Diamonds (Shell lvl6)` };
-    } else if (amount <= 115) {
+    }
+    if (amount <= 115) {
       return { type: 'shell', product: 'lvl10', quantity: 1, description: '115 Diamonds (Shell lvl10)' };
-    } else if (amount <= 240) {
+    }
+    if (amount <= 240) {
       return { type: 'shell', product: 'lvl20', quantity: 1, description: '240 Diamonds (Shell lvl20)' };
-    } else if (amount <= 355) {
+    }
+    if (amount <= 355) {
       return { type: 'shell', product: 'lvl30', quantity: 1, description: '355 Diamonds (Shell lvl30)' };
-    } else if (amount <= 610) {
+    }
+    if (amount <= 480) {
+      return { type: 'shell', product: 'lvl20', quantity: 2, description: '480 Diamonds (Shell lvl20 x2)' };
+    }
+    if (amount <= 610) {
       return { type: 'shell', product: 'lvl30', quantity: 2, description: '610 Diamonds (Shell lvl30 x2)' };
-    } else if (amount <= 1240) {
+    }
+    if (amount <= 1090) {
+      return { type: 'shell', product: 'lvl30', quantity: 3, description: `${amount} Diamonds (Shell lvl30 x3)` };
+    }
+    if (amount <= 1240) {
       return { type: 'shell', product: 'lvl30', quantity: 4, description: '1240 Diamonds (Shell lvl30 x4)' };
     }
+    if (amount <= 1850) {
+      return { type: 'shell', product: 'lvl30', quantity: 5, description: '1850 Diamonds (Shell lvl30 x5)' };
+    }
+    if (amount <= 2530) {
+      return { type: 'shell', product: 'lvl30', quantity: 7, description: '2530 Diamonds (Shell lvl30 x7)' };
+    }
+    if (amount <= 5060) {
+      return { type: 'shell', product: 'lvl30', quantity: 14, description: '5060 Diamonds (Shell lvl30 x14)' };
+    }
+    if (amount <= 10120) {
+      return { type: 'shell', product: 'lvl30', quantity: 28, description: '10120 Diamonds (Shell lvl30 x28)' };
+    }
 
-    // Default fallback to lvl10
-    return { type: 'shell', product: 'lvl10', quantity: 1, description: `${amount} Diamonds (Shell lvl10)` };
+    return { type: 'shell', product: 'lvl30', quantity: Math.max(1, Math.round(amount / 355)), description: `${amount} Diamonds (Shell lvl30)` };
   }
 
   /**
