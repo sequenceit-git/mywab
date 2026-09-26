@@ -31,7 +31,11 @@ export const RETIRED_PACKAGE_IDS = new Set([
   'pkg_kr_180',
   'pkg_kr_360',
   'pkg_kr_660',
-  'pkg_kr_1200'
+  'pkg_kr_1200',
+  'pkg_efb_and_260',
+  'pkg_efb_and_1050',
+  'pkg_efb_ios_260',
+  'pkg_efb_ios_1050'
 ]);
 
 export const GAME_CATEGORIES: GameCategory[] = [
@@ -134,10 +138,14 @@ export const GAME_CATEGORIES: GameCategory[] = [
     inputPrompt: '⚽ আপনার *Konami ID (Email/Username)* লিখে পাঠান:',
     packages: [
       { id: 'pkg_efb_and_130', name: '130 Coins (Android)', amount: '130', price: 140, basePrice: 110, description: 'Android In-Game Coins' },
-      { id: 'pkg_efb_and_260', name: '260 Coins (Android)', amount: '260', price: 280, basePrice: 225, description: 'Android In-Game Coins' },
+      { id: 'pkg_efb_and_300', name: '300 Coins (Android)', amount: '300', price: 320, basePrice: 255, description: 'Android In-Game Coins' },
       { id: 'pkg_efb_and_550', name: '550 Coins (Android)', amount: '550', price: 580, basePrice: 465, description: 'Android In-Game Coins' },
-      { id: 'pkg_efb_and_1050', name: '1050 Coins (Android)', amount: '1050', price: 1090, basePrice: 880, description: 'Android In-Game Coins' },
-      { id: 'pkg_efb_and_2130', name: '2130 Coins (Android)', amount: '2130', price: 2150, basePrice: 1730, description: 'Android In-Game Coins' }
+      { id: 'pkg_efb_and_750', name: '750 Coins (Android)', amount: '750', price: 780, basePrice: 625, description: 'Android In-Game Coins' },
+      { id: 'pkg_efb_and_1040', name: '1040 Coins (Android)', amount: '1040', price: 1080, basePrice: 870, description: 'Android In-Game Coins' },
+      { id: 'pkg_efb_and_2130', name: '2130 Coins (Android)', amount: '2130', price: 2150, basePrice: 1730, description: 'Android In-Game Coins' },
+      { id: 'pkg_efb_and_3250', name: '3250 Coins (Android)', amount: '3250', price: 3280, basePrice: 2690, description: 'Android In-Game Coins' },
+      { id: 'pkg_efb_and_5700', name: '5700 Coins (Android)', amount: '5700', price: 5750, basePrice: 4715, description: 'Android In-Game Coins' },
+      { id: 'pkg_efb_and_12800', name: '12800 Coins (Android)', amount: '12800', price: 12550, basePrice: 10300, description: 'Android In-Game Coins' }
     ]
   },
   {
@@ -151,10 +159,14 @@ export const GAME_CATEGORIES: GameCategory[] = [
     inputPrompt: '🍏 আপনার *Konami ID বা Apple ID Email* লিখে পাঠান:',
     packages: [
       { id: 'pkg_efb_ios_130', name: '130 Coins (iOS)', amount: '130', price: 150, basePrice: 120, description: 'iOS In-Game Coins' },
-      { id: 'pkg_efb_ios_260', name: '260 Coins (iOS)', amount: '260', price: 295, basePrice: 235, description: 'iOS In-Game Coins' },
+      { id: 'pkg_efb_ios_300', name: '300 Coins (iOS)', amount: '300', price: 340, basePrice: 270, description: 'iOS In-Game Coins' },
       { id: 'pkg_efb_ios_550', name: '550 Coins (iOS)', amount: '550', price: 600, basePrice: 480, description: 'iOS In-Game Coins' },
-      { id: 'pkg_efb_ios_1050', name: '1050 Coins (iOS)', amount: '1050', price: 1150, basePrice: 920, description: 'iOS In-Game Coins' },
-      { id: 'pkg_efb_ios_2130', name: '2130 Coins (iOS)', amount: '2130', price: 2250, basePrice: 1800, description: 'iOS In-Game Coins' }
+      { id: 'pkg_efb_ios_750', name: '750 Coins (iOS)', amount: '750', price: 810, basePrice: 650, description: 'iOS In-Game Coins' },
+      { id: 'pkg_efb_ios_1040', name: '1040 Coins (iOS)', amount: '1040', price: 1140, basePrice: 910, description: 'iOS In-Game Coins' },
+      { id: 'pkg_efb_ios_2130', name: '2130 Coins (iOS)', amount: '2130', price: 2250, basePrice: 1800, description: 'iOS In-Game Coins' },
+      { id: 'pkg_efb_ios_3250', name: '3250 Coins (iOS)', amount: '3250', price: 3440, basePrice: 2750, description: 'iOS In-Game Coins' },
+      { id: 'pkg_efb_ios_5700', name: '5700 Coins (iOS)', amount: '5700', price: 6000, basePrice: 4800, description: 'iOS In-Game Coins' },
+      { id: 'pkg_efb_ios_12800', name: '12800 Coins (iOS)', amount: '12800', price: 13200, basePrice: 10560, description: 'iOS In-Game Coins' }
     ]
   },
   {
