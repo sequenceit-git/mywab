@@ -222,8 +222,8 @@ export async function proceedToCreateOrderAndPayment(
         service: gameLabel,
         package: pkgName
       },
-      redirect_url: `https://wa.me/${(env.whatsapp.botPhone || '15551419791').replace(/\D/g, '')}`,
-      cancel_url: `https://wa.me/${(env.whatsapp.botPhone || '15551419791').replace(/\D/g, '')}`
+      redirect_url: `${env.app.url}/payment/success?order_id=${pendingOrder.order_id}`,
+      cancel_url: `${env.app.url}/payment/cancel`
     });
 
     if (invoiceRes.status && invoiceRes.payment_url) {

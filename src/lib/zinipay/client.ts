@@ -72,10 +72,9 @@ export class ZiniPayClient {
     }
 
     const appUrl = env.app.url;
-    const botPhone = (env.whatsapp.botPhone || '15551419791').replace(/\D/g, '');
-    const defaultWpRedirectUrl = `https://wa.me/${botPhone}`;
-    const redirectUrl = params.redirect_url || defaultWpRedirectUrl;
-    const cancelUrl = params.cancel_url || defaultWpRedirectUrl;
+    // ZiniPay requires redirect_url domain to match the brand website domain.
+    const redirectUrl = params.redirect_url || `${appUrl}/payment/success`;
+    const cancelUrl = params.cancel_url || `${appUrl}/payment/cancel`;
     const webhookUrl = params.webhook_url || `${appUrl}/api/webhooks/zinipay`;
 
     const rawPhone = (params.metadata?.customer_phone || '').toString().replace(/\D/g, '');
