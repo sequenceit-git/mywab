@@ -454,15 +454,14 @@ export default function PricingPage() {
   };
 
   const handleReorderPackages = (categoryId: string, orderedIds: string[], persist: boolean) => {
-    setProducts((prev) => {
+    setProducts((prev): PricingProduct[] => {
       const byId = new Map(prev.map((p) => [p.id, p]));
       const kept = prev.filter((p) => p.categoryId !== categoryId);
-      const reordered = orderedIds
-        .map((id, index) => {
-          const product = byId.get(id);
-          return product ? { ...product, sortOrder: index + 1 } : null;
-        })
-        .filter((p): p is PricingProduct => p !== null);
+      const reordered: PricingProduct[] = [];
+      orderedIds.forEach((id, index) => {
+        const product = byId.get(id);
+        if (product) reordered.push({ ...product, sortOrder: index + 1 });
+      });
       return [...kept, ...reordered];
     });
 
