@@ -8,7 +8,8 @@ import {
   Zap,
   Package,
   Edit3,
-  Trash2
+  Trash2,
+  GripVertical
 } from 'lucide-react';
 import { CategoryIcon } from '@/components/BrandIcons';
 import { CategoryInfo, PricingProduct } from '../types';
@@ -37,6 +38,8 @@ interface CategoryAccordionProps {
   onDeletePackage: (product: PricingProduct) => void;
   onToggleActive: (product: PricingProduct) => void;
   onToggleKokosForPackage: (product: PricingProduct) => void;
+  onReorderPackages: (categoryId: string, orderedIds: string[], persist: boolean) => void;
+  canReorder: boolean;
 }
 
 export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
@@ -61,8 +64,55 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
   onEditPackage,
   onDeletePackage,
   onToggleActive,
-  onToggleKokosForPackage
+  onToggleKokosForPackage,
+  onReorderPackages,
+  canReorder
 }) => {
+  const dragIdRef = React.useRef<string | null>(null);
+  const orderRef = React.useRef(catProducts.map((p) => p.id));
+  const [draggingId, setDraggingId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!draggingId) {
+      orderRef.current = catProducts.map((p) => p.id);
+    }
+  }, [catProducts, draggingId]);
+
+  const moveBefore = (targetId: string) => {
+    const fromId = dragIdRef.current;
+    if (!fromId || fromId === targetId) return;
+    const current = orderRef.current;
+    const from = current.indexOf(fromId);
+    const to = current.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    const next = [...current];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    orderRef.current = next;
+    onReorderPackages(cat.id, next, false);
+  };
+
+  const startDrag = (id: string, event: React.PointerEvent) => {
+    if (!canReorder) return;
+    dragIdRef.current = id;
+    setDraggingId(id);
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  };
+
+  const dragOverPoint = (event: React.PointerEvent) => {
+    if (!dragIdRef.current) return;
+    const el = document.elementFromPoint(event.clientX, event.clientY);
+    const target = el?.closest('[data-pkg-id]') as HTMLElement | null;
+    const targetId = target?.dataset.pkgId;
+    if (targetId) moveBefore(targetId);
+  };
+
+  const endDrag = () => {
+    if (!dragIdRef.current) return;
+    onReorderPackages(cat.id, orderRef.current, true);
+    dragIdRef.current = null;
+    setDraggingId(null);
+  };
   return (
     <div
       className={`rounded-2xl border transition overflow-hidden shadow-md ${
@@ -166,6 +216,12 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
             />
           )}
 
+          {canReorder && catProducts.length > 1 && (
+            <p className="text-[10px] text-slate-500">
+              Drag the handle to rearrange packages. This order is used on WhatsApp.
+            </p>
+          )}
+
           {catProducts.length === 0 ? (
             <div className="py-8 text-center text-slate-500 text-xs space-y-2">
               <Package className="w-7 h-7 text-slate-600 mx-auto opacity-50" />
@@ -188,6 +244,7 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                 <table className="w-full text-left text-xs text-slate-300">
                   <thead>
                     <tr className="border-b border-slate-800/80 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      {canReorder && <th className="py-2.5 px-1 w-8"></th>}
                       <th className="py-2.5 px-3">Package Name</th>
                       <th className="py-2.5 px-3">Amount / Credits</th>
                       <th className="py-2.5 px-3">Selling Price (৳)</th>
@@ -208,10 +265,34 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                       return (
                         <tr
                           key={p.id}
+                          data-pkg-id={p.id}
                           className={`hover:bg-slate-800/40 transition group ${
                             !isActive ? 'opacity-50' : ''
-                          }`}
+                          } ${draggingId === p.id ? 'bg-brand-500/10 ring-1 ring-brand-500/30' : ''}`}
                         >
+                          {canReorder && (
+                            <td className="py-3 px-1 w-8">
+                              <button
+                                type="button"
+                                onPointerDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  startDrag(p.id, e);
+                                }}
+                                onPointerMove={dragOverPoint}
+                                onPointerUp={(e) => {
+                                  e.stopPropagation();
+                                  endDrag();
+                                }}
+                                onPointerCancel={endDrag}
+                                className="p-1 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 cursor-grab active:cursor-grabbing touch-none"
+                                title="Drag to rearrange"
+                                aria-label={`Reorder ${p.name}`}
+                              >
+                                <GripVertical className="w-4 h-4" />
+                              </button>
+                            </td>
+                          )}
                           {/* Name & ID */}
                           <td className="py-3 px-3">
                             <div className="font-bold text-white text-xs flex items-center gap-2 flex-wrap">
@@ -340,12 +421,34 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                   return (
                     <div
                       key={p.id}
+                      data-pkg-id={p.id}
                       className={`p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2.5 ${
                         !isActive ? 'opacity-50' : ''
-                      }`}
+                      } ${draggingId === p.id ? 'border-brand-500/50 bg-brand-500/5' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div>
+                        {canReorder && (
+                          <button
+                            type="button"
+                            onPointerDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              startDrag(p.id, e);
+                            }}
+                            onPointerMove={dragOverPoint}
+                            onPointerUp={(e) => {
+                              e.stopPropagation();
+                              endDrag();
+                            }}
+                            onPointerCancel={endDrag}
+                            className="mt-0.5 p-1 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 cursor-grab active:cursor-grabbing touch-none shrink-0"
+                            title="Drag to rearrange"
+                            aria-label={`Reorder ${p.name}`}
+                          >
+                            <GripVertical className="w-4 h-4" />
+                          </button>
+                        )}
+                        <div className="min-w-0 flex-1">
                           <h4 className="font-bold text-white text-xs">{p.name}</h4>
                           <span className="text-[10px] font-mono text-slate-400">
                             Amount: {p.amount || p.name}

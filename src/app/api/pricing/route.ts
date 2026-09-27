@@ -50,6 +50,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: 'All package prices reset to factory defaults' });
     }
 
+    if (body.action === 'reorder') {
+      const categoryId = String(body.categoryId || '').trim();
+      const orderedIds = Array.isArray(body.orderedIds) ? body.orderedIds.map((id: unknown) => String(id)) : [];
+      if (!categoryId || orderedIds.length === 0) {
+        return NextResponse.json({ success: false, error: 'categoryId and orderedIds are required' }, { status: 400 });
+      }
+      const success = await db.reorderPackages(categoryId, orderedIds);
+      if (!success) {
+        return NextResponse.json({ success: false, error: 'No packages in this category to reorder' }, { status: 400 });
+      }
+      return NextResponse.json({ success: true, message: 'Package order saved' });
+    }
+
     // 2. Create new package under a category
     const { categoryId, name, amount, price, basePrice, description, kokosAutoFulfill } = body;
     const presetMerged = applyPresetAccountUpdate(undefined, body);

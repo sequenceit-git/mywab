@@ -443,10 +443,36 @@ export default function PricingPage() {
       );
     });
     return [...filtered].sort((a, b) => {
+      const orderA = a.sortOrder ?? 0;
+      const orderB = b.sortOrder ?? 0;
+      if (orderA > 0 && orderB > 0 && orderA !== orderB) return orderA - orderB;
       const numA = parseInt(String(a.amount || a.name).match(/\d+/)?.[0] || '0', 10);
       const numB = parseInt(String(b.amount || b.name).match(/\d+/)?.[0] || '0', 10);
       if (numA !== numB) return numA - numB;
       return (a.price || 0) - (b.price || 0);
+    });
+  };
+
+  const handleReorderPackages = (categoryId: string, orderedIds: string[], persist: boolean) => {
+    setProducts((prev) => {
+      const byId = new Map(prev.map((p) => [p.id, p]));
+      const kept = prev.filter((p) => p.categoryId !== categoryId);
+      const reordered = orderedIds
+        .map((id, index) => {
+          const product = byId.get(id);
+          return product ? { ...product, sortOrder: index + 1 } : null;
+        })
+        .filter((p): p is PricingProduct => p !== null);
+      return [...kept, ...reordered];
+    });
+
+    if (!persist) return;
+    fetch('/api/pricing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reorder', categoryId, orderedIds })
+    }).catch((err) => {
+      console.error('Failed to save package order:', err);
     });
   };
 
@@ -547,6 +573,8 @@ export default function PricingPage() {
                   onDeletePackage={(product) => setDeletingProduct(product)}
                   onToggleActive={handleToggleActive}
                   onToggleKokosForPackage={handleToggleKokosForPackage}
+                  onReorderPackages={handleReorderPackages}
+                  canReorder={!query}
                 />
               );
             })}

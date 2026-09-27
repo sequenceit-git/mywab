@@ -1,6 +1,7 @@
 import { GAME_CATEGORIES, RETIRED_PACKAGE_IDS, GameCategory, GamePackage } from '../../chat/game-catalog';
 import { connectToDatabase, isDbConfigured } from '../client';
 import { PackageModel } from '../models/Package';
+import { SettingModel } from '../models/Setting';
 import { mockStore } from '../mock-store';
 import { PackagePresetAccount, PackagePresetAccountPublic } from '@/types';
 
@@ -62,9 +63,50 @@ function parsePresetFromRow(row: { preset_account?: { email?: string; password?:
 // In-memory store for packages (default seeded + runtime created/edited)
 const memoryPackages = new Map<string, PricingProduct>();
 const deletedPackageIds = new Set<string>();
+const DELETED_PACKAGES_SETTING = 'deleted_package_ids';
 let isInitialized = false;
 let lastSyncedAt = 0;
 const SYNC_TTL_MS = 10 * 1000; // 10s TTL for multi-process / webhook sync
+
+function applyDeletedPackages() {
+  for (const id of deletedPackageIds) {
+    memoryPackages.delete(id);
+  }
+}
+
+async function loadPersistedDeletedIds(): Promise<void> {
+  if (!isDbConfigured()) return;
+  try {
+    await connectToDatabase();
+    const row = await SettingModel.findOne({ key: DELETED_PACKAGES_SETTING }).lean();
+    const ids = Array.isArray(row?.value) ? row.value : [];
+    for (const id of ids) {
+      if (typeof id === 'string' && id.trim()) deletedPackageIds.add(id.trim());
+    }
+  } catch (err) {
+    console.warn('[pricingRepository] Failed to load deleted package ids:', err);
+  }
+}
+
+async function persistDeletedIds(): Promise<void> {
+  if (!isDbConfigured()) return;
+  try {
+    await connectToDatabase();
+    await SettingModel.findOneAndUpdate(
+      { key: DELETED_PACKAGES_SETTING },
+      {
+        $set: {
+          value: Array.from(deletedPackageIds),
+          description: 'Package IDs removed from Pricing / WhatsApp catalog',
+          updated_at: new Date().toISOString()
+        }
+      },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.warn('[pricingRepository] Failed to persist deleted package ids:', err);
+  }
+}
 
 /** First integer in amount, otherwise first integer in name (60 UC → 60, 3850 UC → 3850). */
 export function extractPackageNumber(pkg: { name?: string; amount?: string }): number {
@@ -75,21 +117,20 @@ export function extractPackageNumber(pkg: { name?: string; amount?: string }): n
 }
 
 /**
- * Sort packages by denomination (UC / diamonds / coins), then price.
- * Manual sortOrder is only used when both items have it and amounts are equal.
+ * Manual drag order wins. Then denomination (UC / diamonds / coins), then price.
  */
 export function sortPackages<T extends { name: string; amount?: string; price?: number; sortOrder?: number }>(items: T[]): T[] {
   return [...items].sort((a, b) => {
+    const orderA = a.sortOrder ?? 0;
+    const orderB = b.sortOrder ?? 0;
+    if (orderA > 0 && orderB > 0 && orderA !== orderB) return orderA - orderB;
+
     const numA = extractPackageNumber(a);
     const numB = extractPackageNumber(b);
     if (numA !== numB) return numA - numB;
 
     const priceDiff = (a.price || 0) - (b.price || 0);
     if (priceDiff !== 0) return priceDiff;
-
-    const orderA = a.sortOrder ?? 0;
-    const orderB = b.sortOrder ?? 0;
-    if (orderA !== orderB) return orderA - orderB;
 
     return String(a.name).localeCompare(String(b.name));
   });
@@ -100,7 +141,6 @@ export function sortPackages<T extends { name: string; amount?: string; price?: 
  */
 function seedDefaults() {
   memoryPackages.clear();
-  deletedPackageIds.clear();
 
   for (const cat of GAME_CATEGORIES) {
     let order = 0;
@@ -129,6 +169,7 @@ function seedDefaults() {
       });
     }
   }
+  applyDeletedPackages();
 }
 
 // Initial seed
@@ -212,6 +253,9 @@ export const pricingRepository = {
             }
           }
         }
+
+        await loadPersistedDeletedIds();
+        applyDeletedPackages();
       } catch (err) {
         console.warn('[pricingRepository] Error syncing with MongoDB:', err);
       }
@@ -387,6 +431,10 @@ export const pricingRepository = {
     const profit = Math.max(0, price - basePrice);
     const marginPercent = price > 0 ? Math.round((profit / price) * 100) : 0;
     const now = new Date().toISOString();
+    const siblingOrders = Array.from(memoryPackages.values())
+      .filter(p => p.categoryId === cat.id && !deletedPackageIds.has(p.id))
+      .map(p => p.sortOrder || 0);
+    const nextSortOrder = siblingOrders.length > 0 ? Math.max(...siblingOrders) + 1 : 1;
 
     const newProduct: PricingProduct = {
       id: packageId,
@@ -401,7 +449,7 @@ export const pricingRepository = {
       marginPercent,
       description: params.description?.trim() || '',
       isActive: true,
-      sortOrder: extractPackageNumber({ name: params.name, amount: params.amount }),
+      sortOrder: nextSortOrder,
       updatedAt: now,
       presetAccount: params.presetAccount,
       kokosAutoFulfill:
@@ -413,6 +461,7 @@ export const pricingRepository = {
     deletedPackageIds.delete(packageId);
     memoryPackages.set(packageId, newProduct);
     lastSyncedAt = Date.now();
+    await persistDeletedIds();
 
     if (isDbConfigured()) {
       try {
@@ -558,6 +607,66 @@ export const pricingRepository = {
   },
 
   /**
+   * Persist a dragged package order for one category (Pricing + WhatsApp lists).
+   */
+  async reorderPackages(categoryId: string, orderedIds: string[]): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const uniqueIds = [...new Set(orderedIds.filter(id => typeof id === 'string' && id.trim()))];
+    const inCategory = uniqueIds.filter(id => {
+      const pkg = memoryPackages.get(id);
+      return Boolean(pkg && pkg.categoryId === categoryId && !deletedPackageIds.has(id));
+    });
+    if (inCategory.length === 0) return false;
+
+    const now = new Date().toISOString();
+    inCategory.forEach((id, index) => {
+      const existing = memoryPackages.get(id);
+      if (!existing) return;
+      existing.sortOrder = index + 1;
+      existing.updatedAt = now;
+      memoryPackages.set(id, existing);
+    });
+    lastSyncedAt = Date.now();
+
+    if (isDbConfigured()) {
+      try {
+        await connectToDatabase();
+        await Promise.all(
+          inCategory.map(async (id, index) => {
+            const pkg = memoryPackages.get(id);
+            if (!pkg) return;
+            await PackageModel.findOneAndUpdate(
+              { id },
+              {
+                $set: {
+                  id,
+                  category_id: pkg.categoryId,
+                  name: pkg.name,
+                  amount: pkg.amount,
+                  price: pkg.price,
+                  base_price: pkg.basePrice,
+                  profit: pkg.profit,
+                  margin_percent: pkg.marginPercent,
+                  description: pkg.description || '',
+                  is_active: pkg.isActive !== false,
+                  sort_order: index + 1,
+                  updated_at: now
+                }
+              },
+              { upsert: true, setDefaultsOnInsert: true }
+            );
+          })
+        );
+      } catch (err) {
+        console.warn('[pricingRepository] MongoDB reorderPackages error:', err);
+      }
+    }
+
+    return true;
+  },
+
+  /**
    * Delete a package
    */
   async deletePackage(packageId: string): Promise<boolean> {
@@ -569,6 +678,7 @@ export const pricingRepository = {
 
     deletedPackageIds.add(packageId);
     memoryPackages.delete(packageId);
+    lastSyncedAt = 0;
 
     if (isDbConfigured()) {
       try {
@@ -579,6 +689,7 @@ export const pricingRepository = {
       }
     }
 
+    await persistDeletedIds();
     return true;
   },
 
@@ -604,12 +715,15 @@ export const pricingRepository = {
    * Reset all prices and packages to factory defaults
    */
   async resetToDefaults(): Promise<void> {
+    deletedPackageIds.clear();
     seedDefaults();
+    lastSyncedAt = 0;
 
     if (isDbConfigured()) {
       try {
         await connectToDatabase();
         await PackageModel.deleteMany({});
+        await persistDeletedIds();
       } catch (err) {
         console.warn('Could not clear MongoDB packages on reset:', err);
       }
