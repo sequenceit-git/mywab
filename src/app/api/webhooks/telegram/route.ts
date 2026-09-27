@@ -10,6 +10,11 @@ export async function POST(request: NextRequest) {
     const update = await request.json();
     console.log('📥 [Telegram Webhook Received]:', JSON.stringify(update));
 
+    if (update.my_chat_member?.chat) {
+      const joined = update.my_chat_member.chat;
+      console.log(`[Telegram] Bot membership changed in chat ${joined.id} (${joined.title || joined.type})`);
+    }
+
     // 1. Handle Inline Keyboard Button Callbacks (Claim, Processing, Delivered)
     if (update.callback_query) {
       console.log(`⚡ [Telegram Webhook] Processing callback query ID: ${update.callback_query.id}, data: ${update.callback_query.data}`);
@@ -41,6 +46,22 @@ export async function POST(request: NextRequest) {
       }
 
       // 3b. Standard Commands: /start, /help
+      if (text === '/id' || text === '/groupid' || text.startsWith('/id@') || text.startsWith('/groupid@')) {
+        if (env.telegram.isConfigured) {
+          await fetch(`${env.telegram.apiUrl}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `🆔 <b>Group / Chat ID:</b> <code>${chatId}</code>\n📛 <b>Title:</b> ${update.message.chat.title || 'N/A'}`,
+              parse_mode: 'HTML',
+              reply_to_message_id: update.message.message_id
+            })
+          });
+        }
+        return NextResponse.json({ ok: true, chatId }, { status: 200 });
+      }
+
       if (text === '/start' || text === '/help') {
         const welcomeText = 
 `👋 <b>WapBusiness Worker Bot</b>
