@@ -182,20 +182,25 @@ export const orderPaymentService = {
     }
 
     // B. Free Fire UID -> Pinex Auto-Redemption
-    const isFreeFire = (order.customer_notes || '').toLowerCase().includes('free fire') ||
-      (order.customer_notes || '').toLowerCase().includes('ff') ||
-      (productName || '').toLowerCase().includes('free fire') ||
-      (productName || '').toLowerCase().includes('diamond');
+    const productId = firstItem?.product_id || '';
+    const notesAndName = `${order.customer_notes || ''} ${productName}`.toLowerCase();
+    const isFreeFire =
+      productId.startsWith('pkg_ff_') ||
+      productId.startsWith('game_ff') ||
+      orderedPackage?.categoryId === 'game_ff' ||
+      notesAndName.includes('free fire') ||
+      notesAndName.includes('diamond');
 
     const isPinexEnabled = db.isPinexAutoFulfillEnabled() && pinexClient.isConfigured();
 
     if (isFreeFire && isPinexEnabled) {
       if (playerUid && playerUid !== 'N/A') {
-        console.log(`[Pinex Auto-Fulfill] Redeeming Free Fire package for Player ${playerUid}...`);
+        console.log(`[Pinex Auto-Fulfill] Redeeming Free Fire package ${productId || productName} for Player ${playerUid}...`);
 
         const pinexResult = await pinexClient.autoRedeemFreeFire({
           playerId: playerUid,
           packageNameOrAmount: firstItem?.product_name || productName,
+          packageId: productId,
           orderId: order.order_id
         });
 

@@ -66,27 +66,32 @@ let isInitialized = false;
 let lastSyncedAt = 0;
 const SYNC_TTL_MS = 10 * 1000; // 10s TTL for multi-process / webhook sync
 
+/** First integer in amount, otherwise first integer in name (60 UC → 60, 3850 UC → 3850). */
+export function extractPackageNumber(pkg: { name?: string; amount?: string }): number {
+  const amountMatch = String(pkg.amount || '').match(/\d+/);
+  if (amountMatch) return parseInt(amountMatch[0], 10);
+  const nameMatch = String(pkg.name || '').match(/\d+/);
+  return nameMatch ? parseInt(nameMatch[0], 10) : 0;
+}
+
 /**
- * Intelligent package sorting helper:
- * 1. Explicit sortOrder if specified
- * 2. Numeric value extracted from amount or name (e.g., 60 UC -> 60, 115 UC -> 115, 130 Coins -> 130)
- * 3. Selling price ascending
+ * Sort packages by denomination (UC / diamonds / coins), then price.
+ * Manual sortOrder is only used when both items have it and amounts are equal.
  */
 export function sortPackages<T extends { name: string; amount?: string; price?: number; sortOrder?: number }>(items: T[]): T[] {
   return [...items].sort((a, b) => {
+    const numA = extractPackageNumber(a);
+    const numB = extractPackageNumber(b);
+    if (numA !== numB) return numA - numB;
+
+    const priceDiff = (a.price || 0) - (b.price || 0);
+    if (priceDiff !== 0) return priceDiff;
+
     const orderA = a.sortOrder ?? 0;
     const orderB = b.sortOrder ?? 0;
-    if (orderA > 0 && orderB > 0 && orderA !== orderB) {
-      return orderA - orderB;
-    }
+    if (orderA !== orderB) return orderA - orderB;
 
-    const numA = parseFloat(String(a.amount || a.name).replace(/[^0-9.]/g, '')) || 0;
-    const numB = parseFloat(String(b.amount || b.name).replace(/[^0-9.]/g, '')) || 0;
-    if (numA > 0 && numB > 0 && numA !== numB) {
-      return numA - numB;
-    }
-
-    return (a.price || 0) - (b.price || 0);
+    return String(a.name).localeCompare(String(b.name));
   });
 }
 
@@ -396,7 +401,7 @@ export const pricingRepository = {
       marginPercent,
       description: params.description?.trim() || '',
       isActive: true,
-      sortOrder: 0,
+      sortOrder: extractPackageNumber({ name: params.name, amount: params.amount }),
       updatedAt: now,
       presetAccount: params.presetAccount,
       kokosAutoFulfill:

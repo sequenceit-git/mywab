@@ -432,7 +432,7 @@ export default function PricingPage() {
   // Search filter helper across categories & packages
   const query = searchQuery.toLowerCase().trim();
   const getCategoryProducts = (catId: string) => {
-    return products.filter((p) => {
+    const filtered = products.filter((p) => {
       if (p.categoryId !== catId) return false;
       if (!query) return true;
       return (
@@ -441,6 +441,12 @@ export default function PricingPage() {
         p.categoryTitle.toLowerCase().includes(query) ||
         (p.description && p.description.toLowerCase().includes(query))
       );
+    });
+    return [...filtered].sort((a, b) => {
+      const numA = parseInt(String(a.amount || a.name).match(/\d+/)?.[0] || '0', 10);
+      const numB = parseInt(String(b.amount || b.name).match(/\d+/)?.[0] || '0', 10);
+      if (numA !== numB) return numA - numB;
+      return (a.price || 0) - (b.price || 0);
     });
   };
 

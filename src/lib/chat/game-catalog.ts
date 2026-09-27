@@ -377,6 +377,9 @@ export function findPackage(game: GameCategory, identifier?: string | null): Gam
     if (clean.includes('monthly') || clean.includes('মান্থলি') || clean.includes('মাসিক')) {
       return packages.find(p => p.id === 'pkg_ff_monthly');
     }
+    if (clean.includes('lvl up') || clean.includes('level up') || clean.includes('lvlup') || clean.includes('লেভেল আপ')) {
+      return packages.find(p => p.id === 'pkg_ff_lvlup');
+    }
   }
 
   // D. Number matching across packages (e.g. "60", "385", "115", "130")
