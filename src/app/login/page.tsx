@@ -11,8 +11,6 @@ import {
   EyeOff,
   ArrowRight,
   ShieldCheck,
-  Sparkles,
-  CheckCircle2,
   AlertCircle
 } from 'lucide-react';
 
@@ -46,12 +44,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleQuickFill = () => {
-    setEmail('admin@sequenceit.software');
-    setPassword('admin123456');
-    setError(null);
-  };
-
   return (
     <div className="min-h-screen w-full flex flex-col justify-center items-center p-4 bg-dark-950 relative overflow-hidden">
       {/* Background Decorative Ambient Glows */}
@@ -82,7 +74,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
             {/* Email Field */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-300">Email Address</label>
@@ -90,7 +82,9 @@ export default function LoginPage() {
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
+                  name="admin-email"
                   required
+                  autoComplete="off"
                   placeholder="admin@sequenceit.software"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -108,7 +102,9 @@ export default function LoginPage() {
                 <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  name="admin-password"
                   required
+                  autoComplete="new-password"
                   placeholder="••••••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -140,21 +136,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          {/* Quick Fill / Demo Credentials Hint */}
-          <div className="pt-4 border-t border-slate-800/80">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400 text-[11px]">Need default admin login?</span>
-              <button
-                type="button"
-                onClick={handleQuickFill}
-                className="text-[11px] font-semibold text-brand-400 hover:text-brand-300 hover:underline flex items-center gap-1"
-              >
-                <Sparkles className="w-3 h-3 text-brand-400" />
-                <span>Auto-fill Admin</span>
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Security / Deployment Badge */}
