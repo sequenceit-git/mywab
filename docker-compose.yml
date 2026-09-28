@@ -16,8 +16,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
-    networks:
-      - default
 
   app:
     build:
@@ -37,12 +35,11 @@ services:
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://dsdukan.cloud}
       # Docker DNS name `mongo` — overrides Atlas URI in .env
       - MONGODB_URI=mongodb://mongo:27017/wapbusiness
-    networks:
-      - default
-      - traefik
+    # Host-mode Traefik reaches the app on the VPS loopback
+    ports:
+      - "127.0.0.1:3000:3000"
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik-alro_default}"
 
       # HTTP → HTTPS
       - "traefik.http.routers.wapbusiness-http.rule=Host(`${DOMAIN:-dsdukan.cloud}`) || Host(`www.${DOMAIN:-dsdukan.cloud}`)"
@@ -51,7 +48,7 @@ services:
       - "traefik.http.middlewares.wapbusiness-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.middlewares.wapbusiness-https-redirect.redirectscheme.permanent=true"
 
-      # HTTPS + Let's Encrypt
+      # HTTPS + Let's Encrypt (CERT_RESOLVER must match Traefik certificatesResolvers name)
       - "traefik.http.routers.wapbusiness-https.rule=Host(`${DOMAIN:-dsdukan.cloud}`) || Host(`www.${DOMAIN:-dsdukan.cloud}`)"
       - "traefik.http.routers.wapbusiness-https.entrypoints=websecure"
       - "traefik.http.routers.wapbusiness-https.tls=true"
@@ -61,8 +58,3 @@ services:
 
 volumes:
   mongo_data:
-
-networks:
-  traefik:
-    external: true
-    name: ${TRAEFIK_NETWORK:-traefik-alro_default}
