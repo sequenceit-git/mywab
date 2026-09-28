@@ -1,10 +1,31 @@
 services:
+  mongo:
+    image: mongo:7
+    container_name: wapbusiness-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: wapbusiness
+    # Bound to localhost only — not exposed on the public VPS IP
+    ports:
+      - "127.0.0.1:27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: wapbusiness-app
     restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -12,6 +33,8 @@ services:
       - PORT=3000
       - DOMAIN=${DOMAIN:-dsdukan.cloud}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://dsdukan.cloud}
+      # Docker DNS name `mongo` — overrides Atlas URI in .env
+      - MONGODB_URI=mongodb://mongo:27017/wapbusiness
     labels:
       - "traefik.enable=true"
 
@@ -27,3 +50,6 @@ services:
 
       # Container port for Traefik load balancer
       - "traefik.http.services.wapbusiness.loadbalancer.server.port=3000"
+
+volumes:
+  mongo_data:

@@ -32,7 +32,7 @@ export async function connectToDatabase(): Promise<typeof mongoose | null> {
     };
 
     cached!.promise = mongoose.connect(uri, opts).then((m) => {
-      console.log('[MongoDB] Connected successfully to MongoDB Atlas.');
+      console.log('[MongoDB] Connected successfully.');
       return m;
     }).catch((err) => {
       console.error('[MongoDB] Connection error:', err);
