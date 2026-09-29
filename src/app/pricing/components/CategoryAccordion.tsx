@@ -72,6 +72,13 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
   const orderRef = React.useRef(catProducts.map((p) => p.id));
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
 
+  /** Packages that have a direct UC code in the Pinex catalog (new mapping) */
+  const FF_UC_PACKAGES = new Set([
+    'pkg_ff_25', 'pkg_ff_50', 'pkg_ff_115', 'pkg_ff_240',
+    'pkg_ff_weekly', 'pkg_ff_610', 'pkg_ff_monthly',
+    'pkg_ff_1240', 'pkg_ff_2530'
+  ]);
+
   React.useEffect(() => {
     if (!draggingId) {
       orderRef.current = catProducts.map((p) => p.id);
@@ -115,11 +122,10 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
   };
   return (
     <div
-      className={`rounded-2xl border transition overflow-hidden shadow-md ${
-        isExpanded
+      className={`rounded-2xl border transition overflow-hidden shadow-md ${isExpanded
           ? 'bg-dark-900/95 border-slate-700/90 ring-1 ring-brand-500/20 shadow-brand-500/5'
           : 'bg-dark-900/80 border-slate-800/80 hover:border-slate-700/90'
-      }`}
+        }`}
     >
       {/* Category Header Row (Click to Expand/Collapse) */}
       <div
@@ -161,11 +167,10 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
               }}
               disabled={pinexToggling}
               title="Toggle Pinex Free Fire Auto-Fulfillment"
-              className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl inline-flex items-center gap-1.5 transition ${
-                pinexAutoFulfill
+              className={`text-[10px] font-bold px-2.5 py-1.5 rounded-xl inline-flex items-center gap-1.5 transition ${pinexAutoFulfill
                   ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25'
                   : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-white'
-              }`}
+                }`}
             >
               <Zap className="w-3.5 h-3.5 text-amber-400" />
               <span>Pinex Auto: {pinexAutoFulfill ? 'ON' : 'OFF'}</span>
@@ -252,6 +257,9 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                       <th className="py-2.5 px-3">Net Profit</th>
                       <th className="py-2.5 px-3">Margin</th>
                       <th className="py-2.5 px-3 text-center">Bot Status</th>
+                      {cat.id === 'game_ff' && (
+                        <th className="py-2.5 px-3 text-center">Pinex</th>
+                      )}
                       {cat.id === 'game_pubg_uid' && (
                         <th className="py-2.5 px-3 text-center">Auto-Fulfill (Kokos)</th>
                       )}
@@ -266,9 +274,8 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                         <tr
                           key={p.id}
                           data-pkg-id={p.id}
-                          className={`hover:bg-slate-800/40 transition group ${
-                            !isActive ? 'opacity-50' : ''
-                          } ${draggingId === p.id ? 'bg-brand-500/10 ring-1 ring-brand-500/30' : ''}`}
+                          className={`hover:bg-slate-800/40 transition group ${!isActive ? 'opacity-50' : ''
+                            } ${draggingId === p.id ? 'bg-brand-500/10 ring-1 ring-brand-500/30' : ''}`}
                         >
                           {canReorder && (
                             <td className="py-3 px-1 w-8">
@@ -337,54 +344,63 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
 
                           {/* Margin % */}
                           <td className="py-3 px-3">
-                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                              p.marginPercent >= 20
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${p.marginPercent >= 20
                                 ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
                                 : p.marginPercent >= 10
-                                ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
-                                : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                            }`}>
+                                  ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
+                                  : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                              }`}>
                               {p.marginPercent}%
                             </span>
                           </td>
 
                           {/* Bot Status Toggle */}
                           <td className="py-3 px-3 text-center">
-                            {(() => {
-                              // For Free Fire: bot is only truly active when package is enabled AND Pinex is ON
-                              const botActive = isActive && (cat.id !== 'game_ff' || pinexAutoFulfill);
-                              const pinexOffWarning = cat.id === 'game_ff' && isActive && !pinexAutoFulfill;
-                              return (
-                                <div className="flex flex-col items-center gap-0.5">
-                                  <button
-                                    onClick={() => onToggleActive(p)}
-                                    title={
-                                      pinexOffWarning
-                                        ? 'Package is enabled but Pinex is OFF — bot cannot fulfill orders'
-                                        : isActive
-                                        ? 'Active on WhatsApp bot. Click to disable'
-                                        : 'Disabled on WhatsApp bot. Click to activate'
-                                    }
-                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition ${
-                                      botActive
-                                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30'
-                                        : pinexOffWarning
-                                        ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                                        : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-emerald-500/15 hover:text-emerald-400'
-                                    }`}
-                                  >
-                                    <span className={`w-1.5 h-1.5 rounded-full ${
-                                      botActive ? 'bg-emerald-400' : pinexOffWarning ? 'bg-amber-400' : 'bg-slate-500'
-                                    }`}></span>
-                                    <span>{botActive ? 'Active' : 'Inactive'}</span>
-                                  </button>
-                                  {pinexOffWarning && (
-                                    <span className="text-[9px] text-amber-500/80">Pinex OFF</span>
-                                  )}
-                                </div>
-                              );
-                            })()}
+                            <button
+                              onClick={() => onToggleActive(p)}
+                              title={isActive ? 'Active on WhatsApp bot. Click to disable' : 'Disabled on WhatsApp bot. Click to activate'}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition ${isActive
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30'
+                                  : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-emerald-500/15 hover:text-emerald-400'
+                                }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
+                              <span>{isActive ? 'Active' : 'Inactive'}</span>
+                            </button>
                           </td>
+
+                          {/* Pinex UC Availability Tag (Free Fire only) */}
+                          {cat.id === 'game_ff' && (() => {
+                            const hasUcCode = FF_UC_PACKAGES.has(p.id);
+                            const pinexAvailable = hasUcCode && pinexAutoFulfill;
+                            return (
+                              <td className="py-3 px-3 text-center">
+                                <span
+                                  title={
+                                    !hasUcCode
+                                      ? 'This package has no direct UC code — not supported by Pinex'
+                                      : pinexAutoFulfill
+                                      ? 'Pinex UC code available & bot is ON — auto-fulfill ready'
+                                      : 'UC code mapped but Pinex bot is OFF'
+                                  }
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                                    pinexAvailable
+                                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                      : hasUcCode && !pinexAutoFulfill
+                                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                      : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                  }`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${
+                                    pinexAvailable ? 'bg-emerald-400' : hasUcCode && !pinexAutoFulfill ? 'bg-amber-400' : 'bg-rose-400'
+                                  }`}></span>
+                                  <span>{
+                                    pinexAvailable ? 'Available' : hasUcCode && !pinexAutoFulfill ? 'Bot OFF' : 'Unavailable'
+                                  }</span>
+                                </span>
+                              </td>
+                            );
+                          })()}
 
                           {/* Per-Package Kokos Auto-Fulfill Toggle */}
                           {cat.id === 'game_pubg_uid' && (() => {
@@ -396,11 +412,10 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                                   onClick={() => onToggleKokosForPackage(p)}
                                   disabled={isTogglingThis}
                                   title={kokosEffective ? 'Kokos auto top-up is ON for this package. Click to turn OFF' : 'Kokos auto top-up is OFF for this package. Click to turn ON'}
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition disabled:opacity-50 ${
-                                    kokosEffective
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition disabled:opacity-50 ${kokosEffective
                                       ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30'
                                       : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-emerald-500/15 hover:text-emerald-400'
-                                  }`}
+                                    }`}
                                 >
                                   <Zap className="w-3 h-3 text-amber-400" />
                                   <span>{isTogglingThis ? '...' : kokosEffective ? 'ON' : 'OFF'}</span>
@@ -444,9 +459,8 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                     <div
                       key={p.id}
                       data-pkg-id={p.id}
-                      className={`p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2.5 ${
-                        !isActive ? 'opacity-50' : ''
-                      } ${draggingId === p.id ? 'border-brand-500/50 bg-brand-500/5' : ''}`}
+                      className={`p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2.5 ${!isActive ? 'opacity-50' : ''
+                        } ${draggingId === p.id ? 'border-brand-500/50 bg-brand-500/5' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         {canReorder && (
@@ -476,23 +490,32 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                             Amount: {p.amount || p.name}
                           </span>
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            (() => {
-                              const botActive = isActive && (cat.id !== 'game_ff' || pinexAutoFulfill);
-                              const pinexOffWarning = cat.id === 'game_ff' && isActive && !pinexAutoFulfill;
-                              return botActive
-                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                : pinexOffWarning
-                                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                                : 'bg-slate-800 text-slate-400';
-                            })()
-                          }`}>
-                            {(() => {
-                              const botActive = isActive && (cat.id !== 'game_ff' || pinexAutoFulfill);
-                              const pinexOffWarning = cat.id === 'game_ff' && isActive && !pinexAutoFulfill;
-                              return botActive ? 'Active' : pinexOffWarning ? 'Pinex OFF' : 'Inactive';
-                            })()}
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isActive
+                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-slate-800 text-slate-400'
+                            }`}>
+                            {isActive ? 'Active' : 'Inactive'}
                           </span>
+                          {cat.id === 'game_ff' && (() => {
+                            const hasUcCode = FF_UC_PACKAGES.has(p.id);
+                            const pinexAvailable = hasUcCode && pinexAutoFulfill;
+                            return (
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                                pinexAvailable
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                  : hasUcCode && !pinexAutoFulfill
+                                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                  : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                              }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                  pinexAvailable ? 'bg-emerald-400' : hasUcCode && !pinexAutoFulfill ? 'bg-amber-400' : 'bg-rose-400'
+                                }`}></span>
+                                <span>Pinex: {pinexAvailable ? 'Available' : hasUcCode && !pinexAutoFulfill ? 'Bot OFF' : 'Unavailable'}</span>
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-slate-900/60 border border-slate-800/50 text-center">
@@ -517,11 +540,10 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                           <button
                             onClick={() => onToggleKokosForPackage(p)}
                             disabled={isTogglingThis}
-                            className={`w-full text-[10px] font-bold px-2 py-1.5 rounded-lg inline-flex items-center justify-center gap-1.5 transition disabled:opacity-50 ${
-                              kokosEffective
+                            className={`w-full text-[10px] font-bold px-2 py-1.5 rounded-lg inline-flex items-center justify-center gap-1.5 transition disabled:opacity-50 ${kokosEffective
                                 ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
                                 : 'bg-slate-800 text-slate-400 border border-slate-700'
-                            }`}
+                              }`}
                           >
                             <Zap className="w-3 h-3 text-amber-400" />
                             <span>Kokos Auto-Fulfill: {isTogglingThis ? '...' : kokosEffective ? 'ON' : 'OFF'}</span>
