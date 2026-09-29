@@ -31,7 +31,7 @@ export interface IWorkerSubdoc {
 
 export interface IOrderDocument extends Document {
   id: string; // compatibility with UUID
-  order_id: string; // e.g. WAP-20260924-1001
+  order_id: string; // e.g. WAP-20260929-1
   user_id: string;
   total_amount: number;
   status: string;

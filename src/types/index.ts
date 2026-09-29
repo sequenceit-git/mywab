@@ -80,7 +80,7 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
-  order_id: string; // e.g. WAP-20260914-1001
+  order_id: string; // e.g. WAP-20260929-1
   user_id: string;
   total_amount: number;
   status: OrderStatus;
