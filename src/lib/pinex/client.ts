@@ -5,7 +5,18 @@
  * Supports:
  * - type: "shell" (lite, lvl6, lvl10, lvl15, lvl20, lvl25, lvl30)
  * - type: "topup" (redeem vouchers to playerid)
- * - type: "uc" (UniPin vouchers)
+ * - type: "uc"   (UC voucher top-up; product = UC amount string e.g. "20", "36", "80")
+ *
+ * UC → Diamond mapping (new catalog):
+ *   20 uc  →  25 dm
+ *   36 uc  →  50 dm
+ *   80 uc  → 115 dm
+ *  160 uc  → 240 dm
+ *  161 uc  → Weekly
+ *  405 uc  → 610 dm
+ *  800 uc  → Monthly
+ *  810 uc  → 1240 dm
+ * 1625 uc  → 2530 dm
  */
 
 export interface PinexOrderParams {
@@ -20,56 +31,66 @@ export interface PinexOrderParams {
 }
 
 type PinexResolvedProduct = {
-  type: 'shell' | 'topup';
+  type: 'shell' | 'topup' | 'uc';
   product: string;
   quantity: number;
   description: string;
 };
 
-/** Exact catalog SKU → Pinex shell. Quantity is how many of that shell to buy. */
+/**
+ * Catalog SKU → Pinex product.
+ * New packages use type 'uc' with the UC amount as product.
+ * Weekly / Monthly / LvlUp remain on shell.
+ */
 const FF_SKU_MAP: Record<string, PinexResolvedProduct> = {
-  pkg_ff_25: { type: 'shell', product: 'lvl6', quantity: 1, description: '25 Diamonds (Shell lvl6)' },
-  pkg_ff_50: { type: 'shell', product: 'lvl6', quantity: 1, description: '50 Diamonds (Shell lvl6)' },
-  pkg_ff_115: { type: 'shell', product: 'lvl10', quantity: 1, description: '115 Diamonds (Shell lvl10)' },
-  pkg_ff_240: { type: 'shell', product: 'lvl20', quantity: 1, description: '240 Diamonds (Shell lvl20)' },
-  pkg_ff_355: { type: 'shell', product: 'lvl30', quantity: 1, description: '355 Diamonds (Shell lvl30)' },
-  pkg_ff_480: { type: 'shell', product: 'lvl20', quantity: 2, description: '480 Diamonds (Shell lvl20 x2)' },
-  pkg_ff_610: { type: 'shell', product: 'lvl30', quantity: 2, description: '610 Diamonds (Shell lvl30 x2)' },
-  pkg_ff_850: { type: 'shell', product: 'lvl30', quantity: 2, description: '850 Diamonds (Shell lvl30 x2)' },
-  pkg_ff_1090: { type: 'shell', product: 'lvl30', quantity: 3, description: '1090 Diamonds (Shell lvl30 x3)' },
-  pkg_ff_1240: { type: 'shell', product: 'lvl30', quantity: 4, description: '1240 Diamonds (Shell lvl30 x4)' },
-  pkg_ff_1850: { type: 'shell', product: 'lvl30', quantity: 5, description: '1850 Diamonds (Shell lvl30 x5)' },
-  pkg_ff_2530: { type: 'shell', product: 'lvl30', quantity: 7, description: '2530 Diamonds (Shell lvl30 x7)' },
-  pkg_ff_5060: { type: 'shell', product: 'lvl30', quantity: 14, description: '5060 Diamonds (Shell lvl30 x14)' },
-  pkg_ff_10120: { type: 'shell', product: 'lvl30', quantity: 28, description: '10120 Diamonds (Shell lvl30 x28)' },
-  pkg_ff_weekly: { type: 'shell', product: 'lite', quantity: 1, description: 'Weekly Pack (Shell lite)' },
-  pkg_ff_monthly: { type: 'shell', product: 'lvl30', quantity: 1, description: 'Monthly Pack (Shell lvl30)' },
-  pkg_ff_lvlup: { type: 'shell', product: 'lite', quantity: 1, description: 'Lvl Up Pass (Shell lite)' }
+  // ── UC-based packages (new catalog) ──────────────────────────────────────
+  pkg_ff_25:    { type: 'uc', product: '20',   quantity: 1, description: '25 Diamonds (20 UC)' },
+  pkg_ff_50:    { type: 'uc', product: '36',   quantity: 1, description: '50 Diamonds (36 UC)' },
+  pkg_ff_115:   { type: 'uc', product: '80',   quantity: 1, description: '115 Diamonds (80 UC)' },
+  pkg_ff_240:   { type: 'uc', product: '160',  quantity: 1, description: '240 Diamonds (160 UC)' },
+  pkg_ff_610:   { type: 'uc', product: '405',  quantity: 1, description: '610 Diamonds (405 UC)' },
+  pkg_ff_1240:  { type: 'uc', product: '810',  quantity: 1, description: '1240 Diamonds (810 UC)' },
+  pkg_ff_2530:  { type: 'uc', product: '1625', quantity: 1, description: '2530 Diamonds (1625 UC)' },
+
+  // ── Membership / pass packages ───────────────────────────────────────────
+  pkg_ff_weekly:  { type: 'uc', product: '161',  quantity: 1, description: 'Weekly Pack (161 UC)' },
+  pkg_ff_monthly: { type: 'uc', product: '800',  quantity: 1, description: 'Monthly Pack (800 UC)' },
+  pkg_ff_lvlup:   { type: 'shell', product: 'lite', quantity: 1, description: 'Lvl Up Pass (Shell lite)' },
+
+  // ── Legacy packages (kept for backward-compat; fall back to nearest UC) ──
+  pkg_ff_355:   { type: 'uc', product: '160',  quantity: 1, description: '355 Diamonds → 240 dm tier (160 UC)' },
+  pkg_ff_480:   { type: 'uc', product: '405',  quantity: 1, description: '480 Diamonds → 610 dm tier (405 UC)' },
+  pkg_ff_850:   { type: 'uc', product: '810',  quantity: 1, description: '850 Diamonds → 1240 dm tier (810 UC)' },
+  pkg_ff_1090:  { type: 'uc', product: '810',  quantity: 1, description: '1090 Diamonds → 1240 dm tier (810 UC)' },
+  pkg_ff_1850:  { type: 'uc', product: '1625', quantity: 1, description: '1850 Diamonds → 2530 dm tier (1625 UC)' },
+  pkg_ff_5060:  { type: 'uc', product: '1625', quantity: 3, description: '5060 Diamonds (1625 UC x3)' },
+  pkg_ff_10120: { type: 'uc', product: '1625', quantity: 6, description: '10120 Diamonds (1625 UC x6)' },
 };
 
+/** Diamond amount → Pinex product (used when customer sends a raw diamond number) */
 const FF_AMOUNT_MAP: Record<number, PinexResolvedProduct> = {
-  25: FF_SKU_MAP.pkg_ff_25,
-  50: FF_SKU_MAP.pkg_ff_50,
-  115: FF_SKU_MAP.pkg_ff_115,
-  240: FF_SKU_MAP.pkg_ff_240,
-  355: FF_SKU_MAP.pkg_ff_355,
-  480: FF_SKU_MAP.pkg_ff_480,
-  610: FF_SKU_MAP.pkg_ff_610,
-  850: FF_SKU_MAP.pkg_ff_850,
-  1090: FF_SKU_MAP.pkg_ff_1090,
-  1240: FF_SKU_MAP.pkg_ff_1240,
-  1850: FF_SKU_MAP.pkg_ff_1850,
-  2530: FF_SKU_MAP.pkg_ff_2530,
-  5060: FF_SKU_MAP.pkg_ff_5060,
-  10120: FF_SKU_MAP.pkg_ff_10120
+  25:    FF_SKU_MAP.pkg_ff_25,
+  50:    FF_SKU_MAP.pkg_ff_50,
+  115:   FF_SKU_MAP.pkg_ff_115,
+  240:   FF_SKU_MAP.pkg_ff_240,
+  355:   FF_SKU_MAP.pkg_ff_355,
+  480:   FF_SKU_MAP.pkg_ff_480,
+  610:   FF_SKU_MAP.pkg_ff_610,
+  850:   FF_SKU_MAP.pkg_ff_850,
+  1090:  FF_SKU_MAP.pkg_ff_1090,
+  1240:  FF_SKU_MAP.pkg_ff_1240,
+  1850:  FF_SKU_MAP.pkg_ff_1850,
+  2530:  FF_SKU_MAP.pkg_ff_2530,
+  5060:  FF_SKU_MAP.pkg_ff_5060,
+  10120: FF_SKU_MAP.pkg_ff_10120,
 };
 
 export interface PinexApiResponse {
   success: boolean;
   status: 'sucess' | 'failed' | 'pending' | 'error';
   orderId: string;
-  type: string;
-  product: string;
+  type: string;        // 'uc' | 'shell' | 'topup'
+  product: string;     // UC amount string (e.g. '20') or shell level (e.g. 'lvl6')
   nickname?: string;
   trxIdOrContent?: string;
   error?: string;
@@ -132,16 +153,16 @@ export class PinexClient {
       return FF_AMOUNT_MAP[amount];
     }
 
-    if (amount <= 0) {
-      return FF_SKU_MAP.pkg_ff_115;
-    }
-    if (amount <= 50) return FF_AMOUNT_MAP[50];
-    if (amount <= 115) return FF_AMOUNT_MAP[115];
-    if (amount <= 240) return FF_AMOUNT_MAP[240];
-    if (amount <= 355) return FF_AMOUNT_MAP[355];
-    if (amount <= 480) return FF_AMOUNT_MAP[480];
-    if (amount <= 610) return FF_AMOUNT_MAP[610];
-    if (amount <= 850) return FF_AMOUNT_MAP[850];
+    // Fallback: snap to nearest catalog tier
+    if (amount <= 0)    return FF_SKU_MAP.pkg_ff_115;   // default
+    if (amount <= 25)   return FF_AMOUNT_MAP[25];
+    if (amount <= 50)   return FF_AMOUNT_MAP[50];
+    if (amount <= 115)  return FF_AMOUNT_MAP[115];
+    if (amount <= 240)  return FF_AMOUNT_MAP[240];
+    if (amount <= 355)  return FF_AMOUNT_MAP[355];
+    if (amount <= 480)  return FF_AMOUNT_MAP[480];
+    if (amount <= 610)  return FF_AMOUNT_MAP[610];
+    if (amount <= 850)  return FF_AMOUNT_MAP[850];
     if (amount <= 1090) return FF_AMOUNT_MAP[1090];
     if (amount <= 1240) return FF_AMOUNT_MAP[1240];
     if (amount <= 1850) return FF_AMOUNT_MAP[1850];
@@ -149,11 +170,12 @@ export class PinexClient {
     if (amount <= 5060) return FF_AMOUNT_MAP[5060];
     if (amount <= 10120) return FF_AMOUNT_MAP[10120];
 
+    // Very large amounts: stack 1625 UC vouchers
     return {
-      type: 'shell',
-      product: 'lvl30',
-      quantity: Math.max(1, Math.round(amount / 355)),
-      description: `${amount} Diamonds (Shell lvl30)`
+      type: 'uc',
+      product: '1625',
+      quantity: Math.max(1, Math.round(amount / 2530)),
+      description: `${amount} Diamonds (1625 UC x${Math.max(1, Math.round(amount / 2530))})`
     };
   }
 

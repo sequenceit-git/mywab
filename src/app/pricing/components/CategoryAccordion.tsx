@@ -350,18 +350,40 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
 
                           {/* Bot Status Toggle */}
                           <td className="py-3 px-3 text-center">
-                            <button
-                              onClick={() => onToggleActive(p)}
-                              title={isActive ? 'Active on WhatsApp bot. Click to disable' : 'Disabled on WhatsApp bot. Click to activate'}
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition ${
-                                isActive
-                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30'
-                                  : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-emerald-500/15 hover:text-emerald-400'
-                              }`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
-                              <span>{isActive ? 'Active' : 'Disabled'}</span>
-                            </button>
+                            {(() => {
+                              // For Free Fire: bot is only truly active when package is enabled AND Pinex is ON
+                              const botActive = isActive && (cat.id !== 'game_ff' || pinexAutoFulfill);
+                              const pinexOffWarning = cat.id === 'game_ff' && isActive && !pinexAutoFulfill;
+                              return (
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <button
+                                    onClick={() => onToggleActive(p)}
+                                    title={
+                                      pinexOffWarning
+                                        ? 'Package is enabled but Pinex is OFF — bot cannot fulfill orders'
+                                        : isActive
+                                        ? 'Active on WhatsApp bot. Click to disable'
+                                        : 'Disabled on WhatsApp bot. Click to activate'
+                                    }
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 transition ${
+                                      botActive
+                                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30'
+                                        : pinexOffWarning
+                                        ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                        : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-emerald-500/15 hover:text-emerald-400'
+                                    }`}
+                                  >
+                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                      botActive ? 'bg-emerald-400' : pinexOffWarning ? 'bg-amber-400' : 'bg-slate-500'
+                                    }`}></span>
+                                    <span>{botActive ? 'Active' : 'Inactive'}</span>
+                                  </button>
+                                  {pinexOffWarning && (
+                                    <span className="text-[9px] text-amber-500/80">Pinex OFF</span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </td>
 
                           {/* Per-Package Kokos Auto-Fulfill Toggle */}
@@ -455,12 +477,22 @@ export const CategoryAccordion: React.FC<CategoryAccordionProps> = ({
                           </span>
                         </div>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          isActive
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {isActive ? 'Bot Active' : 'Disabled'}
-                        </span>
+                            (() => {
+                              const botActive = isActive && (cat.id !== 'game_ff' || pinexAutoFulfill);
+                              const pinexOffWarning = cat.id === 'game_ff' && isActive && !pinexAutoFulfill;
+                              return botActive
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                : pinexOffWarning
+                                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                : 'bg-slate-800 text-slate-400';
+                            })()
+                          }`}>
+                            {(() => {
+                              const botActive = isActive && (cat.id !== 'game_ff' || pinexAutoFulfill);
+                              const pinexOffWarning = cat.id === 'game_ff' && isActive && !pinexAutoFulfill;
+                              return botActive ? 'Active' : pinexOffWarning ? 'Pinex OFF' : 'Inactive';
+                            })()}
+                          </span>
                       </div>
 
                       <div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-slate-900/60 border border-slate-800/50 text-center">
