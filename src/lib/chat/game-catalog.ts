@@ -223,6 +223,15 @@ export const PAYMENT_ACCOUNTS = {
   nagad: '01330719250'
 };
 
+/** True only for a real category id/code, not a custom package id that starts with one. */
+export function isExactCategoryId(identifier?: string | null): boolean {
+  if (!identifier) return false;
+  const raw = identifier.toLowerCase().trim();
+  return GAME_CATEGORIES.some(
+    g => g.id.toLowerCase() === raw || g.code.toLowerCase() === raw
+  );
+}
+
 export function findGameCategory(identifier?: string | null): GameCategory | undefined {
   if (!identifier) return undefined;
   const raw = identifier.toLowerCase().trim();

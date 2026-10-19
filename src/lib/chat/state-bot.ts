@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { findGameCategory, findPackage } from './game-catalog';
+import { findGameCategory, findPackage, isExactCategoryId, type GameCategory, type GamePackage } from './game-catalog';
 import {
   extractCleanUid,
   isGratitudeOrPleasantry,
@@ -46,6 +46,18 @@ export * from './handlers/catalog-navigation';
 export * from './handlers/order-creation';
 export * from './handlers/payment-fulfillment';
 export * from './handlers/info-handlers';
+
+function findTappedPackage(triggerId: string): { game: GameCategory; pkg: GamePackage } | undefined {
+  if (!triggerId || isExactCategoryId(triggerId)) return undefined;
+  const raw = triggerId.toLowerCase();
+  for (const game of db.getCachedCategories()) {
+    const pkg = (game.packages || []).find(
+      p => p.isActive !== false && p.id.toLowerCase() === raw
+    );
+    if (pkg) return { game, pkg };
+  }
+  return undefined;
+}
 
 export interface IncomingEvent {
   conversationId: string;
@@ -340,14 +352,22 @@ export const stateBot = {
       return;
     }
 
-    // 9. Check if trigger or text is selecting one of the game categories (supported in any step!)
+    // 9. Exact package tap. Custom packs use ids like `game_pubg_uid-<slug>-<id>`,
+    // which also start with `game_` and must not be treated as a category click.
     await db.ensureInitialized();
+    const tappedPackage = findTappedPackage(triggerId);
+    if (tappedPackage) {
+      await handlePackageSelection(phone, conversationId, tappedPackage.game, tappedPackage.pkg);
+      return;
+    }
+
+    // 10. Check if trigger or text is selecting one of the game categories (supported in any step!)
     const baseGame = findGameCategory(triggerId) || findGameCategory(rawText);
     const matchedGame = baseGame ? (db.getCachedCategory(baseGame.id) || baseGame) : undefined;
     if (matchedGame) {
-      // If the user explicitly clicked/selected a category (e.g. triggerId is 'game_movie', 'game_pubg_uid', etc.),
-      // ALWAYS show the package list for that category! Do NOT attempt to auto-match rawText against packages.
-      const isExplicitCategoryTrigger = triggerId === matchedGame.id || triggerId.startsWith('game_');
+      // Only an exact category id (e.g. `game_pubg_uid`) opens the package list.
+      // A longer custom package id must fall through to package matching.
+      const isExplicitCategoryTrigger = isExactCategoryId(triggerId);
 
       if (!isExplicitCategoryTrigger) {
         // Only if user typed free text (e.g. "Netflix 1 month", "PUBG 60 UC"), check if they also specified a package
@@ -369,8 +389,8 @@ export const stateBot = {
       return;
     }
 
-    // 10. Check if trigger or text is selecting a package for the currently selected game
-    if (session.step === 'SELECTING_PACKAGE' || triggerId.startsWith('pkg_')) {
+    // 11. Check if trigger or text is selecting a package for the currently selected game
+    if (session.step === 'SELECTING_PACKAGE' || triggerId.startsWith('pkg_') || triggerId.startsWith('game_')) {
       const selectedGameId = session.draftOrder.selectedGame;
       const baseCurrentGame = selectedGameId ? findGameCategory(selectedGameId) : undefined;
       const currentGame = baseCurrentGame ? (db.getCachedCategory(baseCurrentGame.id) || baseCurrentGame) : undefined;
@@ -383,7 +403,7 @@ export const stateBot = {
       }
     }
 
-    // 11. Step-specific text input routing
+    // 12. Step-specific text input routing
     switch (session.step) {
       case 'COLLECTING_UID':
         await handleUidInput(phone, conversationId, rawText, session, userId);
