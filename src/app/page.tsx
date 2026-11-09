@@ -291,7 +291,7 @@ export default function DashboardOverviewPage() {
                 <span className="font-bold text-slate-200">{totalMargin}%</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                From <b className="text-slate-300">৳{totalRevenue.toLocaleString()}</b> ({totalOrders} orders)
+                From <b className="text-slate-300">৳{totalRevenue.toLocaleString()}</b> ({deliveredOrders} delivered orders)
               </p>
             </div>
           </div>

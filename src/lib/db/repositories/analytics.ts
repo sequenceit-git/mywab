@@ -137,15 +137,18 @@ export const analyticsRepository = {
     let pendingProfit = 0;
 
     for (const o of orders) {
+      // Revenue/profit are realized only once an order is DELIVERED.
+      // Unpaid (PENDING_PAYMENT) and cancelled orders never count.
       if (o.status === 'CANCELLED') continue;
       const { revenue, profit } = helperGetOrderProfit(o);
-      totalRevenue += revenue;
-      totalProfit += profit;
 
       if (o.status === 'DELIVERED') {
+        totalRevenue += revenue;
+        totalProfit += profit;
         deliveredRevenue += revenue;
         deliveredProfit += profit;
       } else if (['PENDING_CLAIM', 'CLAIMED', 'PROCESSING'].includes(o.status)) {
+        // Paid but not yet delivered: shown separately, excluded from totals
         pendingRevenue += revenue;
         pendingProfit += profit;
       }
@@ -214,9 +217,11 @@ export const analyticsRepository = {
     const paymentMap = new Map<string, { name: string; count: number; value: number }>();
 
     for (const o of orders) {
-      if (o.status === 'CANCELLED') continue;
+      // Only completed orders contribute to profit/sales trends
+      if (o.status !== 'DELIVERED') continue;
 
-      const oDate = o.created_at ? new Date(o.created_at) : null;
+      // Bucket by completion time (last status update), falling back to creation time
+      const oDate = (o.updated_at || o.created_at) ? new Date((o.updated_at || o.created_at) as string) : null;
       const isValidDate = Boolean(oDate && !isNaN(oDate.getTime()));
       const oDateLocal = isValidDate ? getFormattedDateKey(oDate!) : '';
       const oDateUtc = isValidDate ? getUtcDateKey(oDate!) : '';
