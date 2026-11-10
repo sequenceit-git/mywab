@@ -13,8 +13,6 @@ function SuccessContent() {
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState<number>(3);
-  const [isRedirectCancelled, setIsRedirectCancelled] = useState(false);
 
   const botPhone = process.env.NEXT_PUBLIC_WHATSAPP_PHONE || '15551419791';
   const whatsappUrl = botPhone ? `https://wa.me/${botPhone.replace(/\D/g, '')}` : 'https://wa.me';
@@ -72,20 +70,6 @@ function SuccessContent() {
     };
   }, [orderId, invoiceId]);
 
-  // Automated WhatsApp Instant Redirect
-  useEffect(() => {
-    // Instantly open WhatsApp so customer never remains on the main website domain
-    const timer = setTimeout(() => {
-      try {
-        window.location.replace(whatsappUrl);
-      } catch {
-        window.location.href = whatsappUrl;
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [whatsappUrl]);
-
   const isDelivered = order?.status === 'DELIVERED';
   const isProcessing = order?.status === 'PROCESSING' || order?.status === 'CLAIMED';
   const amount = order?.total_amount;
@@ -122,35 +106,15 @@ function SuccessContent() {
           </p>
         </div>
 
-        {/* Automated WhatsApp Redirect Banner */}
-        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 mb-5 text-center relative overflow-hidden">
-          {!isRedirectCancelled ? (
-            <div>
-              <div className="flex items-center justify-center gap-2 text-emerald-400 font-semibold text-sm mb-1.5">
-                <WhatsAppIcon className="w-4 h-4 animate-bounce" />
-                <span>
-                  {countdown > 0 ? `${countdown} সেকেন্ডে হোয়াটসঅ্যাপে ফিরে যাচ্ছি...` : 'হোয়াটসঅ্যাপ খোলা হচ্ছে...'}
-                </span>
-              </div>
-              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-2">
-                <div 
-                  className="bg-emerald-400 h-full transition-all duration-1000 ease-linear rounded-full"
-                  style={{ width: `${((3 - countdown) / 3) * 100}%` }}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsRedirectCancelled(true)}
-                className="text-xs text-slate-400 hover:text-slate-200 underline"
-              >
-                স্বয়ংক্রিয় রিডাইরেক্ট বন্ধ রাখুন
-              </button>
-            </div>
-          ) : (
-            <div className="text-xs text-slate-300">
-              স্বয়ংক্রিয় রিডাইরেক্ট বন্ধ করা হয়েছে। নিচে ক্লিক করে যেকোনো সময় হোয়াটসঅ্যাপে যেতে পারেন।
-            </div>
-          )}
+        {/* WhatsApp info note */}
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 mb-5 text-center">
+          <div className="flex items-center justify-center gap-2 text-emerald-400 font-semibold text-sm">
+            <WhatsAppIcon className="w-4 h-4" />
+            <span>অর্ডার আপডেট হোয়াটসঅ্যাপে পাঠানো হবে</span>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            নিচের বাটনে ক্লিক করে হোয়াটসঅ্যাপে ফিরে যান
+          </p>
         </div>
 
         {/* Order Details Card */}
