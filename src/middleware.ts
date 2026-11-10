@@ -10,6 +10,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/webhooks') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/system') ||
+    pathname.startsWith('/payment') ||
     pathname.includes('.') ||
     pathname === '/login'
   ) {
