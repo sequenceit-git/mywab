@@ -149,8 +149,10 @@ export async function updateOrderPaymentSuccess(
       // Atomic: only update if trx_id is still unset (race-condition safe mutex)
       const result = await OrderModel.findOneAndUpdate(
         {
-          $or: [{ order_id: orderIdCode }, { id: order.id }],
-          $or: [{ trx_id: null }, { trx_id: { $exists: false } }]
+          $and: [
+            { $or: [{ order_id: orderIdCode }, { id: order.id }] },
+            { $or: [{ trx_id: null }, { trx_id: { $exists: false } }] }
+          ]
         },
         {
           $set: {
