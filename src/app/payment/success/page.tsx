@@ -14,7 +14,7 @@ function SuccessContent() {
   const [order, setOrder] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const botPhone = process.env.NEXT_PUBLIC_WHATSAPP_PHONE || '15551419791';
+  const botPhone = '8801605909002';
   const whatsappUrl = botPhone ? `https://wa.me/${botPhone.replace(/\D/g, '')}` : 'https://wa.me';
 
   useEffect(() => {
@@ -156,11 +156,11 @@ function SuccessContent() {
           </a>
 
           <a
-            href="/"
+            href="https://dsdukan.com/"
             className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors"
           >
             <ShoppingBag className="w-4 h-4" />
-            হোমপেজ / ড্যাশবোর্ড
+            হোমপেজ / শপ
           </a>
         </div>
       </div>

@@ -8,7 +8,7 @@ import { WhatsAppIcon } from '@/components/BrandIcons';
 function CancelContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get('order_id') || searchParams.get('orderId');
-  const botPhone = process.env.NEXT_PUBLIC_WHATSAPP_PHONE || '15551419791';
+  const botPhone = '8801605909002';
   const whatsappUrl = botPhone ? `https://wa.me/${botPhone.replace(/\D/g, '')}` : 'https://wa.me';
 
   return (
@@ -63,7 +63,7 @@ function CancelContent() {
           </a>
 
           <a
-            href="/"
+            href="https://dsdukan.com/"
             className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
           >
             <ShoppingBag className="w-4 h-4" />

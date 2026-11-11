@@ -9,10 +9,11 @@ import { NavProvider, useNav } from '@/components/NavContext';
 
 function AppShellContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isLoginPage = pathname === '/login';
+  // Login + public customer payment pages render without the admin sidebar / bottom nav
+  const isBarePage = pathname === '/login' || pathname.startsWith('/payment');
   const { isMobileOpen, closeMobile } = useNav();
 
-  if (isLoginPage) {
+  if (isBarePage) {
     return (
       <div className="flex-1 min-h-screen w-full flex flex-col bg-dark-950">
         {children}
