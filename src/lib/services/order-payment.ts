@@ -24,6 +24,9 @@ export interface PaymentProcessResult {
   deliveryType?: 'KOKOS_AUTO' | 'PINEX_AUTO' | 'STREAMING_AUTO' | 'TELEGRAM_WORKER';
 }
 
+// In-process concurrency mutex to block identical order fulfillments running simultaneously
+const activePaymentLocks = new Set<string>();
+
 export const orderPaymentService = {
   /**
    * Process a verified payment from ZiniPay (webhook, redirect verification, or in-bot check)
@@ -50,55 +53,70 @@ export const orderPaymentService = {
       };
     }
 
-    // 2. Idempotency Check: Don't re-fulfill if already delivered or processing
-    const isAlreadyPaid = order.status === 'DELIVERED' || 
-      order.status === 'PROCESSING' || 
-      order.status === 'CLAIMED' || 
-      order.status === 'OUT_FOR_DELIVERY';
-
-    if (isAlreadyPaid && order.trx_id) {
-      console.log(`[OrderPaymentService Idempotency] Order #${order.order_id} is already processed (${order.status}). Skipping duplicate fulfillment.`);
+    // 2. In-process Mutex Lock: Block concurrent executions for the same order
+    const lockKey = order.order_id.toUpperCase();
+    if (activePaymentLocks.has(lockKey)) {
+      console.log(`[OrderPaymentService Lock] Order #${order.order_id} fulfillment is already running. Skipping duplicate call.`);
       return {
         success: true,
         alreadyProcessed: true,
         order,
-        message: `Order #${order.order_id} is already fulfilled/processing.`
+        message: `Order #${order.order_id} fulfillment is already in progress.`
       };
     }
+    activePaymentLocks.add(lockKey);
 
-    // Also guard by trx_id alone — catches race where status hasn't updated yet
-    if (order.trx_id) {
-      console.log(`[OrderPaymentService Idempotency] Order #${order.order_id} already has trx_id=${order.trx_id}. Skipping duplicate.`);
-      return {
-        success: true,
-        alreadyProcessed: true,
-        order,
-        message: `Order #${order.order_id} payment already recorded.`
-      };
-    }
+    try {
+      // 3. Idempotency Check: Don't re-fulfill if already delivered or processing
+      const isAlreadyPaid = order.status === 'DELIVERED' || 
+        order.status === 'PROCESSING' || 
+        order.status === 'CLAIMED' || 
+        order.status === 'PENDING_CLAIM' ||
+        order.status === 'OUT_FOR_DELIVERY';
 
-    // 3. Atomically update payment and order in Database
-    const updateRes = await db.updateOrderPaymentSuccess(order.order_id, {
-      trxId: trxId || 'ZINIPAY_VERIFIED',
-      paymentMethod: paymentMethod || 'bKash',
-      invoiceId: invoiceId || order.invoice_id,
-      amount: amount || order.total_amount
-    });
+      if (isAlreadyPaid && order.trx_id) {
+        console.log(`[OrderPaymentService Idempotency] Order #${order.order_id} is already processed (${order.status}). Skipping duplicate fulfillment.`);
+        return {
+          success: true,
+          alreadyProcessed: true,
+          order,
+          message: `Order #${order.order_id} is already fulfilled/processing.`
+        };
+      }
 
-    // If DB atomic update says already processed, bail out early — no messages sent
-    if (updateRes.alreadyProcessed) {
-      console.log(`[OrderPaymentService] DB atomic guard: Order #${order.order_id} already processed. Skipping.`);
-      return {
-        success: true,
-        alreadyProcessed: true,
-        order: updateRes.order || order,
-        message: `Order #${order.order_id} payment already recorded (atomic guard).`
-      };
-    }
+      // Also guard by trx_id alone — catches race where status hasn't updated yet
+      if (order.trx_id) {
+        console.log(`[OrderPaymentService Idempotency] Order #${order.order_id} already has trx_id=${order.trx_id}. Skipping duplicate.`);
+        return {
+          success: true,
+          alreadyProcessed: true,
+          order,
+          message: `Order #${order.order_id} payment already recorded.`
+        };
+      }
 
-    if (updateRes.order) {
-      order = updateRes.order;
-    }
+      // 4. Atomically update payment and order in Database
+      const updateRes = await db.updateOrderPaymentSuccess(order.order_id, {
+        trxId: trxId || 'ZINIPAY_VERIFIED',
+        paymentMethod: paymentMethod || 'bKash',
+        invoiceId: invoiceId || order.invoice_id,
+        amount: amount || order.total_amount
+      });
+
+      // If DB atomic update says already processed, bail out early — no messages sent
+      if (updateRes.alreadyProcessed) {
+        console.log(`[OrderPaymentService] DB atomic guard: Order #${order.order_id} already processed. Skipping.`);
+        return {
+          success: true,
+          alreadyProcessed: true,
+          order: updateRes.order || order,
+          message: `Order #${order.order_id} payment already recorded (atomic guard).`
+        };
+      }
+
+      if (updateRes.order) {
+        order = updateRes.order;
+      }
 
     const phone = order.delivery_phone;
     const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
@@ -400,5 +418,11 @@ export const orderPaymentService = {
       deliveryType: 'TELEGRAM_WORKER',
       message: 'Order dispatched to Telegram staff queue with verified payment.'
     };
+    } finally {
+      // Release in-process mutex after 5 seconds
+      setTimeout(() => {
+        activePaymentLocks.delete(lockKey);
+      }, 5000);
+    }
   }
 };

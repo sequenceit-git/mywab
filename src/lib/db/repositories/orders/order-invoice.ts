@@ -174,6 +174,22 @@ export async function updateOrderPaymentSuccess(
         console.log(`[updateOrderPaymentSuccess] Atomic update found order ${orderIdCode} already processed. Skipping.`);
         return { success: true, alreadyProcessed: true, order };
       }
+
+      // Sync in-memory cache
+      order.trx_id = details.trxId;
+      order.payment_method = details.paymentMethod;
+      if (details.invoiceId) order.invoice_id = details.invoiceId;
+      order.updated_at = verifiedAt;
+      for (const o of mockStore.orders.values()) {
+        if (o.order_id.toUpperCase() === orderIdCode.toUpperCase() || o.id === order.id) {
+          o.trx_id = details.trxId;
+          o.payment_method = details.paymentMethod;
+          if (details.invoiceId) o.invoice_id = details.invoiceId;
+          o.updated_at = verifiedAt;
+        }
+      }
+
+      return { success: true, order: hydrateOrder(result) };
     } catch (err) {
       console.error('[updateOrderPaymentSuccess MongoDB error]:', err);
     }
