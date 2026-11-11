@@ -61,6 +61,9 @@ interface AnalyticsData {
   totalWorkers: number;
 }
 
+// Profit can be negative (sold below base price); show the sign explicitly.
+const formatSignedTaka = (n: number): string => `${n < 0 ? '-' : '+'}৳${Math.abs(n).toLocaleString()}`;
+
 export default function DashboardOverviewPage() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -212,7 +215,7 @@ export default function DashboardOverviewPage() {
             <div className="mt-3">
               <div className="flex items-baseline gap-2">
                 <div className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono tracking-tight">
-                  +৳{todayProfit.toLocaleString()}
+                  {formatSignedTaka(todayProfit)}
                 </div>
                 {todaySales > 0 && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
@@ -247,7 +250,7 @@ export default function DashboardOverviewPage() {
                 <span className="font-bold text-cyan-300">{todayOrders} orders</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Net Profit: <b className="text-emerald-400">+৳{todayProfit.toLocaleString()}</b>
+                Net Profit: <b className="text-emerald-400">{formatSignedTaka(todayProfit)}</b>
               </p>
             </div>
           </div>
@@ -266,7 +269,7 @@ export default function DashboardOverviewPage() {
               </div>
               <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
                 <span className="text-slate-400">Monthly Profit:</span>
-                <span className="font-bold text-sky-300 font-mono">+৳{thisMonthProfit.toLocaleString()}</span>
+                <span className="font-bold text-sky-300 font-mono">{formatSignedTaka(thisMonthProfit)}</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
                 <b className="text-slate-300">{thisMonthOrders}</b> orders ({thisMonthMargin}% margin)
@@ -284,7 +287,7 @@ export default function DashboardOverviewPage() {
             </div>
             <div className="mt-3">
               <div className="text-2xl sm:text-3xl font-black text-brand-400 font-mono tracking-tight">
-                +৳{totalProfit.toLocaleString()}
+                {formatSignedTaka(totalProfit)}
               </div>
               <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
                 <span className="text-slate-400">Avg Margin:</span>
@@ -310,7 +313,7 @@ export default function DashboardOverviewPage() {
               </div>
               <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
                 <span className="text-slate-400">Realized Profit:</span>
-                <span className="font-bold text-purple-300 font-mono">+৳{deliveredProfit.toLocaleString()}</span>
+                <span className="font-bold text-purple-300 font-mono">{formatSignedTaka(deliveredProfit)}</span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
                 {analytics?.pendingOrders || 0} currently in pipeline
@@ -556,7 +559,7 @@ export default function DashboardOverviewPage() {
                           </div>
                           
                           <div className="flex items-center justify-between text-[11px] text-slate-400">
-                            <span>Profit: <b className="text-emerald-400 font-mono">+৳{pkg.profit}</b></span>
+                            <span>Profit: <b className="text-emerald-400 font-mono">{formatSignedTaka(pkg.profit)}</b></span>
                             <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold">
                               {pkg.margin}% Margin
                             </span>

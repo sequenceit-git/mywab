@@ -86,11 +86,19 @@ export const ordersRepository = {
           : finalNotes)
       : order.customer_notes;
 
+    // Record completion time once, the first time the order becomes DELIVERED.
+    const deliveredAt = status === 'DELIVERED' && order.status !== 'DELIVERED'
+      ? new Date().toISOString()
+      : null;
+
     order.status = status;
     if (mergedNotes) {
       order.customer_notes = mergedNotes;
     }
     order.updated_at = new Date().toISOString();
+    if (deliveredAt) {
+      order.delivered_at = deliveredAt;
+    }
 
     for (const o of mockStore.orders.values()) {
       if (o.order_id.toUpperCase() === orderIdCode.toUpperCase() || o.id === order.id) {
@@ -99,6 +107,9 @@ export const ordersRepository = {
           o.customer_notes = mergedNotes;
         }
         o.updated_at = new Date().toISOString();
+        if (deliveredAt) {
+          o.delivered_at = deliveredAt;
+        }
         if (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT') {
           o.current_worker = undefined;
         }
@@ -115,6 +126,9 @@ export const ordersRepository = {
         };
         if (mergedNotes) {
           updatePayload.customer_notes = mergedNotes;
+        }
+        if (deliveredAt) {
+          updatePayload.delivered_at = deliveredAt;
         }
         if (isAdminOverride && (status === 'PENDING_CLAIM' || status === 'PENDING_PAYMENT')) {
           updatePayload.current_worker = null;

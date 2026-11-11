@@ -76,6 +76,8 @@ export interface OrderItem {
   unit_price: number;
   quantity: number;
   subtotal: number;
+  /** Package base (cost) price snapshotted when the order was created. */
+  base_price?: number | null;
 }
 
 export interface Order {
@@ -102,6 +104,8 @@ export interface Order {
   telegram_message_id?: number | null;
   created_at: string;
   updated_at?: string;
+  /** Set when the order first moves to DELIVERED; used for profit date bucketing. */
+  delivered_at?: string | null;
   
   // Joined relational data
   customer?: UserProfile;

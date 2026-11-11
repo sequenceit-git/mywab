@@ -7,6 +7,7 @@ export interface IOrderItem {
   unit_price: number;
   quantity: number;
   subtotal: number;
+  base_price?: number | null;
 }
 
 export interface IPayment {
@@ -49,6 +50,7 @@ export interface IOrderDocument extends Document {
   current_worker?: IWorkerSubdoc | null;
   created_at: string;
   updated_at: string;
+  delivered_at?: string | null;
 }
 
 const OrderItemSchema = new Schema<IOrderItem>(
@@ -59,6 +61,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
     unit_price: { type: Number, required: true },
     quantity: { type: Number, required: true, default: 1 },
     subtotal: { type: Number, required: true },
+    base_price: { type: Number, default: null },
   },
   { _id: false }
 );
@@ -110,6 +113,7 @@ const OrderSchema = new Schema<IOrderDocument>(
     current_worker: { type: WorkerSubdocSchema, default: null },
     created_at: { type: String, default: () => new Date().toISOString() },
     updated_at: { type: String, default: () => new Date().toISOString() },
+    delivered_at: { type: String, default: null },
   },
   {
     timestamps: false,

@@ -99,29 +99,38 @@ export const analyticsRepository = {
       productMap.set(prod.name.toLowerCase(), { price: prod.price, basePrice: prod.basePrice });
     }
 
+    // Unit base (cost) price: snapshot stored on the order item (new orders) →
+    // current package base price (legacy orders) → 82% estimate (unknown package).
+    const getItemUnitBasePrice = (item: any, unitPrice: number): number => {
+      if (item.base_price !== null && item.base_price !== undefined && Number.isFinite(Number(item.base_price))) {
+        return Number(item.base_price);
+      }
+      const prodInfo =
+        productMap.get((item.product_id || '').toLowerCase()) ||
+        productMap.get((item.product_name || '').toLowerCase());
+      return prodInfo?.basePrice !== undefined ? prodInfo.basePrice : Math.round(unitPrice * 0.82);
+    };
+
+    const getItemUnitPrice = (item: any): number => {
+      const qty = Number(item.quantity) || 1;
+      return Number(item.unit_price) || (item.subtotal ? item.subtotal / qty : 0);
+    };
+
+    // Profit = sell price − base price. Can be negative (sold below cost).
     const helperGetOrderProfit = (order: any): { revenue: number; cost: number; profit: number } => {
-      let revenue = Number(order.total_amount) || 0;
+      const revenue = Number(order.total_amount) || 0;
       let cost = 0;
 
       if (Array.isArray(order.items) && order.items.length > 0) {
         for (const item of order.items) {
           const qty = Number(item.quantity) || 1;
-          const unitPrice = Number(item.unit_price) || (item.subtotal ? item.subtotal / qty : 0);
-          const pName = (item.product_name || '').toLowerCase();
-          const prodInfo = productMap.get(pName) || productMap.get(item.product_id?.toLowerCase());
-          
-          const unitBasePrice = prodInfo?.basePrice !== undefined 
-            ? prodInfo.basePrice 
-            : Math.round(unitPrice * 0.82);
-
-          cost += unitBasePrice * qty;
+          cost += getItemUnitBasePrice(item, getItemUnitPrice(item)) * qty;
         }
       } else {
         cost = Math.round(revenue * 0.82);
       }
 
-      const profit = Math.max(0, revenue - cost);
-      return { revenue, cost, profit };
+      return { revenue, cost, profit: revenue - cost };
     };
 
     const totalOrders = orders.length;
@@ -220,8 +229,9 @@ export const analyticsRepository = {
       // Only completed orders contribute to profit/sales trends
       if (o.status !== 'DELIVERED') continue;
 
-      // Bucket by completion time (last status update), falling back to creation time
-      const oDate = (o.updated_at || o.created_at) ? new Date((o.updated_at || o.created_at) as string) : null;
+      // Bucket by completion time; legacy orders without delivered_at fall back to last update / creation
+      const oDateRaw = o.delivered_at || o.updated_at || o.created_at;
+      const oDate = oDateRaw ? new Date(oDateRaw) : null;
       const isValidDate = Boolean(oDate && !isNaN(oDate.getTime()));
       const oDateLocal = isValidDate ? getFormattedDateKey(oDate!) : '';
       const oDateUtc = isValidDate ? getUtcDateKey(oDate!) : '';
@@ -280,12 +290,10 @@ export const analyticsRepository = {
         for (const item of o.items) {
           const pName = item.product_name || 'Top-Up Item';
           const qty = Number(item.quantity) || 1;
-          const uPrice = Number(item.unit_price) || 0;
+          const uPrice = getItemUnitPrice(item);
           const itemRev = uPrice * qty;
-
-          const prodInfo = productMap.get(pName.toLowerCase());
-          const itemCost = (prodInfo?.basePrice !== undefined ? prodInfo.basePrice : Math.round(uPrice * 0.82)) * qty;
-          const itemProfit = Math.max(0, itemRev - itemCost);
+          const itemCost = getItemUnitBasePrice(item, uPrice) * qty;
+          const itemProfit = itemRev - itemCost;
 
           const prev = packageCountMap.get(pName) || { name: pName, count: 0, revenue: 0, profit: 0, margin: 0 };
           prev.count += qty;

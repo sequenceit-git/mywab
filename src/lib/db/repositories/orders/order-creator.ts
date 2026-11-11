@@ -3,6 +3,7 @@ import { connectToDatabase, isDbConfigured } from '../../client';
 import { OrderModel } from '../../models/Order';
 import { mockStore } from '../../mock-store';
 import { usersRepository } from '../users';
+import { pricingRepository } from '../pricing';
 import { getAccountFieldInfo } from '../../../chat/input-parser';
 import { hydrateOrder } from './order-hydrator';
 
@@ -94,6 +95,14 @@ export async function createOrder(params: {
     ...(params.deliveryAddress || {})
   };
 
+  // Snapshot each package's base price so later base-price edits don't rewrite historical profit.
+  const allProducts = await pricingRepository.getAllProducts(true).catch(() => []);
+  const findBasePrice = (productId: string | undefined, productName: string): number | null => {
+    const byId = productId ? allProducts.find(p => p.id.toLowerCase() === productId.toLowerCase()) : undefined;
+    const byName = byId || allProducts.find(p => p.name.toLowerCase() === productName.toLowerCase());
+    return byName && Number.isFinite(byName.basePrice) ? byName.basePrice : null;
+  };
+
   const embeddedItems = params.items.map(item => ({
     id: crypto.randomUUID(),
     product_id: item.product_id || null,
@@ -101,6 +110,7 @@ export async function createOrder(params: {
     unit_price: item.unit_price,
     quantity: item.quantity,
     subtotal: item.unit_price * item.quantity,
+    base_price: findBasePrice(item.product_id, item.product_name),
   }));
 
   const embeddedPayments: any[] = [];
