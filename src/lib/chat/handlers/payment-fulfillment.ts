@@ -6,6 +6,11 @@ import { orderPaymentService } from '../../services/order-payment';
 import { ConversationSessionState } from '@/types';
 import { handleUidInput } from './order-creation';
 import { sendWelcomeAndGameList } from './catalog-navigation';
+import { handleTrackOrder } from './info-handlers';
+
+// Right after paying, ZiniPay can report PENDING for a few seconds — re-check before answering.
+const VERIFY_RETRY_DELAYS_MS = [2500, 2500];
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Real-time Check Payment status via ZiniPay API
@@ -35,7 +40,28 @@ export async function handleCheckPayment(
     order = orders.find(o => o.status === 'PENDING_PAYMENT' && (o.invoice_id || o.payment_url)) || null;
   }
 
-  if (order && !invoiceId && order.invoice_id) {
+  const isPaidOrder = (o: typeof order) => Boolean(o) && o!.status !== 'PENDING_PAYMENT' && o!.status !== 'CANCELLED';
+
+  // Typed "check" (no explicit order id) but the session points at an older, already-paid order —
+  // prefer the customer's newest unpaid order instead.
+  if (isPaidOrder(order) && !triggerId.startsWith('check_pay:')) {
+    const orders = await db.getOrdersByPhone(phone);
+    const unpaid = orders.find(o => o.status === 'PENDING_PAYMENT' && (o.invoice_id || o.payment_url));
+    if (unpaid) {
+      order = unpaid;
+      invoiceId = undefined; // session invoice belonged to the other order
+    }
+  }
+
+  // Already paid (by the webhook or an earlier tap) — answer with the order status instead of staying silent.
+  if (order && isPaidOrder(order)) {
+    await whatsappService.sendMessage(phone, `✅ *আপনার পেমেন্ট ইতিমধ্যে গৃহীত হয়েছে!* অর্ডার *#${order.order_id}* এর বর্তমান অবস্থা নিচে দেখুন:`);
+    await handleTrackOrder(phone, conversationId, `track:${order.order_id}`, '');
+    return;
+  }
+
+  // The order's own invoice is authoritative; the session invoice may belong to a different order.
+  if (order?.invoice_id) {
     invoiceId = order.invoice_id;
   }
 
@@ -74,8 +100,31 @@ export async function handleCheckPayment(
     return;
   }
 
-  // Call ZiniPay verify
-  const verifyRes = await zinipayClient.verifyInvoice(invoiceId);
+  // Immediate feedback so the tap never looks ignored
+  await whatsappService.sendMessage(phone, '⏳ *পেমেন্ট যাচাই করা হচ্ছে...* অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন।');
+
+  // Call ZiniPay verify (with short re-checks while it is still PENDING)
+  let verifyRes = await zinipayClient.verifyInvoice(invoiceId);
+  for (const delay of VERIFY_RETRY_DELAYS_MS) {
+    if (verifyRes.status !== 'PENDING') break;
+    await sleep(delay);
+    verifyRes = await zinipayClient.verifyInvoice(invoiceId);
+  }
+
+  // ZiniPay API / network error — don't tell the customer their payment failed
+  if (verifyRes.error) {
+    const buttons = [
+      { id: `check_pay:${order?.order_id || ''}`, title: '🔄 আবার চেক করুন' },
+      { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
+    ];
+    await whatsappService.sendInteractiveButtons(
+      phone,
+      `⚠️ *এই মুহূর্তে পেমেন্ট যাচাই করা যাচ্ছে না।*\n\nআপনি পেমেন্ট করে থাকলে চিন্তা করবেন না — নিশ্চিত হওয়া মাত্র স্বয়ংক্রিয়ভাবে মেসেজ পাবেন। কিছুক্ষণ পর আবার চেক করুন।`,
+      buttons,
+      'পেমেন্ট চেক'
+    );
+    return;
+  }
 
   if (verifyRes.status === 'COMPLETED') {
     const trxId = verifyRes.transaction_id || `ZINI-${Date.now()}`;
@@ -88,7 +137,7 @@ export async function handleCheckPayment(
     }
     db.setSessionState(conversationId, { step: 'ORDER_PLACED' });
 
-    await orderPaymentService.handlePaymentVerified({
+    const result = await orderPaymentService.handlePaymentVerified({
       orderIdCode: order?.order_id,
       invoiceId,
       trxId,
@@ -96,16 +145,31 @@ export async function handleCheckPayment(
       amount,
       customerName: verifyRes.cus_name
     });
+
+    // Webhook (or an earlier tap) is already handling / has handled this payment — confirm instead of silence.
+    if (result.alreadyProcessed) {
+      const code = result.order?.order_id || order?.order_id || '';
+      await whatsappService.sendInteractiveButtons(
+        phone,
+        `✅ *পেমেন্ট নিশ্চিত হয়েছে!* অর্ডার *#${code}* প্রসেস হচ্ছে — আপডেট স্বয়ংক্রিয়ভাবে এখানে পাবেন।`,
+        [
+          { id: `track:${code}`, title: '📦 অর্ডার স্ট্যাটাস' },
+          { id: 'btn_main_menu', title: '🎮 মেইন মেনু' }
+        ],
+        'পেমেন্ট নিশ্চিত'
+      );
+    }
     return;
   }
 
   if (verifyRes.status === 'PENDING') {
     const payUrl = order?.payment_url || session.draftOrder?.paymentUrl;
     const pendingMsg = 
-`⏳ *পেমেন্ট এখনও পেন্ডিং রয়েছে!*
+`⏳ *পেমেন্ট এখনও নিশ্চিত হয়নি!*
 
-আপনার পেমেন্টটি এখনও আমাদের গেটওয়েতে জমা পড়েনি। 
-আপনি যদি এখনও টাকা না পাঠিয়ে থাকেন, তবে নিচের লিংকে গিয়ে পেমেন্ট সম্পন্ন করুন:
+আপনি যদি মাত্র পেমেন্ট করে থাকেন, গেটওয়ে থেকে নিশ্চিত হতে কয়েক সেকেন্ড লাগতে পারে — নিশ্চিত হওয়া মাত্র স্বয়ংক্রিয়ভাবে মেসেজ পাবেন, অথবা একটু পর আবার চেক করুন।
+
+এখনও টাকা না পাঠিয়ে থাকলে নিচের লিংকে গিয়ে পেমেন্ট সম্পন্ন করুন:
 
 🔗 *পেমেন্ট লিংক:*
 ${payUrl || 'https://secure.zinipay.com'}
