@@ -84,8 +84,13 @@ export const orderPaymentService = {
         };
       }
 
+      // A previous run recorded the payment but died before fulfillment moved the
+      // order out of PENDING_PAYMENT. Resume fulfillment instead of skipping forever.
+      // (The in-process mutex above, held for the whole run, prevents overlap with a live run.)
+      const isStuckPaid = Boolean(order.trx_id) && order.status === 'PENDING_PAYMENT';
+
       // Also guard by trx_id alone — catches race where status hasn't updated yet
-      if (order.trx_id) {
+      if (order.trx_id && !isStuckPaid) {
         console.log(`[OrderPaymentService Idempotency] Order #${order.order_id} already has trx_id=${order.trx_id}. Skipping duplicate.`);
         return {
           success: true,
@@ -95,13 +100,19 @@ export const orderPaymentService = {
         };
       }
 
-      // 4. Atomically update payment and order in Database
-      const updateRes = await db.updateOrderPaymentSuccess(order.order_id, {
-        trxId: trxId || 'ZINIPAY_VERIFIED',
-        paymentMethod: paymentMethod || 'bKash',
-        invoiceId: invoiceId || order.invoice_id,
-        amount: amount || order.total_amount
-      });
+      if (isStuckPaid) {
+        console.warn(`[OrderPaymentService Recovery] Order #${order.order_id} has trx_id=${order.trx_id} but is still PENDING_PAYMENT. Resuming fulfillment.`);
+      }
+
+      // 4. Atomically update payment and order in Database (skipped when resuming a stuck order)
+      const updateRes = isStuckPaid
+        ? { success: true, alreadyProcessed: false, order }
+        : await db.updateOrderPaymentSuccess(order.order_id, {
+            trxId: trxId || 'ZINIPAY_VERIFIED',
+            paymentMethod: paymentMethod || 'bKash',
+            invoiceId: invoiceId || order.invoice_id,
+            amount: amount || order.total_amount
+          });
 
       // If DB atomic update says already processed, bail out early — no messages sent
       if (updateRes.alreadyProcessed) {
