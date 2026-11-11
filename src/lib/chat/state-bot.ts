@@ -190,8 +190,11 @@ export const stateBot = {
     }
 
     // 0.1 ZiniPay Check Payment Status trigger (Button or text inquiry)
+    // WhatsApp sometimes delivers the "🔄 পেমেন্ট চেক করুন" button as plain text (no check_pay: id),
+    // and the in-memory session step may have been reset — so match the text at any step.
     const isCheckPayTrigger = triggerId.startsWith('check_pay:') ||
-      (session.step === 'AWAITING_PAYMENT' && ['check', 'check payment', 'check pay', 'paid', 'পেমেন্ট করেছি', 'পেমেন্ট শেষ', 'টাকা দিয়েছি', 'টাকা দিছি', 'পেমেন্ট চেক', 'done', 'yes', 'hoise', 'diyechi', 'send koresi'].includes(normalizedText));
+      /পেমেন্ট\s*চেক|check\s*pay/i.test(normalizedText) ||
+      (session.step === 'AWAITING_PAYMENT' &&['check', 'check payment', 'check pay', 'paid', 'পেমেন্ট করেছি', 'পেমেন্ট শেষ', 'টাকা দিয়েছি', 'টাকা দিছি', 'পেমেন্ট চেক', 'done', 'yes', 'hoise', 'diyechi', 'send koresi'].includes(normalizedText));
 
     if (isCheckPayTrigger) {
       await handleCheckPayment(phone, conversationId, triggerId, rawText, session);

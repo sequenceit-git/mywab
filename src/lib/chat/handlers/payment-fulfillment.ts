@@ -28,6 +28,13 @@ export async function handleCheckPayment(
     order = await db.getOrderByInvoiceId(invoiceId);
   }
 
+  // Session is in-memory and may be lost (restart / menu navigation) —
+  // fall back to the customer's newest unpaid order with a ZiniPay invoice.
+  if (!order) {
+    const orders = await db.getOrdersByPhone(phone);
+    order = orders.find(o => o.status === 'PENDING_PAYMENT' && (o.invoice_id || o.payment_url)) || null;
+  }
+
   if (order && !invoiceId && order.invoice_id) {
     invoiceId = order.invoice_id;
   }
