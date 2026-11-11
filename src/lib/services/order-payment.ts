@@ -66,6 +66,17 @@ export const orderPaymentService = {
       };
     }
 
+    // Also guard by trx_id alone — catches race where status hasn't updated yet
+    if (order.trx_id) {
+      console.log(`[OrderPaymentService Idempotency] Order #${order.order_id} already has trx_id=${order.trx_id}. Skipping duplicate.`);
+      return {
+        success: true,
+        alreadyProcessed: true,
+        order,
+        message: `Order #${order.order_id} payment already recorded.`
+      };
+    }
+
     // 3. Atomically update payment and order in Database
     const updateRes = await db.updateOrderPaymentSuccess(order.order_id, {
       trxId: trxId || 'ZINIPAY_VERIFIED',
@@ -73,6 +84,17 @@ export const orderPaymentService = {
       invoiceId: invoiceId || order.invoice_id,
       amount: amount || order.total_amount
     });
+
+    // If DB atomic update says already processed, bail out early — no messages sent
+    if (updateRes.alreadyProcessed) {
+      console.log(`[OrderPaymentService] DB atomic guard: Order #${order.order_id} already processed. Skipping.`);
+      return {
+        success: true,
+        alreadyProcessed: true,
+        order: updateRes.order || order,
+        message: `Order #${order.order_id} payment already recorded (atomic guard).`
+      };
+    }
 
     if (updateRes.order) {
       order = updateRes.order;

@@ -33,24 +33,8 @@ function SuccessContent() {
             }
           }
         }
-
-        // If orderId didn't return or invoiceId was provided, trigger a verification check
-        if (invoiceId) {
-          const res = await fetch(`/api/system/zinipay?action=VERIFY&invoiceId=${encodeURIComponent(invoiceId)}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success && isMounted) {
-              // Refresh order if possible
-              if (orderId) {
-                const oRes = await fetch(`/api/orders/${orderId}`);
-                if (oRes.ok) {
-                  const oData = await oRes.json();
-                  if (oData.order) setOrder(oData.order);
-                }
-              }
-            }
-          }
-        }
+        // No VERIFY call here — fulfillment is handled exclusively by the ZiniPay webhook.
+        // The success page only reads order status.
       } catch (err: any) {
         if (isMounted) setError(err.message || 'Status check error');
       } finally {
@@ -59,16 +43,16 @@ function SuccessContent() {
     }
 
     checkStatus();
-    // Poll every 3 seconds for 15 seconds to catch instantaneous auto-fulfillment
-    const interval = setInterval(checkStatus, 3000);
-    const timeout = setTimeout(() => clearInterval(interval), 15000);
+    // Poll every 4 seconds for 20 seconds to show updated order status after webhook fires
+    const interval = setInterval(checkStatus, 4000);
+    const timeout = setTimeout(() => clearInterval(interval), 20000);
 
     return () => {
       isMounted = false;
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, [orderId, invoiceId]);
+  }, [orderId]);
 
   const isDelivered = order?.status === 'DELIVERED';
   const isProcessing = order?.status === 'PROCESSING' || order?.status === 'CLAIMED';

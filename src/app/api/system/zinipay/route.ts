@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { zinipayClient } from '@/lib/zinipay/client';
-import { orderPaymentService } from '@/lib/services/order-payment';
 import { db } from '@/lib/db';
 import { env } from '@/lib/config/env';
 
@@ -12,23 +11,9 @@ export async function GET(request: NextRequest) {
     const action = searchParams.get('action');
     const invoiceId = searchParams.get('invoiceId') || searchParams.get('invoice_id');
 
-    // Verification check trigger (used by success page or admin)
+    // Verification status check (read-only — fulfillment is handled by the webhook only)
     if (action === 'VERIFY' && invoiceId) {
       const verifyRes = await zinipayClient.verifyInvoice(invoiceId);
-      if (verifyRes.status === 'COMPLETED') {
-        const processRes = await orderPaymentService.handlePaymentVerified({
-          invoiceId,
-          trxId: verifyRes.transaction_id || `ZINI-${Date.now()}`,
-          paymentMethod: verifyRes.payment_method || 'bKash',
-          amount: Number(verifyRes.amount) || 0,
-          customerName: verifyRes.cus_name
-        });
-        return NextResponse.json({
-          success: true,
-          verifyResult: verifyRes,
-          processResult: processRes
-        });
-      }
       return NextResponse.json({
         success: true,
         verifyResult: verifyRes

@@ -101,7 +101,10 @@ export async function attachInvoiceToOrder(
 }
 
 /**
- * ZiniPay Integration: Mark order and payment as verified upon successful payment
+ * ZiniPay Integration: Mark order and payment as verified upon successful payment.
+ * Uses an atomic findOneAndUpdate so only the FIRST concurrent call wins —
+ * any subsequent duplicate webhook / success-page call sees trx_id already set
+ * and returns { success: false, alreadyProcessed: true } without side-effects.
  */
 export async function updateOrderPaymentSuccess(
   orderIdCode: string,
@@ -111,9 +114,15 @@ export async function updateOrderPaymentSuccess(
     invoiceId?: string;
     amount?: number;
   }
-): Promise<{ success: boolean; order?: Order }> {
+): Promise<{ success: boolean; alreadyProcessed?: boolean; order?: Order }> {
   const order = await getOrderByCode(orderIdCode);
   if (!order) return { success: false };
+
+  // Guard: if trx_id already set this payment was already claimed — skip entirely.
+  if (order.trx_id) {
+    console.log(`[updateOrderPaymentSuccess] Order ${orderIdCode} already has trx_id=${order.trx_id}. Skipping duplicate.`);
+    return { success: true, alreadyProcessed: true, order };
+  }
 
   const verifiedAt = new Date().toISOString();
 
@@ -137,8 +146,12 @@ export async function updateOrderPaymentSuccess(
         created_at: verifiedAt
       };
 
-      await OrderModel.updateOne(
-        { $or: [{ order_id: orderIdCode }, { id: order.id }] },
+      // Atomic: only update if trx_id is still unset (race-condition safe mutex)
+      const result = await OrderModel.findOneAndUpdate(
+        {
+          $or: [{ order_id: orderIdCode }, { id: order.id }],
+          $or: [{ trx_id: null }, { trx_id: { $exists: false } }]
+        },
         {
           $set: {
             trx_id: details.trxId,
@@ -150,8 +163,15 @@ export async function updateOrderPaymentSuccess(
           $push: {
             payments: newPayment
           }
-        }
+        },
+        { new: true }
       );
+
+      // If nothing was updated, another process already claimed this payment
+      if (!result) {
+        console.log(`[updateOrderPaymentSuccess] Atomic update found order ${orderIdCode} already processed. Skipping.`);
+        return { success: true, alreadyProcessed: true, order };
+      }
     } catch (err) {
       console.error('[updateOrderPaymentSuccess MongoDB error]:', err);
     }
