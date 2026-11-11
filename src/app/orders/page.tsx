@@ -26,6 +26,21 @@ import {
 } from 'lucide-react';
 import { Order, OrderStatus } from '@/types';
 import { getAccountFieldInfo } from '@/lib/chat/input-parser';
+
+// A paid PENDING_CLAIM order with no Telegram card yet is waiting in the dispatch queue.
+const getDisplayStatus = (o: Order): string =>
+  o.status === 'PENDING_CLAIM' && !o.telegram_message_id ? 'QUEUE' : o.status;
+
+const statusBadgeClass = (displayStatus: string): string =>
+  displayStatus === 'QUEUE'
+    ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+    : displayStatus === 'PENDING_CLAIM'
+    ? 'status-badge-pending'
+    : displayStatus === 'DELIVERED'
+    ? 'status-badge-delivered'
+    : displayStatus === 'CANCELLED'
+    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+    : 'status-badge-claimed';
 import { WhatsAppIcon, TelegramIcon, BkashIcon, NagadIcon, RocketIcon } from '@/components/BrandIcons';
 
 const ITEMS_PER_PAGE = 10;
@@ -172,7 +187,7 @@ export default function OrdersPage() {
   const activeOrders = orders.filter(o => o.status !== 'PENDING_PAYMENT');
 
   const filteredOrders = activeOrders.filter(o => {
-    const matchesFilter = filterStatus === 'ALL' || o.status === filterStatus;
+    const matchesFilter = filterStatus === 'ALL' || getDisplayStatus(o) === filterStatus;
     const matchesSearch =
       o.order_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       o.delivery_phone.includes(searchQuery) ||
@@ -223,17 +238,9 @@ export default function OrdersPage() {
           </div>
           <div className="flex items-center gap-2">
             <span
-              className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                selectedOrder.status === 'PENDING_CLAIM'
-                  ? 'status-badge-pending'
-                  : selectedOrder.status === 'DELIVERED'
-                  ? 'status-badge-delivered'
-                  : selectedOrder.status === 'CANCELLED'
-                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                  : 'status-badge-claimed'
-              }`}
+              className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${statusBadgeClass(getDisplayStatus(selectedOrder))}`}
             >
-              {selectedOrder.status}
+              {getDisplayStatus(selectedOrder)}
             </span>
             {isModal && (
               <button
@@ -534,7 +541,7 @@ export default function OrdersPage() {
 
           {/* Status Tabs */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-            {['ALL', 'PENDING_CLAIM', 'CLAIMED', 'PROCESSING', 'DELIVERED', 'CANCELLED'].map((status) => {
+            {['ALL', 'QUEUE', 'PENDING_CLAIM', 'CLAIMED', 'PROCESSING', 'DELIVERED', 'CANCELLED'].map((status) => {
               const isSelected = filterStatus === status;
               return (
                 <button
@@ -591,17 +598,9 @@ export default function OrdersPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-bold text-white">{order.order_id}</span>
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            order.status === 'PENDING_CLAIM'
-                              ? 'status-badge-pending'
-                              : order.status === 'DELIVERED'
-                              ? 'status-badge-delivered'
-                              : order.status === 'CANCELLED'
-                              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                              : 'status-badge-claimed'
-                          }`}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusBadgeClass(getDisplayStatus(order))}`}
                         >
-                          {order.status}
+                          {getDisplayStatus(order)}
                         </span>
                       </div>
                       <span className={`text-sm font-extrabold ${isCancelled ? 'text-slate-400 line-through' : 'text-brand-400'}`}>
