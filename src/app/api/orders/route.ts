@@ -3,9 +3,11 @@ import { db } from '@/lib/db';
 import { telegramBot } from '@/lib/telegram/bot';
 import { whatsappService } from '@/lib/whatsapp/service';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const orders = await db.getOrders();
+    const { searchParams } = new URL(request.url);
+    const includePending = searchParams.get('includePending') === 'true';
+    const orders = await db.getOrders({ excludePendingPayment: !includePending });
     return NextResponse.json({ success: true, orders });
   } catch (error) {
     return NextResponse.json({ success: false, error: String(error) }, { status: 500 });

@@ -169,7 +169,9 @@ export default function OrdersPage() {
     }
   };
 
-  const filteredOrders = orders.filter(o => {
+  const activeOrders = orders.filter(o => o.status !== 'PENDING_PAYMENT');
+
+  const filteredOrders = activeOrders.filter(o => {
     const matchesFilter = filterStatus === 'ALL' || o.status === filterStatus;
     const matchesSearch =
       o.order_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -448,7 +450,7 @@ export default function OrdersPage() {
                       : 'bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800'
                   }`}
                 >
-                  {status === 'ALL' ? `ALL (${orders.length})` : status.replace('_', ' ')}
+                  {status === 'ALL' ? `ALL (${activeOrders.length})` : status.replace('_', ' ')}
                 </button>
               );
             })}

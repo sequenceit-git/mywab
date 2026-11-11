@@ -4,13 +4,15 @@ import { OrderModel } from '../../models/Order';
 import { mockStore } from '../../mock-store';
 import { hydrateOrder } from './order-hydrator';
 
-export async function getOrders(filter?: { status?: OrderStatus; limit?: number }): Promise<Order[]> {
+export async function getOrders(filter?: { status?: OrderStatus; limit?: number; excludePendingPayment?: boolean }): Promise<Order[]> {
   if (isDbConfigured()) {
     try {
       await connectToDatabase();
       const mongoFilter: any = {};
       if (filter?.status) {
         mongoFilter.status = filter.status;
+      } else if (filter?.excludePendingPayment) {
+        mongoFilter.status = { $ne: 'PENDING_PAYMENT' };
       }
 
       let q = OrderModel.find(mongoFilter).sort({ created_at: -1 });
@@ -30,6 +32,8 @@ export async function getOrders(filter?: { status?: OrderStatus; limit?: number 
   let all = Array.from(mockStore.orders.values()).map(o => hydrateOrder(o));
   if (filter?.status) {
     all = all.filter(o => o.status === filter.status);
+  } else if (filter?.excludePendingPayment) {
+    all = all.filter(o => o.status !== 'PENDING_PAYMENT');
   }
   all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   if (filter?.limit) {
