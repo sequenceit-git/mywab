@@ -99,8 +99,12 @@ export const analyticsRepository = {
       productMap.set(prod.name.toLowerCase(), { price: prod.price, basePrice: prod.basePrice });
     }
 
-    // Unit base (cost) price: snapshot stored on the order item (new orders) →
-    // current package base price (legacy orders) → 82% estimate (unknown package).
+    // Unit base (cost) price:
+    //  1. Snapshot stored on the order item (orders created after the snapshot fix) — exact.
+    //  2. Legacy orders: apply the package's CURRENT cost ratio (base ÷ price) to the price the
+    //     order actually sold at. Using today's absolute base price would turn old sales made at
+    //     older (lower) prices into fake losses whenever price + base were raised since.
+    //  3. Unknown package: 82% estimate.
     const getItemUnitBasePrice = (item: any, unitPrice: number): number => {
       if (item.base_price !== null && item.base_price !== undefined && Number.isFinite(Number(item.base_price))) {
         return Number(item.base_price);
@@ -108,6 +112,9 @@ export const analyticsRepository = {
       const prodInfo =
         productMap.get((item.product_id || '').toLowerCase()) ||
         productMap.get((item.product_name || '').toLowerCase());
+      if (prodInfo && prodInfo.price > 0 && unitPrice > 0) {
+        return Math.round(unitPrice * (prodInfo.basePrice / prodInfo.price));
+      }
       return prodInfo?.basePrice !== undefined ? prodInfo.basePrice : Math.round(unitPrice * 0.82);
     };
 
