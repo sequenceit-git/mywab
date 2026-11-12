@@ -6,8 +6,12 @@ import { zinipayClient } from '../zinipay/client';
 import { whatsappService } from '../whatsapp/service';
 import { orderPaymentService } from './order-payment';
 
-// Give the ZiniPay webhook a head start before we poll on its behalf.
-const MIN_AGE_MS = 2 * 60 * 1000;
+// Give the ZiniPay webhook a short head start before we poll on its behalf.
+const MIN_AGE_MS = 20 * 1000;
+// Fresh orders (when payment usually happens) are checked every sweep; older ones back off.
+const FAST_WINDOW_MS = 10 * 60 * 1000;
+const SLOW_RECHECK_MS = 2 * 60 * 1000;
+const lastCheckedAt = new Map<string, number>();
 // Payment window: unpaid orders older than this are auto-cancelled.
 export const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 // Invoices older than this are ignored entirely.
@@ -41,9 +45,21 @@ export async function reconcilePendingPayments(): Promise<{ checked: number; ful
       .limit(BATCH_LIMIT)
       .lean();
 
+    const liveIds = new Set(docs.map(d => d.order_id));
+    for (const id of lastCheckedAt.keys()) {
+      if (!liveIds.has(id)) lastCheckedAt.delete(id);
+    }
+
     for (const doc of docs) {
       const order = hydrateOrder(doc);
-      const isExpired = now - new Date(order.created_at).getTime() > PAYMENT_WINDOW_MS;
+      const ageMs = now - new Date(order.created_at).getTime();
+      const isExpired = ageMs > PAYMENT_WINDOW_MS;
+
+      // Back off on older orders to limit ZiniPay API calls (expiry sweeps still happen every 2 min).
+      if (ageMs > FAST_WINDOW_MS && now - (lastCheckedAt.get(order.order_id) || 0) < SLOW_RECHECK_MS) {
+        continue;
+      }
+      lastCheckedAt.set(order.order_id, now);
       const invoiceId = order.invoice_id || zinipayClient.extractInvoiceId(order.payment_url || undefined);
 
       try {

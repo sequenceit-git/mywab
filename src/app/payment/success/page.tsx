@@ -20,21 +20,25 @@ function SuccessContent() {
   useEffect(() => {
     let isMounted = true;
 
+    let interval: ReturnType<typeof setInterval> | undefined;
+
     async function checkStatus() {
       try {
-        if (orderId) {
-          const res = await fetch(`/api/orders/${orderId}`);
+        if (orderId || invoiceId) {
+          // Verifies with ZiniPay server-side and fulfills immediately (idempotent),
+          // so customers don't wait for a slow/missed ZiniPay webhook.
+          const qs = new URLSearchParams();
+          if (orderId) qs.set('order_id', orderId);
+          if (invoiceId) qs.set('invoice_id', invoiceId);
+          const res = await fetch(`/api/payment/verify?${qs.toString()}`, { cache: 'no-store' });
           if (res.ok) {
             const data = await res.json();
             if (data.success && data.order && isMounted) {
               setOrder(data.order);
-              setLoading(false);
-              return;
+              if (data.order.status !== 'PENDING_PAYMENT' && interval) clearInterval(interval);
             }
           }
         }
-        // No VERIFY call here — fulfillment is handled exclusively by the ZiniPay webhook.
-        // The success page only reads order status.
       } catch (err: any) {
         if (isMounted) setError(err.message || 'Status check error');
       } finally {
@@ -43,16 +47,16 @@ function SuccessContent() {
     }
 
     checkStatus();
-    // Poll every 4 seconds for 20 seconds to show updated order status after webhook fires
-    const interval = setInterval(checkStatus, 4000);
-    const timeout = setTimeout(() => clearInterval(interval), 20000);
+    // Poll every 3 seconds for up to 60 seconds until the payment is confirmed
+    interval = setInterval(checkStatus, 3000);
+    const timeout = setTimeout(() => interval && clearInterval(interval), 60000);
 
     return () => {
       isMounted = false;
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, [orderId]);
+  }, [orderId, invoiceId]);
 
   const isDelivered = order?.status === 'DELIVERED';
   const isProcessing = order?.status === 'PROCESSING' || order?.status === 'CLAIMED';

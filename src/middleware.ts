@@ -11,6 +11,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/system') ||
     pathname.startsWith('/payment') ||
+    pathname.startsWith('/api/payment/') ||
     pathname.includes('.') ||
     pathname === '/login'
   ) {
