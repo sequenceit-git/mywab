@@ -2,7 +2,7 @@
 
 import React, { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { XCircle, RefreshCw, ShoppingBag, ArrowLeft } from 'lucide-react';
+import { XCircle, ShoppingBag } from 'lucide-react';
 import { WhatsAppIcon } from '@/components/BrandIcons';
 
 function CancelContent() {

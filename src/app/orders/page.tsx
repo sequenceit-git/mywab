@@ -3,25 +3,18 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import {
-  ShoppingBag,
   Search,
-  Filter,
   CheckCircle2,
   Clock,
-  Truck,
   Send,
-  User,
   Phone,
-  MapPin,
   RefreshCw,
   XCircle,
-  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   ShieldAlert,
   Ban,
   X,
-  ExternalLink,
   CreditCard
 } from 'lucide-react';
 import { Order, OrderStatus } from '@/types';

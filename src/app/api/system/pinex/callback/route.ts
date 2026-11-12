@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true, note: 'non_json' });
     }
 
-    const { type, status, orderid, nickname, content } = body;
+    const { status, orderid, nickname, content } = body;
     const orderId = String(orderid || '').trim();
 
     if (!orderId) {

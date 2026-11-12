@@ -2,7 +2,6 @@
 
 import React from 'react';
 import {
-  CheckCircle2,
   Search
 } from 'lucide-react';
 import { PubgUidIcon } from '@/components/BrandIcons';

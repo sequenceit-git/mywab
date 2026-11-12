@@ -3,13 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import {
-  Users,
-  ShieldCheck,
-  CheckCircle2,
-  Clock,
-  Send,
-  Plus,
-  Bot,
   RefreshCw
 } from 'lucide-react';
 import { Worker } from '@/types';

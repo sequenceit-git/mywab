@@ -1,8 +1,7 @@
-import { GAME_CATEGORIES, RETIRED_PACKAGE_IDS, GameCategory, GamePackage } from '../../chat/game-catalog';
+import { GAME_CATEGORIES, RETIRED_PACKAGE_IDS, GameCategory } from '../../chat/game-catalog';
 import { connectToDatabase, isDbConfigured } from '../client';
 import { PackageModel } from '../models/Package';
 import { SettingModel } from '../models/Setting';
-import { mockStore } from '../mock-store';
 import { PackagePresetAccount, PackagePresetAccountPublic } from '@/types';
 
 export interface PricingProduct {

@@ -11,11 +11,8 @@ import {
   Send,
   RefreshCw,
   Sparkles,
-  Phone,
   Shield,
-  Clock,
   CheckCheck,
-  CheckCircle2,
   ExternalLink,
   ChevronLeft,
   RotateCcw,
@@ -28,13 +25,12 @@ import {
   Copy,
   Check,
   AlertTriangle,
-  ArrowRight,
   ArrowUp,
   Flame,
   X
 } from 'lucide-react';
-import { Conversation, Message, Order, OrderStatus } from '@/types';
-import { WhatsAppIcon, BrandLogo } from '@/components/BrandIcons';
+import { Conversation, Message, Order } from '@/types';
+import { WhatsAppIcon } from '@/components/BrandIcons';
 
 // Web Audio API notification chime generator (100% offline, zero external dependencies)
 function playNotificationChime() {

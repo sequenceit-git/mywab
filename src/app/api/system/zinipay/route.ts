@@ -5,21 +5,8 @@ import { env } from '@/lib/config/env';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url);
-    const action = searchParams.get('action');
-    const invoiceId = searchParams.get('invoiceId') || searchParams.get('invoice_id');
-
-    // Verification status check (read-only — fulfillment is handled by the webhook only)
-    if (action === 'VERIFY' && invoiceId) {
-      const verifyRes = await zinipayClient.verifyInvoice(invoiceId);
-      return NextResponse.json({
-        success: true,
-        verifyResult: verifyRes
-      });
-    }
-
     const isConfigured = zinipayClient.isConfigured();
     const isAutoPaymentEnabled = db.isZiniPayAutoPaymentEnabled();
     const appUrl = env.app.url;

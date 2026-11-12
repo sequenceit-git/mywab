@@ -1,7 +1,7 @@
 import { db } from '../../db';
 import { whatsappService } from '../../whatsapp/service';
 import { OrderItem } from '@/types';
-import { getAccountFieldInfo, getGameDeliveryConfig } from '../input-parser';
+import { getAccountFieldInfo } from '../input-parser';
 
 export async function handleTrackOrder(phone: string, conversationId: string, triggerId: string, rawText: string): Promise<void> {
   let orderIdCode = '';
@@ -46,7 +46,6 @@ export async function handleTrackOrder(phone: string, conversationId: string, tr
     '';
   const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
   const accountInfo = getAccountFieldInfo(playerUid, gameTitle);
-  const deliveryConfig = getGameDeliveryConfig(gameTitle, firstItem?.product_name);
 
   const statusMap: Record<string, string> = {
     'PENDING': '⏳ পেন্ডিং (অর্ডার জমা হয়েছে)',

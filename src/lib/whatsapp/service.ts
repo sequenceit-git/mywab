@@ -276,13 +276,7 @@ ${deliveryConfig.deliveryMessage}
    * Send Order Claimed by Worker notification
    */
   async sendOrderClaimedNotification(order: Order, workerName: string): Promise<SendMessageResult> {
-    const firstItem = order.items?.[0];
-    const gameTitle = 
-      order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || 
-      firstItem?.product_name || 
-      '';
     const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
-    const accountInfo = getAccountFieldInfo(playerUid, gameTitle);
 
     const messageText = 
 `⚡ *অর্ডার আপডেট / Order Processing!*
@@ -376,11 +370,6 @@ DS Dukan থেকে কেনাকাটা করার জন্য ধন�
    * Send Order Cancelled notification to customer
    */
   async sendOrderCancelledNotification(order: Order, reason?: string): Promise<SendMessageResult> {
-    const firstItem = order.items?.[0];
-    const gameTitle = 
-      order.customer_notes?.match(/Game:\s*([^|\n]+)/i)?.[1]?.trim() || 
-      firstItem?.product_name || 
-      '';
     const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
 
     const messageText = 

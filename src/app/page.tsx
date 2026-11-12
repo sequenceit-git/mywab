@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import {
   TrendingUp,
-  ShoppingBag,
   Calendar,
   CheckCircle2,
   Users,
@@ -14,11 +13,10 @@ import {
   CreditCard,
   BarChart3,
   Sparkles,
-  Percent,
   BadgePercent
 } from 'lucide-react';
 import Link from 'next/link';
-import { Order, Worker } from '@/types';
+import { Worker } from '@/types';
 import { BkashIcon, NagadIcon, RocketIcon } from '@/components/BrandIcons';
 import {
   AreaChart,
@@ -30,7 +28,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend
 } from 'recharts';
 
 interface AnalyticsData {
@@ -150,7 +147,6 @@ export default function DashboardOverviewPage() {
   const totalRevenue = analytics?.totalRevenue || 0;
   const totalProfit = analytics?.totalProfit || 0;
   const totalMargin = analytics?.totalMargin || 0;
-  const totalOrders = analytics?.totalOrders || 0;
   const deliveredOrders = analytics?.deliveredOrders || 0;
   const deliveredProfit = analytics?.deliveredProfit || 0;
 

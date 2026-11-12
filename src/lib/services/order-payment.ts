@@ -1,7 +1,6 @@
 import { db } from '../db';
 import { whatsappService } from '../whatsapp/service';
 import { telegramBot } from '../telegram/bot';
-import { telegramQueue } from '../telegram/queue';
 import { kokosClient } from '../kokos/client';
 import { pinexClient } from '../pinex/client';
 import { Order } from '@/types';
@@ -133,7 +132,6 @@ export const orderPaymentService = {
     const playerUid = order.player_uid || order.delivery_address?.name || 'N/A';
     const firstItem = order.items?.[0];
     const productName = firstItem?.product_name || 'Game Package';
-    const itemSku = firstItem?.product_name || '';
 
     // Send immediate Payment Receipt to customer on WhatsApp
     const paymentReceiptMsg = 

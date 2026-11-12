@@ -8,7 +8,6 @@ import {
   MessageSquare,
   ShoppingBag,
   BadgePercent,
-  Trophy,
   Users
 } from 'lucide-react';
 

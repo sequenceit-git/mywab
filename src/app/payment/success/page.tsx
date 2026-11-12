@@ -10,16 +10,13 @@ function SuccessContent() {
   const orderId = searchParams.get('order_id') || searchParams.get('orderId');
   const invoiceId = searchParams.get('invoice_id') || searchParams.get('invoiceId');
 
-  const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const botPhone = '8801605909002';
   const whatsappUrl = botPhone ? `https://wa.me/${botPhone.replace(/\D/g, '')}` : 'https://wa.me';
 
   useEffect(() => {
     let isMounted = true;
-
     let interval: ReturnType<typeof setInterval> | undefined;
 
     async function checkStatus() {
@@ -39,10 +36,8 @@ function SuccessContent() {
             }
           }
         }
-      } catch (err: any) {
-        if (isMounted) setError(err.message || 'Status check error');
-      } finally {
-        if (isMounted) setLoading(false);
+      } catch {
+        // Network hiccup — the next poll retries.
       }
     }
 

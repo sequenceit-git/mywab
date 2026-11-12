@@ -4,18 +4,14 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Users,
   Trophy,
-  Crown,
   Search,
   ArrowUpDown,
   Phone,
   Gamepad2,
   ExternalLink,
-  ShieldCheck,
-  Award,
   DollarSign,
   ShoppingBag,
   Sparkles,
-  CheckCircle2,
   RefreshCw,
   Copy,
   Check,
@@ -427,7 +423,6 @@ export default function UsersLeaderboardPage() {
           {topThree.map((user, idx) => {
             const isFirst = idx === 0;
             const isSecond = idx === 1;
-            const isThird = idx === 2;
 
             const badgeBg = isFirst
               ? 'from-amber-500/20 via-amber-500/5 to-slate-900 border-amber-500/40 shadow-lg shadow-amber-500/10'
