@@ -6,6 +6,7 @@ import { storageService } from '../storage';
 import { telegramClient } from './client';
 import {
   generateOrderCard,
+  formatDhakaTime,
   cancellationStore,
   sanitizeReplyMarkup
 } from './card-builder';
@@ -696,7 +697,7 @@ export async function handleWorkerPhotoMessage(message: {
     }
 
     // 5. Update order notes & status to PROCESSING
-    const updatedNotes = `QR Code forwarded to WhatsApp at ${new Date().toLocaleTimeString()} (5m expiry timer) | Storage: ${finalImageUrl}`;
+    const updatedNotes = `QR Code forwarded to WhatsApp at ${formatDhakaTime()} (5m expiry timer) | Storage: ${finalImageUrl}`;
     targetOrder.status = 'PROCESSING';
     targetOrder.customer_notes = `${targetOrder.customer_notes || ''} | ${updatedNotes}`;
     await db.updateOrderStatus(targetOrder.order_id, 'PROCESSING', {

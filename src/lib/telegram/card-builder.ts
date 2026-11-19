@@ -1,6 +1,20 @@
 import { Order } from '@/types';
 import { getAccountFieldInfo, formatPaymentDisplayForTelegram } from '../chat/input-parser';
 
+/**
+ * Format a Date to Bangladesh Standard Time (Asia/Dhaka, GMT+6)
+ */
+export function formatDhakaTime(d: Date | string | number = new Date()): string {
+  const dateObj = d instanceof Date ? d : new Date(d);
+  return (isNaN(dateObj.getTime()) ? new Date() : dateObj).toLocaleTimeString('en-US', {
+    timeZone: 'Asia/Dhaka',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+}
+
 export interface PendingWorkerCancellation {
   orderIdCode: string;
   workerTelegramId: number;
@@ -443,7 +457,7 @@ export function generateOrderCard(
       cardHtml: card(title, deliveredBanner,
         isCrunchyrollAutoDelivered ? orderBlock() : orderBlock('Processed by'),
         isCrunchyrollAutoDelivered ? customerBlock(crCredsLines()) : customerBlock(),
-        `🕒 <b>Completed:</b> ${new Date().toLocaleTimeString()}`),
+        `🕒 <b>Completed:</b> ${formatDhakaTime(order.updated_at || new Date())}`),
       replyMarkup: { inline_keyboard: [] }
     };
   }
@@ -463,7 +477,7 @@ export function generateOrderCard(
         customerBlock([
           `⚠️ <b>Reason:</b> ${cancelReason}${refundNotice}`
         ]),
-        `🕒 <b>Cancelled:</b> ${new Date().toLocaleTimeString()}\n<i>⚠️ This order is cancelled. No further action needed.</i>`),
+        `🕒 <b>Cancelled:</b> ${formatDhakaTime(order.updated_at || new Date())}\n<i>⚠️ This order is cancelled. No further action needed.</i>`),
       replyMarkup: { inline_keyboard: [] }
     };
   }

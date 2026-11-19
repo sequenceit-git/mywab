@@ -1,7 +1,7 @@
 import { db } from '../../db';
 import { whatsappService } from '../../whatsapp/service';
 import { telegramClient } from '../../telegram/client';
-import { generateOrderCard, sanitizeReplyMarkup } from '../../telegram/card-builder';
+import { generateOrderCard, sanitizeReplyMarkup, formatDhakaTime } from '../../telegram/card-builder';
 import { env } from '../../config/env';
 import { Order } from '@/types';
 import { isNetflixOrder, isCrunchyrollOrder } from '../../streaming-accounts';
@@ -69,7 +69,7 @@ export async function handleNetflixCustomerAction(
 
   if (actionType === 'NEED_CODE') {
     // 1. Update customer notes with NETFLIX_CODE_REQUESTED timestamp
-    const updatedNotes = `${order.customer_notes || ''} | NETFLIX_CODE_REQUESTED:${new Date().toLocaleTimeString()}`;
+    const updatedNotes = `${order.customer_notes || ''} | NETFLIX_CODE_REQUESTED:${formatDhakaTime()}`;
     await db.updateOrderStatus(order.order_id, order.status, { notes: updatedNotes });
 
     const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
@@ -100,7 +100,7 @@ export async function handleNetflixCustomerAction(
     }
   } else if (actionType === 'LOGIN_DONE') {
     // 1. Update customer notes with NETFLIX_LOGIN_DONE
-    const updatedNotes = `${order.customer_notes || ''} | NETFLIX_LOGIN_DONE:${new Date().toLocaleTimeString()}`;
+    const updatedNotes = `${order.customer_notes || ''} | NETFLIX_LOGIN_DONE:${formatDhakaTime()}`;
     await db.updateOrderStatus(order.order_id, order.status, { notes: updatedNotes });
 
     const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
@@ -187,7 +187,7 @@ export async function handleCrunchyrollCustomerAction(
   const assignedWorkerName = order.current_worker?.full_name || 'Worker';
 
   // 1. Update customer notes with CRUNCHYROLL_LOGIN_DONE
-  const updatedNotes = `${order.customer_notes || ''} | CRUNCHYROLL_LOGIN_DONE:${new Date().toLocaleTimeString()}`;
+  const updatedNotes = `${order.customer_notes || ''} | CRUNCHYROLL_LOGIN_DONE:${formatDhakaTime()}`;
   await db.updateOrderStatus(order.order_id, order.status, { notes: updatedNotes });
 
   const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;

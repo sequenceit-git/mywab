@@ -4,6 +4,7 @@ import { env } from '../config/env';
 import { telegramClient } from './client';
 import {
   generateOrderCard,
+  formatDhakaTime,
   resolveCancelReason,
   sanitizeReplyMarkup,
   isQrLoginOrder,
@@ -213,7 +214,7 @@ ${cardHtml}`;
         await db.updateOrderTelegramMessageId(order.id, sendRes.result.message_id);
       }
     } else if (action === 'REFRESH_REQUESTED') {
-      const refreshNotes = `${order.customer_notes || ''} | QR_REFRESH_REQUESTED:${new Date().toLocaleTimeString()}`;
+      const refreshNotes = `${order.customer_notes || ''} | QR_REFRESH_REQUESTED:${formatDhakaTime()}`;
       order.customer_notes = refreshNotes;
       await db.updateOrderStatus(order.order_id, order.status, {
         notes: refreshNotes
@@ -326,7 +327,7 @@ ${cardHtml}`;
 👤 <b>Customer:</b> <b>${name}</b>
 📞 <b>Phone:</b> <code>${data.phone}</code>
 💬 <b>Message:</b> <i>${textPreview}</i>
-🕒 <b>Time:</b> ${new Date().toLocaleTimeString()}
+🕒 <b>Time:</b> ${formatDhakaTime()}
 
 ⚠️ <i>এই কাস্টমারের জন্য বট অটো-অফ (Human Takeover) করা হয়েছে। অনুগ্রহ করে অ্যাডমিন প্যানেল বা WhatsApp থেকে কাস্টমারকে উত্তর দিন।</i>`;
 

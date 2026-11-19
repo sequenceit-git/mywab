@@ -4,6 +4,7 @@ import { getAccountFieldInfo } from '../chat/input-parser';
 import { telegramClient } from './client';
 import {
   generateOrderCard,
+  formatDhakaTime,
   resolveCancelReason,
   cancellationStore,
   isQrLoginOrder,
@@ -162,7 +163,7 @@ export async function handleCallbackQuery(callbackQuery: {
         console.error('[Telegram code_request] Failed to set customer session state:', convErr);
       }
 
-      const updatedNotes = `${existingOrder.customer_notes || ''} | CODE_REQUESTED:${new Date().toLocaleTimeString()}`;
+      const updatedNotes = `${existingOrder.customer_notes || ''} | CODE_REQUESTED:${formatDhakaTime()}`;
       await db.updateOrderStatus(existingOrder.order_id, existingOrder.status, { notes: updatedNotes });
 
       const refreshedOrder = (await db.getOrderByCode(existingOrder.order_id)) || existingOrder;
