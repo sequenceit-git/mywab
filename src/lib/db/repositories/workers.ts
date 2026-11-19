@@ -128,11 +128,20 @@ export const workersRepository = {
         // 2. Atomic claim update via findOneAndUpdate
         const updatedOrderDoc = await OrderModel.findOneAndUpdate(
           {
-            $or: [
-              { order_id: { $regex: new RegExp(`^${orderIdCode.trim()}$`, 'i') } },
-              { id: orderIdCode.trim() }
-            ],
-            status: 'PENDING_CLAIM'
+            $and: [
+              {
+                $or: [
+                  { order_id: { $regex: new RegExp(`^${orderIdCode.trim()}$`, 'i') } },
+                  { id: orderIdCode.trim() }
+                ]
+              },
+              {
+                $or: [
+                  { status: 'PENDING_CLAIM' },
+                  { status: 'PROCESSING', current_worker: null }
+                ]
+              }
+            ]
           },
           {
             $set: {
@@ -149,7 +158,8 @@ export const workersRepository = {
           if (!currentOrder) {
             return { success: false, message: 'অর্ডারটি সিস্টেমে পাওয়া যায়নি।' };
           }
-          if (currentOrder.status !== 'PENDING_CLAIM') {
+          const isClaimable = currentOrder.status === 'PENDING_CLAIM' || (currentOrder.status === 'PROCESSING' && !currentOrder.current_worker);
+          if (!isClaimable) {
             const assignedWorkerName = currentOrder.current_worker?.full_name || 'অন্য একজন কর্মী';
             return {
               success: false,
@@ -178,7 +188,8 @@ export const workersRepository = {
       return { success: false, message: 'অর্ডারটি সিস্টেমে পাওয়া যায়নি।' };
     }
 
-    if (order.status !== 'PENDING_CLAIM') {
+    const isOrderClaimable = order.status === 'PENDING_CLAIM' || (order.status === 'PROCESSING' && !order.current_worker);
+    if (!isOrderClaimable) {
       const assignedName = order.current_worker?.full_name || 'অন্য একজন কর্মী';
       return {
         success: false,

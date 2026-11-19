@@ -1,6 +1,6 @@
 import { db } from '../../db';
 import { whatsappService } from '../../whatsapp/service';
-import { telegramBot } from '../../telegram/bot';
+import { telegramBot, telegramQueue } from '../../telegram/bot';
 import { zinipayClient } from '../../zinipay/client';
 import { orderPaymentService } from '../../services/order-payment';
 import { ConversationSessionState } from '@/types';
@@ -59,6 +59,20 @@ export async function handleCheckPayment(
       db.clearSessionDraft(conversationId, order.order_id);
     }
     db.setSessionState(conversationId, { step: 'IDLE' });
+
+    // Self-healing: If paid order is unassigned and undispatched to Telegram, dispatch immediately!
+    if (order.status !== 'DELIVERED' && !order.current_worker && !order.telegram_message_id) {
+      console.warn(`[handleCheckPayment Healing] Paid order #${order.order_id} has no worker or Telegram card. Dispatching to staff queue now...`);
+      if (order.status !== 'PENDING_CLAIM') {
+        await db.updateOrderStatus(order.order_id, 'PENDING_CLAIM', { isAdminOverride: true });
+        order = (await db.getOrderByCode(order.order_id)) || order;
+      }
+      try {
+        await telegramQueue.enqueueOrder(order);
+      } catch (tgErr) {
+        console.error('[handleCheckPayment Healing Telegram Dispatch Error]:', tgErr);
+      }
+    }
 
     const trackPrompt = `✅ *আপনার পেমেন্ট ইতিমধ্যে গৃহীত হয়েছে!* অর্ডার *#${order.order_id}* এর বর্তমান অবস্থা নিচে দেখুন:`;
     await whatsappService.sendMessage(phone, trackPrompt);

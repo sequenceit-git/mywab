@@ -30,9 +30,13 @@ export async function PATCH(
 
     // Handle manual re-dispatch to Telegram Worker Group
     if (action === 'redispatch') {
-      const order = await db.getOrderByCode(id);
+      let order = await db.getOrderByCode(id);
       if (!order) {
         return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
+      }
+      if (!order.current_worker && order.status === 'PROCESSING') {
+        await db.updateOrderStatus(order.order_id, 'PENDING_CLAIM', { isAdminOverride: true });
+        order = (await db.getOrderByCode(id)) || order;
       }
       const dispatchResult = await telegramBot.dispatchNewOrder(order, undefined, { force: true });
       return NextResponse.json(dispatchResult);

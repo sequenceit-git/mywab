@@ -66,31 +66,41 @@ export const orderPaymentService = {
     activePaymentLocks.add(lockKey);
 
     try {
-      // 3. Idempotency Check: Don't re-fulfill if already delivered or processing
-      const isAlreadyPaid = order.status === 'DELIVERED' || 
-        order.status === 'PROCESSING' || 
-        order.status === 'CLAIMED' || 
-        order.status === 'PENDING_CLAIM' ||
-        order.status === 'OUT_FOR_DELIVERY';
-
-      if (isAlreadyPaid && order.trx_id) {
-        console.log(`[OrderPaymentService Idempotency] Order #${order.order_id} is already processed (${order.status}). Skipping duplicate fulfillment.`);
+      // 3. Idempotency Check: Don't re-fulfill if already delivered
+      if (order.status === 'DELIVERED') {
+        console.log(`[OrderPaymentService Idempotency] Order #${order.order_id} is already DELIVERED. Skipping duplicate.`);
         return {
           success: true,
           alreadyProcessed: true,
           order,
-          message: `Order #${order.order_id} is already fulfilled/processing.`
+          message: `Order #${order.order_id} is already delivered.`
         };
       }
 
-      // Guard by trx_id alone — if trx_id is already set, payment and fulfillment was already handled
+      // Guard by trx_id — if trx_id is already set, check whether it is already claimed/dispatched
       if (order.trx_id) {
-        console.log(`[OrderPaymentService Idempotency] Order #${order.order_id} already has trx_id=${order.trx_id}. Skipping duplicate.`);
+        if (order.current_worker || order.telegram_message_id) {
+          console.log(`[OrderPaymentService Idempotency] Order #${order.order_id} already has trx_id=${order.trx_id} and active fulfillment. Skipping duplicate.`);
+          return {
+            success: true,
+            alreadyProcessed: true,
+            order,
+            message: `Order #${order.order_id} payment already recorded.`
+          };
+        }
+
+        // Self-Healing: Payment was recorded but order was left unassigned and undispatched to Telegram!
+        console.warn(`[OrderPaymentService Healing] Order #${order.order_id} has trx_id=${order.trx_id} but is unassigned and undispatched! Dispatching to Telegram staff queue...`);
+        if (order.status !== 'PENDING_CLAIM') {
+          await db.updateOrderStatus(order.order_id, 'PENDING_CLAIM', { isAdminOverride: true });
+          order = (await db.getOrderByCode(order.order_id)) || order;
+        }
+        await telegramQueue.enqueueOrder(order);
         return {
           success: true,
-          alreadyProcessed: true,
           order,
-          message: `Order #${order.order_id} payment already recorded.`
+          deliveryType: 'TELEGRAM_WORKER',
+          message: `Order #${order.order_id} recovered and dispatched to Telegram staff.`
         };
       }
 

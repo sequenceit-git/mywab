@@ -5,6 +5,7 @@ import { db } from '../db';
 import { zinipayClient } from '../zinipay/client';
 import { whatsappService } from '../whatsapp/service';
 import { orderPaymentService } from './order-payment';
+import { telegramQueue } from '../telegram/bot';
 
 // Give the ZiniPay webhook a short head start before we poll on its behalf.
 const MIN_AGE_MS = 20 * 1000;
@@ -104,6 +105,33 @@ export async function reconcilePendingPayments(): Promise<{ checked: number; ful
       } catch (err) {
         console.error(`[PaymentReconciler] Failed for order #${order.order_id}:`, err);
       }
+    }
+
+    // Recovery sweep: Recover any paid orders stuck without worker or Telegram card
+    try {
+      const stuckDocs = await OrderModel.find({
+        status: { $in: ['PROCESSING', 'PENDING_CLAIM'] },
+        trx_id: { $ne: null },
+        current_worker: null,
+        telegram_message_id: null,
+        created_at: {
+          $gte: new Date(now - MAX_AGE_MS).toISOString()
+        }
+      })
+        .limit(10)
+        .lean();
+
+      for (const sDoc of stuckDocs) {
+        const stuckOrder = hydrateOrder(sDoc);
+        console.warn(`[PaymentReconciler] Auto-recovering paid order #${stuckOrder.order_id} to Telegram queue...`);
+        if (stuckOrder.status !== 'PENDING_CLAIM') {
+          await db.updateOrderStatus(stuckOrder.order_id, 'PENDING_CLAIM', { isAdminOverride: true });
+        }
+        const refreshed = (await db.getOrderByCode(stuckOrder.order_id)) || stuckOrder;
+        await telegramQueue.enqueueOrder(refreshed);
+      }
+    } catch (stuckErr) {
+      console.error('[PaymentReconciler Stuck Recovery Error]:', stuckErr);
     }
   } catch (err) {
     console.error('[PaymentReconciler] Exception:', err);
