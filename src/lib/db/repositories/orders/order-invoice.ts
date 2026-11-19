@@ -147,6 +147,7 @@ export async function updateOrderPaymentSuccess(
       };
 
       // Atomic: only update if trx_id is still unset (race-condition safe mutex)
+      // Atomically transition status from PENDING_PAYMENT to PROCESSING
       const result = await OrderModel.findOneAndUpdate(
         {
           $and: [
@@ -156,6 +157,7 @@ export async function updateOrderPaymentSuccess(
         },
         {
           $set: {
+            status: 'PROCESSING',
             trx_id: details.trxId,
             payment_method: details.paymentMethod,
             ...(details.invoiceId ? { invoice_id: details.invoiceId } : {}),
@@ -176,12 +178,14 @@ export async function updateOrderPaymentSuccess(
       }
 
       // Sync in-memory cache
+      order.status = 'PROCESSING';
       order.trx_id = details.trxId;
       order.payment_method = details.paymentMethod;
       if (details.invoiceId) order.invoice_id = details.invoiceId;
       order.updated_at = verifiedAt;
       for (const o of mockStore.orders.values()) {
         if (o.order_id.toUpperCase() === orderIdCode.toUpperCase() || o.id === order.id) {
+          o.status = 'PROCESSING';
           o.trx_id = details.trxId;
           o.payment_method = details.paymentMethod;
           if (details.invoiceId) o.invoice_id = details.invoiceId;
@@ -196,6 +200,7 @@ export async function updateOrderPaymentSuccess(
   }
 
   // In-memory update
+  order.status = 'PROCESSING';
   order.trx_id = details.trxId;
   order.payment_method = details.paymentMethod;
   if (details.invoiceId) order.invoice_id = details.invoiceId;
@@ -203,6 +208,7 @@ export async function updateOrderPaymentSuccess(
 
   for (const o of mockStore.orders.values()) {
     if (o.order_id.toUpperCase() === orderIdCode.toUpperCase() || o.id === order.id) {
+      o.status = 'PROCESSING';
       o.trx_id = details.trxId;
       o.payment_method = details.paymentMethod;
       if (details.invoiceId) o.invoice_id = details.invoiceId;

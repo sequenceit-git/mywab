@@ -83,13 +83,8 @@ export const orderPaymentService = {
         };
       }
 
-      // A previous run recorded the payment but died before fulfillment moved the
-      // order out of PENDING_PAYMENT. Resume fulfillment instead of skipping forever.
-      // (The in-process mutex above, held for the whole run, prevents overlap with a live run.)
-      const isStuckPaid = Boolean(order.trx_id) && order.status === 'PENDING_PAYMENT';
-
-      // Also guard by trx_id alone — catches race where status hasn't updated yet
-      if (order.trx_id && !isStuckPaid) {
+      // Guard by trx_id alone — if trx_id is already set, payment and fulfillment was already handled
+      if (order.trx_id) {
         console.log(`[OrderPaymentService Idempotency] Order #${order.order_id} already has trx_id=${order.trx_id}. Skipping duplicate.`);
         return {
           success: true,
@@ -99,22 +94,16 @@ export const orderPaymentService = {
         };
       }
 
-      if (isStuckPaid) {
-        console.warn(`[OrderPaymentService Recovery] Order #${order.order_id} has trx_id=${order.trx_id} but is still PENDING_PAYMENT. Resuming fulfillment.`);
-      }
+      // 4. Atomically update payment and transition status to PROCESSING in Database
+      const updateRes = await db.updateOrderPaymentSuccess(order.order_id, {
+        trxId: trxId || 'ZINIPAY_VERIFIED',
+        paymentMethod: paymentMethod || 'bKash',
+        invoiceId: invoiceId || order.invoice_id,
+        amount: amount || order.total_amount
+      });
 
-      // 4. Atomically update payment and order in Database (skipped when resuming a stuck order)
-      const updateRes = isStuckPaid
-        ? { success: true, alreadyProcessed: false, order }
-        : await db.updateOrderPaymentSuccess(order.order_id, {
-            trxId: trxId || 'ZINIPAY_VERIFIED',
-            paymentMethod: paymentMethod || 'bKash',
-            invoiceId: invoiceId || order.invoice_id,
-            amount: amount || order.total_amount
-          });
-
-      // If DB atomic update says already processed, bail out early — no messages sent
-      if (updateRes.alreadyProcessed) {
+      // If DB atomic update says already processed, bail out early — no duplicate fulfillment
+      if (updateRes.alreadyProcessed || !updateRes.success) {
         console.log(`[OrderPaymentService] DB atomic guard: Order #${order.order_id} already processed. Skipping.`);
         return {
           success: true,
@@ -174,6 +163,24 @@ export const orderPaymentService = {
       console.log(`[Kokos Debug] denomination=${denomination} | playerUid=${playerUid} | willAttemptRedeem=${!!(denomination && playerUid && playerUid !== 'N/A')}`);
 
       if (denomination && playerUid && playerUid !== 'N/A') {
+        // Pre-redemption guard: Check fresh DB state to ensure Kokos was not already fulfilled
+        const currentOrderFresh = await db.getOrderByCode(order.order_id);
+        const alreadyKokosRedeemed =
+          currentOrderFresh?.status === 'DELIVERED' ||
+          (currentOrderFresh?.customer_notes || '').includes('Kokos Receipt') ||
+          (currentOrderFresh?.customer_notes || '').includes('Kokos Auto-Fulfilled');
+
+        if (alreadyKokosRedeemed) {
+          console.log(`[Kokos Auto-Fulfill] Order #${order.order_id} already has a Kokos redemption. Skipping duplicate redeem.`);
+          return {
+            success: true,
+            alreadyProcessed: true,
+            order: currentOrderFresh || order,
+            deliveryType: 'KOKOS_AUTO',
+            message: 'PUBG UC already redeemed via Kokos.'
+          };
+        }
+
         console.log(`[Kokos Auto-Fulfill] Redeeming ${denomination} UC for Player ${playerUid}...`);
 
         const kokosResult = await kokosClient.redeemCode({
