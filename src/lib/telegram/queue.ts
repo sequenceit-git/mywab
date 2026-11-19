@@ -11,6 +11,7 @@ import { env } from '../config/env';
  */
 class TelegramOrderQueue {
   private isProcessing = false;
+  private activeDispatchOrderIds = new Set<string>();
 
   /**
    * Enqueue a newly created order from WhatsApp (or manual fallback)
@@ -21,7 +22,21 @@ class TelegramOrderQueue {
       return { dispatched: false };
     }
 
+    const key = (order.order_id || order.id || '').toUpperCase();
+    if (key && this.activeDispatchOrderIds.has(key)) {
+      console.log(`[Telegram Queue] Order #${order.order_id} enqueue already in progress. Skipping duplicate.`);
+      return { dispatched: false };
+    }
+    if (key) this.activeDispatchOrderIds.add(key);
+
     try {
+      // 0. Double-check if this order already has a telegram message ID
+      const fresh = await db.getOrderByCode(order.order_id);
+      if (fresh?.telegram_message_id) {
+        console.log(`[Telegram Queue] Order #${order.order_id} already has a Telegram card (#${fresh.telegram_message_id}). Skipping queue.`);
+        return { dispatched: true, queuePosition: 0 };
+      }
+
       // 1. Check if there is already an unclaimed order active in the Telegram group
       const activeUnclaimed = await db.getActiveTelegramUnclaimedOrder();
       const isStale = activeUnclaimed && (Date.now() - new Date(activeUnclaimed.created_at).getTime() > 20 * 60 * 1000);
@@ -45,6 +60,8 @@ class TelegramOrderQueue {
     } catch (err) {
       console.error('[Telegram Queue enqueueOrder Exception]:', err);
       return { dispatched: false };
+    } finally {
+      if (key) this.activeDispatchOrderIds.delete(key);
     }
   }
 
@@ -71,6 +88,12 @@ class TelegramOrderQueue {
       const nextOrder = await db.getNextQueuedOrder();
       if (!nextOrder) {
         console.log('[Telegram Queue] Queue is empty. No pending orders waiting.');
+        return false;
+      }
+
+      const nextKey = (nextOrder.order_id || nextOrder.id || '').toUpperCase();
+      if (nextKey && this.activeDispatchOrderIds.has(nextKey)) {
+        console.log(`[Telegram Queue] Next order #${nextOrder.order_id} is already in the process of being enqueued/dispatched. Skipping.`);
         return false;
       }
 

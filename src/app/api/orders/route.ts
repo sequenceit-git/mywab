@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { telegramBot } from '@/lib/telegram/bot';
+import { telegramBot, telegramQueue } from '@/lib/telegram/bot';
 import { whatsappService } from '@/lib/whatsapp/service';
 
 export async function GET(request: NextRequest) {
@@ -33,8 +33,8 @@ export async function POST(request: NextRequest) {
       customerNotes: notes
     });
 
-    // Auto dispatch to Telegram worker group
-    await telegramBot.dispatchNewOrder(order);
+    // Auto dispatch to Telegram worker group queue
+    await telegramQueue.enqueueOrder(order);
 
     // Auto send confirmation to WhatsApp
     await whatsappService.sendOrderConfirmation(order);

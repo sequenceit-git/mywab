@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { whatsappService } from '../whatsapp/service';
-import { telegramBot } from '../telegram/bot';
+import { telegramBot, telegramQueue } from '../telegram/bot';
 import { kokosClient } from '../kokos/client';
 import { pinexClient } from '../pinex/client';
 import { Order } from '@/types';
@@ -349,8 +349,7 @@ export const orderPaymentService = {
         const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
 
         try {
-          const queueCount = await db.getUndispatchedQueueCount();
-          const dispatchRes = await telegramBot.dispatchNewOrder(refreshedOrder, queueCount);
+          const dispatchRes = await telegramQueue.enqueueOrder(refreshedOrder);
           console.log(`[OrderPaymentService] Netflix auto-account dispatch for #${refreshedOrder.order_id}:`, dispatchRes);
         } catch (tgErr) {
           console.error('[OrderPaymentService Netflix Telegram Dispatch Error]:', tgErr);
@@ -409,11 +408,10 @@ export const orderPaymentService = {
 
     const refreshedOrder = (await db.getOrderByCode(order.order_id)) || order;
 
-    // Dispatch directly to Telegram Worker Group immediately so staff can claim and fulfill!
+    // Dispatch via FIFO Queue to Telegram Worker Group so staff can claim and fulfill!
     try {
-      const queueCount = await db.getUndispatchedQueueCount();
-      const dispatchRes = await telegramBot.dispatchNewOrder(refreshedOrder, queueCount);
-      console.log(`[OrderPaymentService] Telegram Direct Dispatch Result for #${refreshedOrder.order_id}:`, dispatchRes);
+      const dispatchRes = await telegramQueue.enqueueOrder(refreshedOrder);
+      console.log(`[OrderPaymentService] Telegram Queue Dispatch Result for #${refreshedOrder.order_id}:`, dispatchRes);
     } catch (tgErr) {
       console.error('[OrderPaymentService Telegram Dispatch Error]:', tgErr);
     }

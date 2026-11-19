@@ -34,7 +34,7 @@ export async function PATCH(
       if (!order) {
         return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
       }
-      const dispatchResult = await telegramBot.dispatchNewOrder(order);
+      const dispatchResult = await telegramBot.dispatchNewOrder(order, undefined, { force: true });
       return NextResponse.json(dispatchResult);
     }
 

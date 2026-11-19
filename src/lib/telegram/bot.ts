@@ -24,6 +24,9 @@ export * from './callback-handlers';
 export * from './message-handlers';
 export { telegramQueue } from './queue';
 
+// In-flight mutex for telegram dispatches to prevent identical order cards from sending concurrently
+const inFlightDispatches = new Set<string>();
+
 export const telegramBot = {
   // Card & markup generation
   generateOrderCard,
@@ -56,12 +59,43 @@ export const telegramBot = {
   /**
    * Send new order card to the Telegram Worker Group with Claim button
    */
-  async dispatchNewOrder(order: Order, queueCount?: number): Promise<{ success: boolean; messageId?: number; error?: string }> {
+  async dispatchNewOrder(
+    order: Order,
+    queueCount?: number,
+    options?: { force?: boolean }
+  ): Promise<{ success: boolean; messageId?: number; error?: string }> {
     if (!env.telegram.isConfigured) {
       const errorMsg = 'Telegram Worker Bot not configured in environment';
       console.error(errorMsg);
       return { success: false, error: errorMsg };
     }
+
+    const orderKey = (order.order_id || order.id || '').toUpperCase();
+
+    // Guard: Prevent duplicate dispatch unless force is explicitly requested (e.g. admin manual re-dispatch)
+    if (!options?.force) {
+      // 1. Check in-memory in-flight dispatch lock
+      if (orderKey && inFlightDispatches.has(orderKey)) {
+        console.log(`[Telegram Dispatch Guard] Order #${order.order_id} dispatch is already in flight. Skipping duplicate.`);
+        return { success: true, messageId: order.telegram_message_id || undefined };
+      }
+
+      // 2. Check if the provided order object already has a message ID
+      if (order.telegram_message_id) {
+        console.log(`[Telegram Dispatch Guard] Order #${order.order_id} already has telegram_message_id=${order.telegram_message_id}. Skipping duplicate.`);
+        return { success: true, messageId: order.telegram_message_id };
+      }
+
+      // 3. Re-fetch fresh order from DB to verify it wasn't dispatched by a concurrent process
+      const freshOrder = await db.getOrderByCode(order.order_id);
+      if (freshOrder?.telegram_message_id) {
+        console.log(`[Telegram Dispatch Guard] Fresh DB check: Order #${order.order_id} already has telegram_message_id=${freshOrder.telegram_message_id}. Skipping duplicate.`);
+        order.telegram_message_id = freshOrder.telegram_message_id;
+        return { success: true, messageId: freshOrder.telegram_message_id };
+      }
+    }
+
+    if (orderKey) inFlightDispatches.add(orderKey);
 
     const { cardHtml, replyMarkup } = generateOrderCard(order, undefined, queueCount);
 
@@ -80,6 +114,8 @@ export const telegramBot = {
     } catch (err) {
       console.error('Telegram API Network Error:', err);
       return { success: false, error: String(err) };
+    } finally {
+      if (orderKey) inFlightDispatches.delete(orderKey);
     }
   },
 
