@@ -55,7 +55,19 @@ export async function handleCheckPayment(
 
   // Already paid (by the webhook or an earlier tap) — answer with the order status instead of staying silent.
   if (order && isPaidOrder(order)) {
-    await whatsappService.sendMessage(phone, `✅ *আপনার পেমেন্ট ইতিমধ্যে গৃহীত হয়েছে!* অর্ডার *#${order.order_id}* এর বর্তমান অবস্থা নিচে দেখুন:`);
+    if (order) {
+      db.clearSessionDraft(conversationId, order.order_id);
+    }
+    db.setSessionState(conversationId, { step: 'IDLE' });
+
+    const trackPrompt = `✅ *আপনার পেমেন্ট ইতিমধ্যে গৃহীত হয়েছে!* অর্ডার *#${order.order_id}* এর বর্তমান অবস্থা নিচে দেখুন:`;
+    await whatsappService.sendMessage(phone, trackPrompt);
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: trackPrompt,
+      metadata: { type: 'PAYMENT_ALREADY_VERIFIED', orderId: order.order_id }
+    }).catch(() => {});
     await handleTrackOrder(phone, conversationId, `track:${order.order_id}`, '');
     return;
   }
@@ -72,10 +84,14 @@ export async function handleCheckPayment(
   if (!invoiceId) {
     const payUrl = order?.payment_url || session.draftOrder?.paymentUrl;
     if (payUrl) {
-      await whatsappService.sendMessage(
-        phone,
-        `⚡ *আপনার পেমেন্ট লিংক:*\n${payUrl}\n\nঅনুগ্রহ করে লিংকে গিয়ে বিকাশ/নগদ/রকেটে পেমেন্ট সম্পন্ন করুন।`
-      );
+      const payMsg = `⚡ *আপনার পেমেন্ট লিংক:*\n${payUrl}\n\nঅনুগ্রহ করে লিংকে গিয়ে বিকাশ/নগদ/রকেটে পেমেন্ট সম্পন্ন করুন।`;
+      await whatsappService.sendMessage(phone, payMsg);
+      await db.addMessage({
+        conversationId,
+        sender: 'BOT',
+        content: payMsg,
+        metadata: { type: 'PAYMENT_LINK', paymentUrl: payUrl }
+      }).catch(() => {});
       const buttons = [
         { id: `check_pay:${order?.order_id || session.draftOrder?.pendingOrderId || ''}`, title: '🔄 পেমেন্ট চেক করুন' },
         { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
@@ -89,19 +105,33 @@ export async function handleCheckPayment(
       return;
     }
 
+    const noInvoiceMsg = `⚠️ *কোনো সক্রিয় পেমেন্ট ইনভয়েস পাওয়া যায়নি!*\n\nঅনুগ্রহ করে নতুন অর্ডার করতে নিচের বাটনে চাপ দিন:`;
     await whatsappService.sendInteractiveButtons(
       phone,
-      `⚠️ *কোনো সক্রিয় পেমেন্ট ইনভয়েস পাওয়া যায়নি!*\n\nঅনুগ্রহ করে নতুন অর্ডার করতে নিচের বাটনে চাপ দিন:`,
+      noInvoiceMsg,
       [
         { id: 'btn_main_menu', title: '🎮 নতুন অর্ডার' }
       ],
       'নতুন অর্ডার'
     );
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: noInvoiceMsg,
+      metadata: { type: 'NO_ACTIVE_INVOICE' }
+    }).catch(() => {});
     return;
   }
 
   // Immediate feedback so the tap never looks ignored
-  await whatsappService.sendMessage(phone, '⏳ *পেমেন্ট যাচাই করা হচ্ছে...* অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন।');
+  const checkingMsg = '⏳ *পেমেন্ট যাচাই করা হচ্ছে...* অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন।';
+  await whatsappService.sendMessage(phone, checkingMsg);
+  await db.addMessage({
+    conversationId,
+    sender: 'BOT',
+    content: checkingMsg,
+    metadata: { type: 'CHECKING_PAYMENT', invoiceId, orderId: order?.order_id }
+  }).catch(() => {});
 
   // Call ZiniPay verify (with short re-checks while it is still PENDING)
   let verifyRes = await zinipayClient.verifyInvoice(invoiceId);
@@ -117,12 +147,19 @@ export async function handleCheckPayment(
       { id: `check_pay:${order?.order_id || ''}`, title: '🔄 আবার চেক করুন' },
       { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
     ];
+    const errMsg = `⚠️ *এই মুহূর্তে পেমেন্ট যাচাই করা যাচ্ছে না।*\n\nআপনি পেমেন্ট করে থাকলে চিন্তা করবেন না — নিশ্চিত হওয়া মাত্র স্বয়ংক্রিয়ভাবে মেসেজ পাবেন। কিছুক্ষণ পর আবার চেক করুন।`;
     await whatsappService.sendInteractiveButtons(
       phone,
-      `⚠️ *এই মুহূর্তে পেমেন্ট যাচাই করা যাচ্ছে না।*\n\nআপনি পেমেন্ট করে থাকলে চিন্তা করবেন না — নিশ্চিত হওয়া মাত্র স্বয়ংক্রিয়ভাবে মেসেজ পাবেন। কিছুক্ষণ পর আবার চেক করুন।`,
+      errMsg,
       buttons,
       'পেমেন্ট চেক'
     );
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: errMsg,
+      metadata: { type: 'PAYMENT_VERIFY_ERROR', orderId: order?.order_id, error: verifyRes.error }
+    }).catch(() => {});
     return;
   }
 
@@ -131,11 +168,11 @@ export async function handleCheckPayment(
     const paymentMethod = verifyRes.payment_method || 'bKash';
     const amount = Number(verifyRes.amount) || order?.total_amount || 0;
 
-    // Clear draft
+    // Clear draft and transition session out of AWAITING_PAYMENT to IDLE
     if (order) {
       db.clearSessionDraft(conversationId, order.order_id);
     }
-    db.setSessionState(conversationId, { step: 'ORDER_PLACED' });
+    db.setSessionState(conversationId, { step: 'IDLE' });
 
     const result = await orderPaymentService.handlePaymentVerified({
       orderIdCode: order?.order_id,
@@ -146,19 +183,23 @@ export async function handleCheckPayment(
       customerName: verifyRes.cus_name
     });
 
-    // Webhook (or an earlier tap) is already handling / has handled this payment — confirm instead of silence.
-    if (result.alreadyProcessed) {
-      const code = result.order?.order_id || order?.order_id || '';
-      await whatsappService.sendInteractiveButtons(
-        phone,
-        `✅ *পেমেন্ট নিশ্চিত হয়েছে!* অর্ডার *#${code}* প্রসেস হচ্ছে — আপডেট স্বয়ংক্রিয়ভাবে এখানে পাবেন।`,
-        [
-          { id: `track:${code}`, title: '📦 অর্ডার স্ট্যাটাস' },
-          { id: 'btn_main_menu', title: '🎮 মেইন মেনু' }
-        ],
-        'পেমেন্ট নিশ্চিত'
-      );
-    }
+    const code = result.order?.order_id || order?.order_id || '';
+    const confirmedMsg = `✅ *পেমেন্ট নিশ্চিত হয়েছে!* অর্ডার *#${code}* প্রসেস হচ্ছে — আপডেট স্বয়ংক্রিয়ভাবে এখানে পাবেন।`;
+    await whatsappService.sendInteractiveButtons(
+      phone,
+      confirmedMsg,
+      [
+        { id: `track:${code}`, title: '📦 অর্ডার স্ট্যাটাস' },
+        { id: 'btn_main_menu', title: '🎮 মেইন মেনু' }
+      ],
+      'পেমেন্ট নিশ্চিত'
+    );
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: confirmedMsg,
+      metadata: { type: 'PAYMENT_CONFIRMED', orderId: code, trxId }
+    }).catch(() => {});
     return;
   }
 
@@ -182,6 +223,12 @@ ${payUrl || 'https://secure.zinipay.com'}
     ];
 
     await whatsappService.sendInteractiveButtons(phone, pendingMsg, buttons, 'পেমেন্ট পেন্ডিং');
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: pendingMsg,
+      metadata: { type: 'PAYMENT_PENDING', orderId: order?.order_id, invoiceId }
+    }).catch(() => {});
     return;
   }
 
@@ -197,6 +244,12 @@ ${payUrl || 'https://secure.zinipay.com'}
   ];
 
   await whatsappService.sendInteractiveButtons(phone, failedMsg, buttons, 'পেমেন্ট ব্যর্থ');
+  await db.addMessage({
+    conversationId,
+    sender: 'BOT',
+    content: failedMsg,
+    metadata: { type: 'PAYMENT_FAILED', orderId: order?.order_id }
+  }).catch(() => {});
 }
 
 /**

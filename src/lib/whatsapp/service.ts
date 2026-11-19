@@ -28,7 +28,7 @@ export interface WhatsAppListSection {
 /**
  * Helper to record automated bot notifications into conversation history
  */
-async function logBotMessageToConversation(phone: string, text: string, metadata?: Record<string, any>) {
+export async function logBotMessageToConversation(phone: string, text: string, metadata?: Record<string, any>) {
   try {
     const { chatRepository } = await import('../db/repositories/chat');
     const conv = await chatRepository.getOrCreateConversation(phone);

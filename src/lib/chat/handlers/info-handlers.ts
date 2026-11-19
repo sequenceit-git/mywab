@@ -91,6 +91,14 @@ ${order.status === 'DELIVERED' ? deliveredText : '⚡ আমাদের টি�
   ];
 
   await whatsappService.sendInteractiveButtons(phone, message, buttons, 'DS Dukan Tracker');
+  if (conversationId) {
+    await db.addMessage({
+      conversationId,
+      sender: 'BOT',
+      content: message,
+      metadata: { type: 'ORDER_TRACKING', orderId: order.order_id, status: order.status }
+    }).catch(() => {});
+  }
 }
 
 /**

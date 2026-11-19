@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { whatsappService } from '../whatsapp/service';
+import { whatsappService, logBotMessageToConversation } from '../whatsapp/service';
 import { telegramBot, telegramQueue } from '../telegram/bot';
 import { kokosClient } from '../kokos/client';
 import { pinexClient } from '../pinex/client';
@@ -122,6 +122,19 @@ export const orderPaymentService = {
     const firstItem = order.items?.[0];
     const productName = firstItem?.product_name || 'Game Package';
 
+    // Free the customer session from AWAITING_PAYMENT immediately upon payment verification
+    if (phone) {
+      try {
+        const conv = await db.getOrCreateConversation(phone);
+        if (conv?.id) {
+          db.clearSessionDraft(conv.id, order.order_id);
+          db.setSessionState(conv.id, { step: 'IDLE' });
+        }
+      } catch (convErr) {
+        console.warn('[OrderPaymentService Conversation Reset Warning]:', convErr);
+      }
+    }
+
     // Send immediate Payment Receipt to customer on WhatsApp
     const paymentReceiptMsg = 
 `✅ *পেমেন্ট সফলভাবে গৃহীত হয়েছে! / Payment Received!*
@@ -134,6 +147,12 @@ export const orderPaymentService = {
 ⚡ আপনার অর্ডারটি এখন ডেলিভারির জন্য প্রসেস হচ্ছে...`;
 
     await whatsappService.sendMessage(phone, paymentReceiptMsg);
+    await logBotMessageToConversation(phone, paymentReceiptMsg, {
+      type: 'PAYMENT_RECEIPT',
+      orderId: order.order_id,
+      amount: amount || order.total_amount,
+      trxId
+    });
 
     // 4. Automated Fulfillment Engine
 
@@ -220,6 +239,13 @@ export const orderPaymentService = {
           ];
 
           await whatsappService.sendInteractiveButtons(phone, deliveryMsg, buttons, 'টপ-আপ ডেলিভারি সম্পন্ন');
+          await logBotMessageToConversation(phone, deliveryMsg, {
+            type: 'KOKOS_DELIVERED',
+            orderId: order.order_id,
+            receiptId: receipt.id,
+            playerUid,
+            denomination
+          });
 
           return {
             success: true,
@@ -286,6 +312,12 @@ export const orderPaymentService = {
           ];
 
           await whatsappService.sendInteractiveButtons(phone, deliveryMsg, buttons, 'টপ-আপ ডেলিভারি সম্পন্ন');
+          await logBotMessageToConversation(phone, deliveryMsg, {
+            type: 'PINEX_DELIVERED',
+            orderId: order.order_id,
+            trxId: pinexResult.trxIdOrContent,
+            playerUid
+          });
 
           return {
             success: true,
@@ -294,35 +326,7 @@ export const orderPaymentService = {
             message: 'Free Fire Diamonds auto-delivered via Pinex.'
           };
         } else {
-          console.log(`[Pinex Auto-Fulfill Status]: ${pinexResult.status}`);
-          await db.updateOrderStatus(order.order_id, 'PROCESSING', {
-            isAdminOverride: true,
-            notes: `Pinex Processing | ZiniPay: ${trxId}`
-          });
-
-          const processingMsg = 
-`🎉 *অর্ডার #${order.order_id} গ্রহণ করা হয়েছে!*
-
-🔥 *সার্ভিস:* Free Fire (Direct UID Top-Up)
-🆔 *Player UID:* \`${playerUid}\`
-💎 *প্যাকেজ:* *${firstItem?.product_name || productName}*
-⚡ *স্ট্যাটাস:* স্বয়ংক্রিয়ভাবে টপ-আপ প্রসেস হচ্ছে...
-
-কিছুক্ষণের মধ্যে আপনার ফ্রি ফায়ার আইডিতে ডায়মন্ড যুক্ত হয়ে যাবে।`;
-
-          const buttons = [
-            { id: `track:${order.order_id}`, title: '📦 অর্ডার ট্র্যাক' },
-            { id: 'btn_main_menu', title: '🔙 মেইন মেনু' }
-          ];
-
-          await whatsappService.sendInteractiveButtons(phone, processingMsg, buttons, 'অর্ডার প্রসেস হচ্ছে');
-
-          return {
-            success: true,
-            order,
-            deliveryType: 'PINEX_AUTO',
-            message: 'Free Fire order queued on Pinex.'
-          };
+          console.warn('[Pinex Auto-Fulfill Warning]: Pinex auto-delivery failed/pending, falling back to Telegram staff queue:', pinexResult.status);
         }
       }
     }
