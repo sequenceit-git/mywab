@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { toPublicPricingProduct } from '@/lib/db/repositories/pricing';
 import { applyPresetAccountUpdate } from '@/lib/streaming-accounts';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);

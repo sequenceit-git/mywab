@@ -2,7 +2,7 @@ import { db } from '../../db';
 import { whatsappService } from '../../whatsapp/service';
 import { telegramBot, telegramQueue } from '../../telegram/bot';
 import { zinipayClient } from '../../zinipay/client';
-import { orderPaymentService } from '../../services/order-payment';
+import { orderPaymentService, isPaymentFulfillmentInFlight, FULFILLMENT_STALE_GRACE_MS } from '../../services/order-payment';
 import { ConversationSessionState } from '@/types';
 import { handleUidInput } from './order-creation';
 import { sendWelcomeAndGameList } from './catalog-navigation';
@@ -60,8 +60,14 @@ export async function handleCheckPayment(
     }
     db.setSessionState(conversationId, { step: 'IDLE' });
 
-    // Self-healing: If paid order is unassigned and undispatched to Telegram, dispatch immediately!
-    if (order.status !== 'DELIVERED' && !order.current_worker && !order.telegram_message_id) {
+    // Self-healing: If paid order is unassigned and undispatched to Telegram, dispatch immediately
+    // (skip while auto-fulfillment like Kokos/Pinex is still running or within grace window)
+    const updatedAgeMs = Date.now() - new Date(order.updated_at || order.created_at).getTime();
+    const canSelfHeal =
+      !isPaymentFulfillmentInFlight(order.order_id) &&
+      (order.status !== 'PROCESSING' || !Number.isFinite(updatedAgeMs) || updatedAgeMs >= FULFILLMENT_STALE_GRACE_MS);
+
+    if (order.status !== 'DELIVERED' && !order.current_worker && !order.telegram_message_id && canSelfHeal) {
       console.warn(`[handleCheckPayment Healing] Paid order #${order.order_id} has no worker or Telegram card. Dispatching to staff queue now...`);
       if (order.status !== 'PENDING_CLAIM') {
         await db.updateOrderStatus(order.order_id, 'PENDING_CLAIM', { isAdminOverride: true });

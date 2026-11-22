@@ -4,7 +4,7 @@ import { hydrateOrder } from '../db/repositories/orders/order-hydrator';
 import { db } from '../db';
 import { zinipayClient } from '../zinipay/client';
 import { whatsappService } from '../whatsapp/service';
-import { orderPaymentService } from './order-payment';
+import { orderPaymentService, isPaymentFulfillmentInFlight, FULFILLMENT_STALE_GRACE_MS } from './order-payment';
 import { telegramQueue } from '../telegram/bot';
 
 // Give the ZiniPay webhook a short head start before we poll on its behalf.
@@ -114,6 +114,7 @@ export async function reconcilePendingPayments(): Promise<{ checked: number; ful
         trx_id: { $ne: null },
         current_worker: null,
         telegram_message_id: null,
+        updated_at: { $lte: new Date(now - FULFILLMENT_STALE_GRACE_MS).toISOString() },
         created_at: {
           $gte: new Date(now - MAX_AGE_MS).toISOString()
         }
@@ -123,6 +124,9 @@ export async function reconcilePendingPayments(): Promise<{ checked: number; ful
 
       for (const sDoc of stuckDocs) {
         const stuckOrder = hydrateOrder(sDoc);
+        if (isPaymentFulfillmentInFlight(stuckOrder.order_id)) {
+          continue;
+        }
         console.warn(`[PaymentReconciler] Auto-recovering paid order #${stuckOrder.order_id} to Telegram queue...`);
         if (stuckOrder.status !== 'PENDING_CLAIM') {
           await db.updateOrderStatus(stuckOrder.order_id, 'PENDING_CLAIM', { isAdminOverride: true });

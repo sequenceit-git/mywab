@@ -56,11 +56,36 @@ export interface KokosActivationError {
   details?: any;
 }
 
+export const KOKOS_DENOMINATIONS = [8100, 3850, 1800, 660, 325, 60] as const;
+
+/**
+ * Decompose a PUBG UC package amount into stocked Kokos voucher denominations.
+ * Returns null if the amount cannot be formed with <= 6 standard vouchers.
+ */
+export function decomposeKokosDenominations(totalUc: number): number[] | null {
+  if (!Number.isInteger(totalUc) || totalUc <= 0) return null;
+  if ((KOKOS_DENOMINATIONS as readonly number[]).includes(totalUc)) {
+    return [totalUc];
+  }
+
+  let remaining = totalUc;
+  const vouchers: number[] = [];
+  for (const denom of KOKOS_DENOMINATIONS) {
+    while (remaining >= denom) {
+      vouchers.push(denom);
+      remaining -= denom;
+      if (vouchers.length > 6) return null;
+    }
+  }
+
+  return remaining === 0 && vouchers.length <= 6 ? vouchers : null;
+}
+
 export class KokosClient {
   private baseUrl = 'https://api.kokos.cc';
 
   private getToken(): string {
-    return (process.env.KOKOS_API_TOKEN || '').trim();
+    return (process.env.KOKOS_API_TOKEN || '').trim().replace(/^["']|["']$/g, '');
   }
 
   public isConfigured(): boolean {
@@ -126,7 +151,7 @@ export class KokosClient {
         },
         body: JSON.stringify(payload),
         // Generous timeout for redemption
-        signal: AbortSignal.timeout(35000)
+        signal: AbortSignal.timeout(45000)
       });
 
       const data = await response.json().catch(() => null);

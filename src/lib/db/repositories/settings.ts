@@ -1,27 +1,49 @@
 import { connectToDatabase, isDbConfigured } from '../client';
 import { SettingModel } from '../models/Setting';
 
-// In-memory cache for fast, synchronous access in WhatsApp bot runtime
-const settingsCache: Map<string, any> = new Map([
-  ['kokos_pubg_auto_fulfill', false],
-  ['kokos_fallback_to_telegram', true],
-  ['pinex_ff_auto_fulfill', true],
-  ['zinipay_auto_payment', true]
-]);
+type SettingsCacheState = {
+  settingsCache: Map<string, any>;
+  isInitialized: boolean;
+  lastSyncedAt: number;
+};
 
-let isInitialized = false;
+declare global {
+  // eslint-disable-next-line no-var
+  var __wapSettingsCache: SettingsCacheState | undefined;
+}
+
+const SETTINGS_SYNC_TTL_MS = 10 * 1000;
+
+// Share runtime settings across Next.js server chunks via globalThis
+const settingsState: SettingsCacheState =
+  globalThis.__wapSettingsCache ||
+  (globalThis.__wapSettingsCache = {
+    settingsCache: new Map<string, any>([
+      ['kokos_pubg_auto_fulfill', false],
+      ['kokos_fallback_to_telegram', true],
+      ['pinex_ff_auto_fulfill', true],
+      ['zinipay_auto_payment', true]
+    ]),
+    isInitialized: false,
+    lastSyncedAt: 0
+  });
+
+const { settingsCache } = settingsState;
 
 export const settingsRepository = {
   /**
    * Initialize settings cache from database
    */
-  async initSettings(): Promise<void> {
-    if (isInitialized) return;
+  async initSettings(forceRefresh = false): Promise<void> {
+    const now = Date.now();
+    if (!forceRefresh && settingsState.isInitialized && (now - settingsState.lastSyncedAt < SETTINGS_SYNC_TTL_MS)) {
+      return;
+    }
     if (isDbConfigured()) {
       try {
         const conn = await connectToDatabase();
         if (!conn) {
-          isInitialized = true;
+          settingsState.isInitialized = true;
           return;
         }
         const docs = await SettingModel.find().lean();
@@ -30,12 +52,15 @@ export const settingsRepository = {
             settingsCache.set(row.key, row.value);
           }
         }
-        isInitialized = true;
+        settingsState.isInitialized = true;
+        settingsState.lastSyncedAt = Date.now();
+        return;
       } catch (err) {
         console.warn('[SettingsRepository init error]:', err);
       }
     }
-    isInitialized = true;
+    settingsState.isInitialized = true;
+    settingsState.lastSyncedAt = Date.now();
   },
 
   /**
@@ -86,6 +111,7 @@ export const settingsRepository = {
    */
   async setSetting(key: string, value: any, description?: string): Promise<boolean> {
     settingsCache.set(key, value);
+    settingsState.lastSyncedAt = Date.now();
 
     if (isDbConfigured()) {
       try {

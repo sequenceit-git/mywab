@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import { kokosClient } from '@/lib/kokos/client';
 import { db } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
+    await db.initSettings();
     const { searchParams } = new URL(request.url);
     const checkInventory = searchParams.get('inventory') === 'true';
 

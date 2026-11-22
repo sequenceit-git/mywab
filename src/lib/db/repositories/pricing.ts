@@ -59,13 +59,33 @@ function parsePresetFromRow(row: { preset_account?: { email?: string; password?:
   };
 }
 
-// In-memory store for packages (default seeded + runtime created/edited)
-const memoryPackages = new Map<string, PricingProduct>();
-const deletedPackageIds = new Set<string>();
+type PricingCacheState = {
+  memoryPackages: Map<string, PricingProduct>;
+  deletedPackageIds: Set<string>;
+  isInitialized: boolean;
+  lastSyncedAt: number;
+};
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __wapPricingCache: PricingCacheState | undefined;
+}
+
 const DELETED_PACKAGES_SETTING = 'deleted_package_ids';
-let isInitialized = false;
-let lastSyncedAt = 0;
 const SYNC_TTL_MS = 10 * 1000; // 10s TTL for multi-process / webhook sync
+
+const isFreshCache = !globalThis.__wapPricingCache;
+// Share package cache across Next.js server chunks via globalThis
+const pricingCache: PricingCacheState =
+  globalThis.__wapPricingCache ||
+  (globalThis.__wapPricingCache = {
+    memoryPackages: new Map<string, PricingProduct>(),
+    deletedPackageIds: new Set<string>(),
+    isInitialized: false,
+    lastSyncedAt: 0
+  });
+
+const { memoryPackages, deletedPackageIds } = pricingCache;
 
 function applyDeletedPackages() {
   for (const id of deletedPackageIds) {
@@ -171,8 +191,10 @@ function seedDefaults() {
   applyDeletedPackages();
 }
 
-// Initial seed
-seedDefaults();
+// Initial seed (only on fresh global cache creation)
+if (isFreshCache) {
+  seedDefaults();
+}
 
 export const pricingRepository = {
   /**
@@ -180,7 +202,7 @@ export const pricingRepository = {
    */
   async ensureInitialized(forceRefresh = false): Promise<void> {
     const now = Date.now();
-    if (!forceRefresh && isInitialized && (now - lastSyncedAt < SYNC_TTL_MS)) {
+    if (!forceRefresh && pricingCache.isInitialized && (now - pricingCache.lastSyncedAt < SYNC_TTL_MS)) {
       return;
     }
 
@@ -247,7 +269,7 @@ export const pricingRepository = {
                 kokosAutoFulfill:
                   typeof row.kokos_auto_fulfill === 'boolean'
                     ? row.kokos_auto_fulfill
-                    : existingMem?.kokosAutoFulfill
+                    : undefined
               });
             }
           }
@@ -259,8 +281,8 @@ export const pricingRepository = {
         console.warn('[pricingRepository] Error syncing with MongoDB:', err);
       }
     }
-    isInitialized = true;
-    lastSyncedAt = Date.now();
+    pricingCache.isInitialized = true;
+    pricingCache.lastSyncedAt = Date.now();
   },
 
   /**
@@ -278,7 +300,10 @@ export const pricingRepository = {
   /**
    * Get products by category
    */
-  async getProductsByCategory(categoryId: string, includeInactive = false): Promise<PricingProduct[]> {
+  async getProductsByCategory(categoryId: string, includeInactive = false, forceRefresh = false): Promise<PricingProduct[]> {
+    if (forceRefresh) {
+      await this.ensureInitialized(true);
+    }
     const all = await this.getAllProducts(includeInactive);
     return sortPackages(all.filter(p => p.categoryId === categoryId));
   },
@@ -286,8 +311,8 @@ export const pricingRepository = {
   /**
    * Get a single product by package ID
    */
-  async getProductById(packageId: string): Promise<PricingProduct | null> {
-    await this.ensureInitialized();
+  async getProductById(packageId: string, forceRefresh = false): Promise<PricingProduct | null> {
+    await this.ensureInitialized(forceRefresh);
     if (deletedPackageIds.has(packageId)) return null;
     return memoryPackages.get(packageId) || null;
   },
@@ -459,7 +484,7 @@ export const pricingRepository = {
 
     deletedPackageIds.delete(packageId);
     memoryPackages.set(packageId, newProduct);
-    lastSyncedAt = Date.now();
+    pricingCache.lastSyncedAt = Date.now();
     await persistDeletedIds();
 
     if (isDbConfigured()) {
@@ -562,7 +587,7 @@ export const pricingRepository = {
     };
 
     memoryPackages.set(packageId, updatedProduct);
-    lastSyncedAt = Date.now();
+    pricingCache.lastSyncedAt = Date.now();
 
     if (isDbConfigured()) {
       try {
@@ -626,7 +651,7 @@ export const pricingRepository = {
       existing.updatedAt = now;
       memoryPackages.set(id, existing);
     });
-    lastSyncedAt = Date.now();
+    pricingCache.lastSyncedAt = Date.now();
 
     if (isDbConfigured()) {
       try {
@@ -677,7 +702,7 @@ export const pricingRepository = {
 
     deletedPackageIds.add(packageId);
     memoryPackages.delete(packageId);
-    lastSyncedAt = 0;
+    pricingCache.lastSyncedAt = 0;
 
     if (isDbConfigured()) {
       try {
@@ -716,7 +741,7 @@ export const pricingRepository = {
   async resetToDefaults(): Promise<void> {
     deletedPackageIds.clear();
     seedDefaults();
-    lastSyncedAt = 0;
+    pricingCache.lastSyncedAt = 0;
 
     if (isDbConfigured()) {
       try {

@@ -62,7 +62,7 @@ export default function PricingPage() {
 
   const fetchKokosStatus = async () => {
     try {
-      const res = await fetch('/api/system/kokos');
+      const res = await fetch('/api/system/kokos', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -131,7 +131,7 @@ export default function PricingPage() {
 
   const fetchPricing = async () => {
     try {
-      const res = await fetch('/api/pricing?all=true');
+      const res = await fetch('/api/pricing?all=true', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
