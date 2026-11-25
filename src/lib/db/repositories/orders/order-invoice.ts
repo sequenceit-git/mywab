@@ -169,7 +169,7 @@ export async function updateOrderPaymentSuccess(
           }
         },
         { new: true }
-      );
+      ).lean();
 
       // If nothing was updated, another process already claimed this payment
       if (!result) {
